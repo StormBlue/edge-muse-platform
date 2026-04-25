@@ -20,7 +20,8 @@ export const optionalAuth = createMiddleware<AppEnv>(async (c, next) => {
         email: user.email,
         nickname: user.nickname,
         role: user.role,
-        status: user.status
+        status: user.status,
+        preferredProviderKeyId: user.preferredProviderKeyId
       });
     }
   } catch {
@@ -47,7 +48,8 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     email: user.email,
     nickname: user.nickname,
     role: user.role,
-    status: user.status
+    status: user.status,
+    preferredProviderKeyId: user.preferredProviderKeyId
   });
   return next();
 });

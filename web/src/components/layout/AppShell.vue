@@ -9,9 +9,11 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessagesSquare,
   Monitor,
   Moon,
   Settings,
+  SlidersHorizontal,
   Shield,
   Sun,
   Users
@@ -40,7 +42,15 @@ const nav = computed(() => [
   { to: "/admin/users", label: "用户管理", icon: Users, show: auth.isAdmin },
   { to: "/sysadmin/dashboard", label: "系统看板", icon: LayoutDashboard, show: auth.isSysadmin },
   { to: "/sysadmin/providers", label: "服务商", icon: Shield, show: auth.isSysadmin },
-  { to: "/sysadmin/keys", label: "密钥", icon: KeyRound, show: auth.isSysadmin }
+  { to: "/sysadmin/keys", label: "密钥", icon: KeyRound, show: auth.isSysadmin },
+  { to: "/sysadmin/admins", label: "管理员", icon: Users, show: auth.isSysadmin },
+  {
+    to: "/sysadmin/users/_/sessions",
+    label: "会话审计",
+    icon: MessagesSquare,
+    show: auth.isSysadmin
+  },
+  { to: "/sysadmin/preferences", label: "偏好", icon: SlidersHorizontal, show: auth.isSysadmin }
 ]);
 
 const themeOptions = computed(() => [

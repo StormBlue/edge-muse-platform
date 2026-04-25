@@ -48,6 +48,16 @@ const router = createRouter({
       component: () => import("@/views/sysadmin/Admins.vue"),
       meta: { role: "sysadmin" }
     },
+    {
+      path: "/sysadmin/preferences",
+      component: () => import("@/views/sysadmin/Preferences.vue"),
+      meta: { role: "sysadmin" }
+    },
+    {
+      path: "/sysadmin/users/:userId/sessions",
+      component: () => import("@/views/sysadmin/UserSessions.vue"),
+      meta: { role: "sysadmin" }
+    },
     { path: "/403", component: () => import("@/views/Forbidden.vue"), meta: { public: true } },
     {
       path: "/:pathMatch(.*)*",

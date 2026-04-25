@@ -7,7 +7,8 @@ import {
   providers,
   sessions,
   tasks,
-  userProviderKeys
+  userProviderKeys,
+  users
 } from "../db/schema";
 import { decryptString } from "./crypto";
 import { base64ToBytes } from "./encoding";
@@ -32,6 +33,13 @@ export type TaskEvent =
 
 export async function resolveProviderKey(env: AppBindings, userId: string) {
   const db = getDb(env);
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (user?.preferredProviderKeyId) {
+    const preferred = await db.query.providerKeys.findFirst({
+      where: and(eq(providerKeys.id, user.preferredProviderKeyId), eq(providerKeys.enabled, true))
+    });
+    if (preferred) return preferred;
+  }
   const assigned = await db.query.userProviderKeys.findFirst({
     where: eq(userProviderKeys.userId, userId)
   });

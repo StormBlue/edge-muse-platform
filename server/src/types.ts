@@ -11,6 +11,7 @@ export type AuthUser = {
   nickname: string;
   role: UserRole;
   status: UserStatus;
+  preferredProviderKeyId?: string | null;
 };
 
 export type AppBindings = Cloudflare.Env;

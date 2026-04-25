@@ -226,12 +226,14 @@ function publicUser(user: {
   nickname: string;
   role: string;
   status: string;
+  preferredProviderKeyId?: string | null;
 }) {
   return {
     id: user.id,
     email: user.email,
     nickname: user.nickname,
     role: user.role,
-    status: user.status
+    status: user.status,
+    preferredProviderKeyId: user.preferredProviderKeyId ?? null
   };
 }

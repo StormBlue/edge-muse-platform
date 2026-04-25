@@ -8,6 +8,7 @@ export type User = {
   nickname: string;
   role: Role;
   status: string;
+  preferredProviderKeyId?: string | null;
 };
 export type Quota = {
   allocatedQuota: number | null;

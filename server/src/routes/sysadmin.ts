@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -263,6 +263,93 @@ sysadminRoutes.post(
   }
 );
 
+sysadminRoutes.get("/admins", async (c) => {
+  const rows = await getDb(c.env)
+    .select({
+      id: users.id,
+      email: users.email,
+      nickname: users.nickname,
+      status: users.status,
+      preferredProviderKeyId: users.preferredProviderKeyId,
+      allocatedQuota: quotas.allocatedQuota,
+      usedQuota: quotas.usedQuota,
+      providerKeyId: userProviderKeys.providerKeyId
+    })
+    .from(users)
+    .leftJoin(quotas, eq(quotas.userId, users.id))
+    .leftJoin(userProviderKeys, eq(userProviderKeys.userId, users.id))
+    .where(eq(users.role, "admin"))
+    .orderBy(desc(users.createdAt));
+  return c.json({ items: rows });
+});
+
+sysadminRoutes.patch(
+  "/admins/:id",
+  zValidator(
+    "json",
+    z.object({
+      nickname: z.string().min(1).optional(),
+      status: z.enum(["active", "disabled"]).optional(),
+      providerKeyId: z.string().optional(),
+      quota: z.number().int().min(0).nullable().optional()
+    })
+  ),
+  async (c) => {
+    const body = c.req.valid("json");
+    const adminId = c.req.param("id");
+    const timestamp = now();
+    const admin = await getDb(c.env).query.users.findFirst({ where: eq(users.id, adminId) });
+    if (!admin || admin.role !== "admin") throw appError("NOT_FOUND", "Admin not found");
+    if (body.nickname || body.status || body.providerKeyId) {
+      await getDb(c.env)
+        .update(users)
+        .set({
+          nickname: body.nickname,
+          status: body.status,
+          preferredProviderKeyId: body.providerKeyId,
+          updatedAt: timestamp
+        })
+        .where(eq(users.id, adminId));
+    }
+    if ("quota" in body) {
+      await c.env.DB.prepare(
+        `INSERT INTO quotas (user_id, allocated_quota, used_quota, updated_at)
+         VALUES (?1, ?2, 0, ?3)
+         ON CONFLICT(user_id) DO UPDATE SET allocated_quota = ?2, updated_at = ?3`
+      )
+        .bind(adminId, body.quota ?? null, timestamp)
+        .run();
+    }
+    if (body.providerKeyId) {
+      const managed = await getDb(c.env)
+        .select({ id: users.id })
+        .from(users)
+        .where(sql`${users.id} = ${adminId} OR ${users.createdBy} = ${adminId}`);
+      for (const row of managed) {
+        await c.env.DB.prepare(
+          `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)
+           VALUES (?1, ?2, ?3)
+           ON CONFLICT(user_id) DO UPDATE SET provider_key_id = ?2, assigned_at = ?3`
+        )
+          .bind(row.id, body.providerKeyId, timestamp)
+          .run();
+      }
+      await getDb(c.env)
+        .update(providerKeys)
+        .set({ ownerAdminId: adminId, updatedAt: timestamp })
+        .where(eq(providerKeys.id, body.providerKeyId));
+    }
+    await audit(c.env, {
+      actorId: c.get("user").id,
+      action: "sys.admin_update",
+      targetType: "user",
+      targetId: adminId,
+      payload: body
+    });
+    return c.json({ ok: true });
+  }
+);
+
 sysadminRoutes.get("/dashboard/stats", async (c) => {
   const cached = await c.env.KV.get("dashboard:stats");
   if (cached) return c.json(JSON.parse(cached));
@@ -289,11 +376,20 @@ sysadminRoutes.get("/dashboard/stats", async (c) => {
      ORDER BY task_count DESC
      LIMIT 10`
   ).all();
+  const providerCounts = await c.env.DB.prepare(
+    `SELECT providers.name, COUNT(tasks.id) count
+     FROM tasks
+     LEFT JOIN provider_keys ON provider_keys.id = tasks.provider_key_id
+     LEFT JOIN providers ON providers.id = provider_keys.provider_id
+     GROUP BY providers.id
+     ORDER BY count DESC`
+  ).all();
   const body = {
     userCounts: userCounts.results,
     taskCounts: taskCounts.results,
     trend: trend.results,
-    topUsers: topUsers.results
+    topUsers: topUsers.results,
+    providerCounts: providerCounts.results
   };
   await c.env.KV.put("dashboard:stats", JSON.stringify(body), { expirationTtl: 60 });
   return c.json(body);
