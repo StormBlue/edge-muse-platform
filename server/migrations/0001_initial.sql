@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY NOT NULL,
   email TEXT NOT NULL UNIQUE,
+  username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   nickname TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('sysadmin', 'admin', 'user')),
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   provider_raw_response TEXT,
   queued_at INTEGER NOT NULL,
   started_at INTEGER,
+  heartbeat_at INTEGER,
   finished_at INTEGER,
   retry_of TEXT REFERENCES tasks(id)
 );
@@ -147,10 +149,12 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by);
 CREATE INDEX IF NOT EXISTS idx_messages_session_created ON messages(session_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_queued ON tasks(user_id, queued_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_status_heartbeat ON tasks(status, heartbeat_at);
 CREATE INDEX IF NOT EXISTS idx_image_objects_r2_key ON image_objects(r2_key);
 CREATE INDEX IF NOT EXISTS idx_image_objects_owner ON image_objects(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider_id);

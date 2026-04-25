@@ -25,6 +25,9 @@ import type { GenerateRequest, ProviderImage } from "../providers/types";
 
 const INTERRUPTED_TASK_TIMEOUT_MS = 2 * 60 * 1000;
 const INTERRUPTED_TASK_RECOVERY_LIMIT = 20;
+const TASK_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+const DEFAULT_PARALLEL_GENERATIONS = 4;
+const SYSADMIN_PARALLEL_GENERATIONS = 10;
 const TASK_RECOVERY_THROTTLE_KEY = "tasks:interrupted-recovery";
 const TASK_RECOVERY_THROTTLE_SECONDS = 60;
 
@@ -35,6 +38,7 @@ export type ActiveGenerationTask = {
   status: "queued" | "running";
   queuedAt: number;
   startedAt: number | null;
+  heartbeatAt: number | null;
   session: {
     id: string;
     title: string;
@@ -61,6 +65,44 @@ export type TaskRecoveryResult = {
 };
 
 type WaitUntilContext = Pick<ExecutionContext, "waitUntil">;
+
+type RunGenerateTaskOptions = {
+  retryable?: boolean;
+};
+
+type GenerationResult = {
+  index: number;
+  requestId?: string;
+  rawResponses: unknown[];
+  textResponse?: string;
+  images: ProviderImage[];
+};
+
+type GenerationFailure = {
+  type: "generation_failure";
+  index: number;
+  code: string;
+  message: string;
+  phase: "provider" | "persist";
+  createdAt: number;
+  raw?: unknown;
+};
+
+type GenerationSettledResult =
+  | { ok: true; value: GenerationResult }
+  | { ok: false; failure: GenerationFailure };
+
+type TaskImageAttachment = ImageAttachment & {
+  generationIndex?: number | null;
+  createdAt?: number;
+};
+
+class TaskClaimLostError extends Error {
+  constructor(taskId: string) {
+    super(`Task claim lost: ${taskId}`);
+    this.name = "TaskClaimLostError";
+  }
+}
 
 export async function resolveProviderKey(env: AppBindings, userId: string) {
   const db = getDb(env);
@@ -109,6 +151,7 @@ export async function findActiveGenerationTaskForUser(
       status: tasks.status,
       queuedAt: tasks.queuedAt,
       startedAt: tasks.startedAt,
+      heartbeatAt: tasks.heartbeatAt,
       sessionTitle: sessions.title,
       sessionMode: sessions.mode,
       sessionSettings: sessions.settings,
@@ -135,6 +178,7 @@ export async function findActiveGenerationTaskForUser(
     status: row.status as "queued" | "running",
     queuedAt: row.queuedAt,
     startedAt: row.startedAt,
+    heartbeatAt: row.heartbeatAt,
     session: {
       id: row.sessionId,
       title: row.sessionTitle,
@@ -213,7 +257,7 @@ export async function recoverInterruptedGenerateTasks(
     `SELECT id
      FROM tasks
      WHERE status = 'queued'
-        OR (status = 'running' AND (started_at IS NULL OR started_at <= ?1))
+        OR (status = 'running' AND COALESCE(heartbeat_at, started_at, queued_at) <= ?1)
      ORDER BY queued_at ASC
      LIMIT ?2`
   )
@@ -325,6 +369,7 @@ export async function createGenerateTask(
     providerRawResponse: null,
     queuedAt: timestamp,
     startedAt: null,
+    heartbeatAt: null,
     finishedAt: null,
     retryOf: input.retryOf ?? null
   });
@@ -352,7 +397,8 @@ export async function createGenerateTask(
 export async function runGenerateTask(
   env: AppBindings,
   taskId: string,
-  notify: (event: TaskEvent) => Promise<void> = async () => undefined
+  notify: (event: TaskEvent) => Promise<void> = async () => undefined,
+  options: RunGenerateTaskOptions = {}
 ): Promise<void> {
   const db = getDb(env);
   const startedAt = now();
@@ -366,10 +412,18 @@ export async function runGenerateTask(
     size: "1024x1024",
     n: 1
   });
-  await db.update(messages).set({ status: "running" }).where(eq(messages.id, task.messageId));
-  await notify({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
+  const taskUser = await db.query.users.findFirst({ where: eq(users.id, task.userId) });
+  const parallelGenerations = resolveParallelGenerationsForRole(taskUser?.role ?? "user");
+  const send = (event: TaskEvent) => notifyTaskEvent(taskId, notify, event);
+  const stopHeartbeat = startTaskHeartbeat(env, taskId, startedAt);
 
   try {
+    if (await recoverTaskFromPersistedImages(env, { task, params, startedAt, notify: send })) {
+      return;
+    }
+    await db.update(messages).set({ status: "running" }).where(eq(messages.id, task.messageId));
+    await send({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
+
     const key = await db.query.providerKeys.findFirst({
       where: and(eq(providerKeys.id, task.providerKeyId), isNull(providerKeys.deletedAt))
     });
@@ -391,7 +445,7 @@ export async function runGenerateTask(
     const requestIds: string[] = [];
     const textResponses: string[] = [];
     let completedGenerations = 0;
-    const generateOne = async (index: number) => {
+    const generateOne = async (index: number): Promise<GenerationResult> => {
       const response = await providerImpl.generate({
         prompt: params.prompt,
         mode: params.mode,
@@ -402,28 +456,17 @@ export async function runGenerateTask(
         referenceImages,
         messages: chatMessages
       });
-      const generatedImages: ImageAttachment[] = [];
-      const generatedRawResponses = [redactProviderResponse(response.raw)];
-      for (const providerImage of response.images) {
-        const stored = await persistProviderImage(env, {
-          image: providerImage,
-          ownerUserId: task.userId,
-          sessionId: task.sessionId,
-          taskId
-        });
-        const attachment = { ...stored, prompt: params.prompt };
-        generatedImages.push(attachment);
-        await notify({
-          type: "task.image",
-          task: { id: taskId, status: "running" },
-          image: attachment
-        });
+      await touchTaskHeartbeat(env, taskId, startedAt);
+      await assertTaskClaimCurrent(env, taskId, startedAt);
+      if (params.mode !== "chat" && response.images.length === 0) {
+        throw appError("PROVIDER_ERROR", "No usable image was generated");
       }
+      const generatedRawResponses = [redactProviderResponse(response.raw)];
       if (response.images.length === 0 && response.text) {
         generatedRawResponses.push({ text: response.text });
       }
       completedGenerations += 1;
-      await notify({
+      await send({
         type: "task.update",
         task: {
           id: taskId,
@@ -436,68 +479,140 @@ export async function runGenerateTask(
         requestId: response.requestId,
         rawResponses: generatedRawResponses,
         textResponse: response.images.length === 0 ? response.text : undefined,
-        images: generatedImages
+        images: response.images
       };
     };
 
-    const generationResults =
-      params.n === 1
-        ? [await generateOne(0)]
-        : await collectParallelGenerationResults(
-            Array.from({ length: params.n }, (_, index) => generateOne(index))
-          );
+    const settledGenerationResults = await mapWithConcurrency(
+      Array.from({ length: params.n }, (_, index) => index),
+      parallelGenerations,
+      async (index): Promise<GenerationSettledResult> => {
+        try {
+          return { ok: true, value: await generateOne(index) };
+        } catch (error) {
+          completedGenerations += 1;
+          await touchTaskHeartbeat(env, taskId, startedAt).catch(() => undefined);
+          await send({
+            type: "task.update",
+            task: {
+              id: taskId,
+              status: "running",
+              progress: 0.1 + (completedGenerations / params.n) * 0.75
+            }
+          });
+          return { ok: false, failure: generationFailureFromError(index, error, "provider") };
+        }
+      }
+    );
+    const generationResults = settledGenerationResults
+      .filter((result): result is { ok: true; value: GenerationResult } => result.ok)
+      .map((result) => result.value);
+    const generationFailures = settledGenerationResults
+      .filter((result): result is { ok: false; failure: GenerationFailure } => !result.ok)
+      .map((result) => result.failure);
 
     for (const result of generationResults.sort((left, right) => left.index - right.index)) {
       if (result.requestId) requestIds.push(result.requestId);
-      rawResponses.push(...result.rawResponses);
+      rawResponses.push({
+        type: "generation_success",
+        index: result.index,
+        requestId: result.requestId ?? null,
+        rawResponses: result.rawResponses
+      });
       if (result.textResponse) textResponses.push(result.textResponse);
-      images.push(...result.images);
     }
 
+    const providerImages = generationResults.flatMap((result) =>
+      result.images.map((image) => ({ image, generationIndex: result.index }))
+    );
+    let persistedImages = 0;
+    const persistenceFailures: GenerationFailure[] = [];
+    for (const providerImage of providerImages) {
+      try {
+        await assertTaskClaimCurrent(env, taskId, startedAt);
+        const stored = await persistProviderImage(env, {
+          image: providerImage.image,
+          ownerUserId: task.userId,
+          sessionId: task.sessionId,
+          taskId
+        });
+        await touchTaskHeartbeat(env, taskId, startedAt);
+        const attachment = {
+          ...stored,
+          prompt: params.prompt,
+          generationIndex: providerImage.generationIndex
+        };
+        images.push(attachment);
+        persistedImages += 1;
+        await send({
+          type: "task.update",
+          task: {
+            id: taskId,
+            status: "running",
+            progress: 0.75 + (persistedImages / Math.max(providerImages.length, 1)) * 0.2
+          }
+        });
+      } catch (error) {
+        persistenceFailures.push(
+          generationFailureFromError(providerImage.generationIndex, error, "persist")
+        );
+      }
+    }
+
+    const failures = [...generationFailures, ...persistenceFailures].sort(
+      (left, right) => left.index - right.index
+    );
+    rawResponses.push(...failures);
+    const finalStatus = failures.length ? "failed" : "succeeded";
+    const errorMessage = summarizeGenerationFailures(failures);
+    const errorCode = failures[0]?.code ?? null;
     const finishedAt = now();
     logSlowTask(taskId, startedAt, finishedAt);
-    await db
-      .update(tasks)
-      .set({
-        status: "succeeded",
-        finishedAt,
-        providerRequestId: requestIds.length ? requestIds.join(",") : null,
-        providerRawResponse: stringifyJson(rawResponses)
-      })
-      .where(eq(tasks.id, taskId));
+    const finished = await finishRunningTaskIfCurrent(env, {
+      taskId,
+      startedAt,
+      status: finalStatus,
+      errorCode,
+      errorMsg: errorMessage,
+      finishedAt,
+      providerRequestId: requestIds.length ? requestIds.join(",") : null,
+      providerRawResponse: stringifyJson(rawResponses)
+    });
+    if (!finished) return;
     await db
       .update(messages)
       .set({
-        status: "succeeded",
+        status: finalStatus,
         prompt: textResponses.join("\n\n") || params.prompt,
         attachments: stringifyJson(images)
       })
       .where(eq(messages.id, task.messageId));
-    await notify({ type: "task.done", task: { id: taskId, status: "succeeded" }, images });
+    for (const image of images) {
+      await send({ type: "task.image", task: { id: taskId, status: "running" }, image });
+    }
+    if (finalStatus === "succeeded") {
+      await send({ type: "task.done", task: { id: taskId, status: "succeeded" }, images });
+    } else {
+      await send({
+        type: "task.failed",
+        task: { id: taskId, status: "failed" },
+        error: {
+          code: errorCode ?? "PARTIAL_GENERATION_FAILED",
+          message: errorMessage ?? "Some images failed to generate"
+        }
+      });
+    }
   } catch (error) {
-    logSlowTask(taskId, startedAt, now());
-    const message = error instanceof Error ? error.message : "Generation failed";
-    const code =
-      error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
-    await db
-      .update(tasks)
-      .set({
-        status: "failed",
-        errorCode: code,
-        errorMsg: message,
-        finishedAt: now()
-      })
-      .where(eq(tasks.id, taskId));
-    await db
-      .update(messages)
-      .set({ status: "failed", attachments: stringifyJson([]) })
-      .where(eq(messages.id, task.messageId));
-    if (code !== "PROVIDER_ERROR") await refundQuota(env, task.userId, params.n, taskId);
-    await notify({
-      type: "task.failed",
-      task: { id: taskId, status: "failed" },
-      error: { code, message }
-    });
+    if (error instanceof TaskClaimLostError) return;
+    if (!(await isTaskClaimCurrent(env, taskId, startedAt))) return;
+    if (options.retryable) {
+      await cleanupTaskGeneratedImages(env, taskId);
+      await releaseGenerateTaskForRetry(env, taskId, task.messageId, notify);
+      throw error;
+    }
+    await failGenerateTask(env, taskId, error, notify, { task, params, startedAt });
+  } finally {
+    await stopHeartbeat();
   }
 }
 
@@ -505,6 +620,318 @@ function logSlowTask(taskId: string, startedAt: number, finishedAt: number): voi
   const durationMs = finishedAt - startedAt;
   if (durationMs <= 120_000) return;
   console.warn(JSON.stringify({ event: "task.slow", taskId, durationMs }));
+}
+
+function resolveParallelGenerationsForRole(role: UserRole): number {
+  return role === "sysadmin" ? SYSADMIN_PARALLEL_GENERATIONS : DEFAULT_PARALLEL_GENERATIONS;
+}
+
+function generationFailureFromError(
+  index: number,
+  error: unknown,
+  phase: GenerationFailure["phase"]
+): GenerationFailure {
+  const code =
+    error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
+  const message = error instanceof Error ? error.message : "Generation failed";
+  const raw =
+    error && typeof error === "object" && "body" in error
+      ? redactProviderResponse((error as { body?: unknown }).body)
+      : undefined;
+  return {
+    type: "generation_failure",
+    index,
+    code,
+    message,
+    phase,
+    createdAt: now(),
+    ...(raw ? { raw } : {})
+  };
+}
+
+function summarizeGenerationFailures(failures: GenerationFailure[]): string | null {
+  if (failures.length === 0) return null;
+  return failures
+    .map((failure) => `#${failure.index + 1} ${failure.code}: ${failure.message}`)
+    .join("\n");
+}
+
+async function recoverTaskFromPersistedImages(
+  env: AppBindings,
+  input: {
+    task: {
+      id: string;
+      messageId: string;
+      sessionId: string;
+    };
+    params: GenerateParams;
+    startedAt: number;
+    notify: (event: TaskEvent) => Promise<void>;
+  }
+): Promise<boolean> {
+  const persistedImages = await loadTaskGeneratedImages(env, input.task.id, input.params.prompt);
+  if (persistedImages.length === 0) return false;
+
+  const expectedImageCount = Math.max(input.params.n, 1);
+  if (persistedImages.length < expectedImageCount) {
+    await cleanupTaskGeneratedImages(env, input.task.id);
+    return false;
+  }
+
+  const recoveredAt = now();
+  const images = persistedImages
+    .slice(-expectedImageCount)
+    .map((image, index) => ({ ...image, generationIndex: index }));
+  const finished = await finishRunningTaskIfCurrent(env, {
+    taskId: input.task.id,
+    startedAt: input.startedAt,
+    status: "succeeded",
+    errorCode: null,
+    errorMsg: null,
+    finishedAt: recoveredAt,
+    providerRequestId: null,
+    providerRawResponse: stringifyJson([
+      {
+        type: "recovered_from_persisted_images",
+        expectedImageCount,
+        persistedImageCount: persistedImages.length,
+        recoveredImageCount: images.length,
+        recoveredAt
+      }
+    ])
+  });
+  if (!finished) return true;
+
+  await cleanupTaskGeneratedImagesExcept(
+    env,
+    input.task.id,
+    images.map((image) => image.id)
+  );
+  await getDb(env)
+    .update(messages)
+    .set({
+      status: "succeeded",
+      prompt: input.params.prompt,
+      attachments: stringifyJson(images)
+    })
+    .where(eq(messages.id, input.task.messageId));
+  for (const image of images) {
+    await input.notify({
+      type: "task.image",
+      task: { id: input.task.id, status: "running" },
+      image
+    });
+  }
+  await input.notify({
+    type: "task.done",
+    task: { id: input.task.id, status: "succeeded" },
+    images
+  });
+  return true;
+}
+
+async function loadTaskGeneratedImages(
+  env: AppBindings,
+  taskId: string,
+  prompt: string
+): Promise<TaskImageAttachment[]> {
+  const rows = await env.DB.prepare(
+    `SELECT id,
+       mime,
+       width,
+       height,
+       byte_size,
+       task_id,
+       session_id,
+       created_at
+     FROM image_objects
+     WHERE task_id = ?1
+       AND deleted_at IS NULL
+       AND is_reference = 0
+     ORDER BY created_at ASC`
+  )
+    .bind(taskId)
+    .all<{
+      id: string;
+      mime: string;
+      width: number | null;
+      height: number | null;
+      byte_size: number;
+      task_id: string | null;
+      session_id: string | null;
+      created_at: number;
+    }>();
+
+  return rows.results.map((row, index) => ({
+    id: row.id,
+    url: `/api/i/${row.id}`,
+    mime: row.mime,
+    width: row.width,
+    height: row.height,
+    byteSize: row.byte_size,
+    taskId: row.task_id,
+    sessionId: row.session_id,
+    prompt,
+    generationIndex: index,
+    createdAt: row.created_at
+  }));
+}
+
+async function cleanupTaskGeneratedImagesExcept(
+  env: AppBindings,
+  taskId: string,
+  keepImageIds: string[]
+): Promise<void> {
+  if (keepImageIds.length === 0) {
+    await cleanupTaskGeneratedImages(env, taskId);
+    return;
+  }
+  await env.DB.prepare(
+    `UPDATE image_objects
+     SET deleted_at = COALESCE(deleted_at, ?1)
+     WHERE task_id = ?2
+       AND deleted_at IS NULL
+       AND id NOT IN (${keepImageIds.map((_, index) => `?${index + 3}`).join(",")})`
+  )
+    .bind(now(), taskId, ...keepImageIds)
+    .run();
+}
+
+async function finishRunningTaskIfCurrent(
+  env: AppBindings,
+  input: {
+    taskId: string;
+    startedAt: number;
+    status: TaskStatus;
+    errorCode: string | null;
+    errorMsg: string | null;
+    finishedAt: number;
+    providerRequestId: string | null;
+    providerRawResponse: string | null;
+  }
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE tasks
+     SET status = ?1,
+         error_code = ?2,
+         error_msg = ?3,
+         heartbeat_at = ?4,
+         finished_at = ?4,
+         provider_request_id = ?5,
+         provider_raw_response = ?6
+     WHERE id = ?7
+       AND status = 'running'
+       AND started_at = ?8`
+  )
+    .bind(
+      input.status,
+      input.errorCode,
+      input.errorMsg,
+      input.finishedAt,
+      input.providerRequestId,
+      input.providerRawResponse,
+      input.taskId,
+      input.startedAt
+    )
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+async function isTaskClaimCurrent(
+  env: AppBindings,
+  taskId: string,
+  startedAt: number
+): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT status, started_at FROM tasks WHERE id = ?1")
+    .bind(taskId)
+    .first<{ status: string; started_at: number | null }>();
+  return row?.status === "running" && row.started_at === startedAt;
+}
+
+async function assertTaskClaimCurrent(
+  env: AppBindings,
+  taskId: string,
+  startedAt: number
+): Promise<void> {
+  if (await isTaskClaimCurrent(env, taskId, startedAt)) return;
+  throw new TaskClaimLostError(taskId);
+}
+
+type FailureContext = {
+  task?: {
+    userId: string;
+    messageId: string;
+    params: string;
+    startedAt: number | null;
+    queuedAt: number;
+  };
+  params?: GenerateParams;
+  startedAt?: number;
+};
+
+export async function failGenerateTask(
+  env: AppBindings,
+  taskId: string,
+  error: unknown,
+  notify: (event: TaskEvent) => Promise<void> = async () => undefined,
+  context: FailureContext = {}
+): Promise<void> {
+  const db = getDb(env);
+  const task =
+    context.task ?? (await db.query.tasks.findFirst({ where: eq(tasks.id, taskId) })) ?? null;
+  if (!task) return;
+  const params =
+    context.params ??
+    parseJson<GenerateParams>(task.params, {
+      prompt: "",
+      mode: "text2image",
+      size: "1024x1024",
+      n: 1
+    });
+  const finishedAt = now();
+  logSlowTask(taskId, context.startedAt ?? task.startedAt ?? task.queuedAt, finishedAt);
+  await cleanupTaskGeneratedImages(env, taskId);
+  const message = error instanceof Error ? error.message : "Generation failed";
+  const code =
+    error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
+  await db
+    .update(tasks)
+    .set({
+      status: "failed",
+      errorCode: code,
+      errorMsg: message,
+      heartbeatAt: finishedAt,
+      finishedAt
+    })
+    .where(eq(tasks.id, taskId));
+  await db
+    .update(messages)
+    .set({ status: "failed", attachments: stringifyJson([]) })
+    .where(eq(messages.id, task.messageId));
+  if (code !== "PROVIDER_ERROR") await refundQuota(env, task.userId, params.n, taskId);
+  await notifyTaskEvent(taskId, notify, {
+    type: "task.failed",
+    task: { id: taskId, status: "failed" },
+    error: { code, message }
+  });
+}
+
+async function notifyTaskEvent(
+  taskId: string,
+  notify: (event: TaskEvent) => Promise<void>,
+  event: TaskEvent
+): Promise<void> {
+  try {
+    await notify(event);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "task.notify_failed",
+        taskId,
+        message: error instanceof Error ? error.message : "Task notification failed"
+      })
+    );
+  }
 }
 
 async function claimGenerateTask(
@@ -517,18 +944,95 @@ async function claimGenerateTask(
     `UPDATE tasks
      SET status = 'running',
          started_at = ?1,
+         heartbeat_at = ?1,
          finished_at = NULL,
          error_code = NULL,
          error_msg = NULL
      WHERE id = ?2
        AND (
          status = 'queued'
-         OR (status = 'running' AND (started_at IS NULL OR started_at <= ?3))
+         OR (status = 'running' AND COALESCE(heartbeat_at, started_at, queued_at) <= ?3)
        )`
   )
     .bind(startedAt, taskId, staleBefore)
     .run();
   return (result.meta.changes ?? 0) > 0;
+}
+
+async function releaseGenerateTaskForRetry(
+  env: AppBindings,
+  taskId: string,
+  messageId: string,
+  notify: (event: TaskEvent) => Promise<void>
+): Promise<void> {
+  const db = getDb(env);
+  await db
+    .update(tasks)
+    .set({
+      status: "queued",
+      heartbeatAt: null,
+      startedAt: null,
+      finishedAt: null,
+      errorCode: null,
+      errorMsg: null
+    })
+    .where(eq(tasks.id, taskId));
+  await db
+    .update(messages)
+    .set({ status: "queued", attachments: stringifyJson([]) })
+    .where(eq(messages.id, messageId));
+  await notifyTaskEvent(taskId, notify, {
+    type: "task.update",
+    task: { id: taskId, status: "queued", progress: 0 }
+  });
+}
+
+async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE image_objects
+     SET deleted_at = COALESCE(deleted_at, ?1)
+     WHERE task_id = ?2 AND deleted_at IS NULL`
+  )
+    .bind(now(), taskId)
+    .run();
+}
+
+function startTaskHeartbeat(
+  env: AppBindings,
+  taskId: string,
+  startedAt: number
+): () => Promise<void> {
+  let pending = touchTaskHeartbeat(env, taskId, startedAt);
+  const pulse = () => {
+    pending = pending.catch(() => undefined).then(() => touchTaskHeartbeat(env, taskId, startedAt));
+  };
+  const interval = setInterval(pulse, TASK_HEARTBEAT_INTERVAL_MS);
+  return async () => {
+    clearInterval(interval);
+    try {
+      await pending;
+    } catch (error) {
+      console.warn(
+        JSON.stringify({
+          event: "task.heartbeat_failed",
+          taskId,
+          message: error instanceof Error ? error.message : "Task heartbeat failed"
+        })
+      );
+    }
+  };
+}
+
+async function touchTaskHeartbeat(
+  env: AppBindings,
+  taskId: string,
+  startedAt: number
+): Promise<void> {
+  await env.DB.prepare(
+    "UPDATE tasks SET heartbeat_at = ?1 WHERE id = ?2 AND status = 'running' AND started_at = ?3"
+  )
+    .bind(now(), taskId, startedAt)
+    .run();
 }
 
 async function claimRecoveryWindow(env: AppBindings): Promise<boolean> {
@@ -580,14 +1084,30 @@ async function startWorkflowGenerateTask(env: AppBindings, taskId: string): Prom
   }
 }
 
-async function collectParallelGenerationResults<T>(jobs: Array<Promise<T>>): Promise<T[]> {
-  const settled = await Promise.allSettled(jobs);
-  const failed = settled.find((result) => result.status === "rejected");
-  if (failed?.status === "rejected") throw failed.reason;
-  return settled.map((result) => {
-    if (result.status === "rejected") throw result.reason;
-    return result.value;
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let firstError: unknown;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (firstError === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= items.length) return;
+      try {
+        results[index] = await mapper(items[index], index);
+      } catch (error) {
+        firstError ??= error;
+      }
+    }
   });
+  await Promise.all(workers);
+  if (firstError !== undefined) throw firstError;
+  return results;
 }
 
 async function buildChatMessages(

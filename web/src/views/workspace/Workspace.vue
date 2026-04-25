@@ -732,27 +732,6 @@ function padDatePart(value: number) {
                   {{ latestPrompt || t("workspace.oneShotEmpty") }}
                 </p>
               </div>
-              <div class="flex flex-wrap items-center justify-end gap-2">
-                <span
-                  v-if="hasRunningTask"
-                  class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-foreground"
-                >
-                  <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
-                  {{ generationStatusLabel }}
-                </span>
-                <span
-                  v-else-if="activeFailedMessage"
-                  class="inline-flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs font-semibold text-destructive"
-                >
-                  <ImageOff class="h-3.5 w-3.5" />
-                  {{ t("workspace.generationFailed") }}
-                </span>
-                <span
-                  class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
-                >
-                  {{ resultImages.length }}
-                </span>
-              </div>
             </div>
             <div
               v-if="activeFailedMessage"

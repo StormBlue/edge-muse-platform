@@ -13,6 +13,8 @@ type HistorySession = Session & {
   updatedAt?: number;
   status?: string | null;
   taskCount?: number;
+  imageCount?: number;
+  requestedImageCount?: number;
   coverImage?: ImageAttachment | null;
 };
 type TaskParams = {
@@ -279,6 +281,15 @@ function requestedImageCount(message: HistoryMessage) {
   const configured = message.task?.params?.n ?? selectedSession.value?.settings?.n;
   const count = typeof configured === "number" && Number.isFinite(configured) ? configured : 0;
   return Math.max(Math.floor(count), message.attachments.length);
+}
+
+function sessionImageCountLabel(session: HistorySession) {
+  const success = Math.max(Math.floor(session.imageCount ?? 0), 0);
+  const requested = Math.max(Math.floor(session.requestedImageCount ?? success), success);
+  if (requested > success) {
+    return t("history.imageProgressCount", { success, total: requested });
+  }
+  return t("history.imageCount", { count: success });
 }
 
 function sanitizePage(value: number) {
@@ -551,7 +562,7 @@ function taskParameters(message: HistoryMessage) {
             <span
               class="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-1 text-xs shadow-sm"
             >
-              {{ t("history.taskCount", { count: session.taskCount ?? 0 }) }}
+              {{ sessionImageCountLabel(session) }}
             </span>
             <span
               :class="[

@@ -175,6 +175,7 @@ export const tasks = sqliteTable(
     providerRawResponse: text("provider_raw_response"),
     queuedAt: integer("queued_at").notNull(),
     startedAt: integer("started_at"),
+    heartbeatAt: integer("heartbeat_at"),
     finishedAt: integer("finished_at"),
     retryOf: text("retry_of")
   },

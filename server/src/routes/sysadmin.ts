@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -33,6 +33,15 @@ type AuditImageAttachment = {
   prompt?: string | null;
   createdAt?: number | null;
   generationDurationMs?: number | null;
+  generationIndex?: number | null;
+};
+
+type AuditGenerationFailure = {
+  index: number;
+  code: string;
+  message: string;
+  phase?: string | null;
+  createdAt?: number | null;
 };
 
 const providerSchema = z.object({
@@ -487,28 +496,48 @@ sysadminRoutes.get("/dashboard/stats", async (c) => {
 
 sysadminRoutes.get("/users", async (c) => {
   const q = c.req.query("q")?.trim();
-  const rows = await getDb(c.env)
-    .select({
-      id: users.id,
-      email: users.email,
-      username: users.username,
-      nickname: users.nickname,
-      role: users.role,
-      status: users.status
-    })
-    .from(users)
-    .where(
-      q
-        ? or(
-            like(users.email, `%${q}%`),
-            like(users.username, `%${q}%`),
-            like(users.nickname, `%${q}%`)
-          )
-        : undefined
-    )
-    .orderBy(desc(users.createdAt))
-    .limit(200);
-  return c.json({ items: rows });
+  const hasUsername = await hasColumn(c.env, "users", "username");
+  const conditions: string[] = [];
+  const binds: unknown[] = [];
+  if (q) {
+    binds.push(`%${q}%`);
+    const searchIndex = binds.length;
+    conditions.push(
+      hasUsername
+        ? `(email LIKE ?${searchIndex} OR username LIKE ?${searchIndex} OR nickname LIKE ?${searchIndex})`
+        : `(email LIKE ?${searchIndex} OR nickname LIKE ?${searchIndex} OR id LIKE ?${searchIndex})`
+    );
+  }
+  const statement = c.env.DB.prepare(
+    `SELECT id,
+       email,
+       ${hasUsername ? "username" : "NULL"} AS username,
+       nickname,
+       role,
+       status
+     FROM users
+     ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+     ORDER BY created_at DESC
+     LIMIT 200`
+  );
+  const rows = binds.length
+    ? await statement.bind(...binds).all<{
+        id: string;
+        email: string | null;
+        username: string | null;
+        nickname: string | null;
+        role: "sysadmin" | "admin" | "user";
+        status: "active" | "disabled";
+      }>()
+    : await statement.all<{
+        id: string;
+        email: string | null;
+        username: string | null;
+        nickname: string | null;
+        role: "sysadmin" | "admin" | "user";
+        status: "active" | "disabled";
+      }>();
+  return c.json({ items: rows.results });
 });
 
 sysadminRoutes.get("/users/:id/sessions", async (c) => {
@@ -522,6 +551,7 @@ sysadminRoutes.get("/users/:id/sessions", async (c) => {
     ? Math.min(Math.max(Math.floor(requestedPageSize), 1), 50)
     : 12;
   const offset = (page - 1) * pageSize;
+  const hasUsername = await hasColumn(c.env, "users", "username");
   const conditions = ["sessions.deleted_at IS NULL"];
   const binds: unknown[] = [];
   if (userId !== "_") {
@@ -550,7 +580,7 @@ sysadminRoutes.get("/users/:id/sessions", async (c) => {
     `SELECT sessions.id,
        sessions.user_id,
        users.email AS user_email,
-       users.username AS user_username,
+       ${hasUsername ? "users.username" : "NULL"} AS user_username,
        users.nickname AS user_nickname,
        users.role AS user_role,
        sessions.title,
@@ -668,6 +698,7 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
        tasks.status AS task_status,
        tasks.error_code AS task_error_code,
        tasks.error_msg AS task_error_msg,
+       tasks.provider_raw_response AS task_provider_raw_response,
        tasks.queued_at AS task_queued_at,
        tasks.started_at AS task_started_at,
        tasks.finished_at AS task_finished_at
@@ -694,6 +725,7 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
       task_status: string | null;
       task_error_code: string | null;
       task_error_msg: string | null;
+      task_provider_raw_response: string | null;
       task_queued_at: number | null;
       task_started_at: number | null;
       task_finished_at: number | null;
@@ -744,6 +776,11 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
               status: row.task_status,
               errorCode: row.task_error_code,
               errorMsg: row.task_error_msg,
+              generationFailures: extractAuditGenerationFailures(
+                row.task_provider_raw_response,
+                row.task_error_code,
+                row.task_error_msg
+              ),
               queuedAt: row.task_queued_at,
               startedAt: row.task_started_at,
               finishedAt: row.task_finished_at,
@@ -890,8 +927,49 @@ function normalizeAuditImageAttachment(
     messageId: image.messageId ?? context.messageId,
     prompt: image.prompt ?? context.prompt ?? null,
     createdAt: image.createdAt ?? null,
-    generationDurationMs: image.generationDurationMs ?? null
+    generationDurationMs: image.generationDurationMs ?? null,
+    generationIndex: image.generationIndex ?? null
   };
+}
+
+function extractAuditGenerationFailures(
+  rawResponse: string | null,
+  fallbackCode: string | null,
+  fallbackMessage: string | null
+): AuditGenerationFailure[] {
+  const rawItems = parseJson<unknown[]>(rawResponse, []);
+  const failures = rawItems
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .filter((item) => item.type === "generation_failure")
+    .map((item) => ({
+      index: numberValue(item.index) ?? 0,
+      code: stringValue(item.code) ?? "PROVIDER_ERROR",
+      message: stringValue(item.message) ?? "Generation failed",
+      phase: stringValue(item.phase),
+      createdAt: numberValue(item.createdAt)
+    }));
+  if (failures.length > 0) return failures;
+  if (!fallbackMessage) return [];
+  return fallbackMessage.split("\n").map((line, index) => ({
+    index,
+    code: fallbackCode ?? "PROVIDER_ERROR",
+    message: line.replace(/^#\d+\s+[^:]+:\s*/, "") || fallbackMessage,
+    phase: null,
+    createdAt: null
+  }));
+}
+
+function stringValue(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
+}
+
+function numberValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+async function hasColumn(env: Cloudflare.Env, table: string, column: string): Promise<boolean> {
+  const rows = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  return rows.results.some((row) => row.name === column);
 }
 
 sysadminRoutes.patch(

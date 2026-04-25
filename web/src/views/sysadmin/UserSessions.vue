@@ -29,6 +29,7 @@ type AuditSession = Session & {
 type AuditImageAttachment = ImageAttachment & {
   createdAt?: number | null;
   generationDurationMs?: number | null;
+  generationIndex?: number | null;
 };
 
 type TaskParams = {
@@ -53,6 +54,13 @@ type AuditMessage = Omit<Message, "attachments"> & {
     startedAt?: number | null;
     finishedAt?: number | null;
     durationMs?: number | null;
+    generationFailures?: Array<{
+      index: number;
+      code: string;
+      message: string;
+      phase?: string | null;
+      createdAt?: number | null;
+    }>;
   } | null;
 };
 
@@ -328,6 +336,14 @@ function taskParameters(message: AuditMessage) {
   };
 }
 
+function generationFailures(message: AuditMessage) {
+  return message.task?.generationFailures ?? [];
+}
+
+function imageIndexLabel(index?: number | null) {
+  return typeof index === "number" ? `#${index + 1}` : "#?";
+}
+
 function formatDuration(value?: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
   if (value < 1000) return `${Math.max(Math.round(value), 0)}ms`;
@@ -435,7 +451,8 @@ function formatDuration(value?: number | null) {
                           <img class="h-full w-full object-cover" :src="image.url" alt="" />
                         </button>
                         <p class="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                          {{ formatDuration(image.generationDurationMs) }}
+                          {{ imageIndexLabel(image.generationIndex) }}
+                          · {{ formatDuration(image.generationDurationMs) }}
                         </p>
                       </div>
                     </div>
@@ -479,10 +496,20 @@ function formatDuration(value?: number | null) {
                   <td class="p-3 font-mono">
                     {{ message.attachments.length }} / {{ requestedImageCount(message) }}
                   </td>
-                  <td class="max-w-xs p-3 text-destructive">
-                    <p class="line-clamp-3 whitespace-pre-wrap">
-                      {{ message.task?.errorMsg ?? "-" }}
-                    </p>
+                  <td class="max-w-sm p-3">
+                    <div v-if="generationFailures(message).length" class="space-y-2">
+                      <div
+                        v-for="failure in generationFailures(message)"
+                        :key="`${message.id}-${failure.index}-${failure.code}`"
+                        class="rounded-md border border-destructive/25 bg-destructive/5 px-2 py-1.5 text-xs text-destructive"
+                      >
+                        <p class="font-semibold">
+                          {{ imageIndexLabel(failure.index) }} · {{ failure.code }}
+                        </p>
+                        <p class="mt-1 whitespace-pre-wrap leading-5">{{ failure.message }}</p>
+                      </div>
+                    </div>
+                    <p v-else class="text-muted-foreground">-</p>
                   </td>
                   <td class="p-3 text-muted-foreground">{{ formatDateTime(message.createdAt) }}</td>
                 </tr>

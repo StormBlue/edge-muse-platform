@@ -116,6 +116,8 @@
     "searchPlaceholder": "Search title or prompt",
     "noHistory": "No history yet",
     "taskCount": "{count} tasks",
+    "imageCount": "{count} images",
+    "imageProgressCount": "{success}/{total} images",
     "pageStatus": "Page {page} / {totalPages}, {total} total",
     "backToGrid": "Back to history",
     "detail": "History detail",

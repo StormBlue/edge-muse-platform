@@ -116,6 +116,8 @@
     "searchPlaceholder": "搜索标题或 Prompt",
     "noHistory": "暂无历史记录",
     "taskCount": "{count} 个任务",
+    "imageCount": "{count} 张图片",
+    "imageProgressCount": "{success}/{total} 张图片",
     "pageStatus": "第 {page} / {totalPages} 页，共 {total} 条",
     "backToGrid": "返回历史",
     "detail": "历史详情",

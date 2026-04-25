@@ -279,7 +279,33 @@ historyRoutes.get("/", requireAuth, async (c) => {
     .bind(...binds)
     .all<{ total: number }>();
   const rows = await c.env.DB.prepare(
-    `SELECT sessions.*, COUNT(tasks.id) AS task_count,
+    `SELECT sessions.*,
+       (
+         SELECT COUNT(*)
+         FROM tasks task_totals
+         WHERE task_totals.session_id = sessions.id
+       ) AS task_count,
+       (
+         SELECT COALESCE(
+           SUM(
+             CASE
+               WHEN json_valid(requested_tasks.params)
+                 THEN COALESCE(CAST(json_extract(requested_tasks.params, '$.n') AS INTEGER), 1)
+               ELSE 1
+             END
+           ),
+           0
+         )
+         FROM tasks requested_tasks
+         WHERE requested_tasks.session_id = sessions.id
+       ) AS requested_image_count,
+       (
+         SELECT COUNT(*)
+         FROM image_objects generated_images
+         WHERE generated_images.session_id = sessions.id
+           AND generated_images.deleted_at IS NULL
+           AND generated_images.is_reference = 0
+       ) AS image_count,
        COALESCE(
          (
            SELECT active_tasks.status
@@ -305,7 +331,6 @@ historyRoutes.get("/", requireAuth, async (c) => {
        cover.byte_size AS cover_byte_size,
        cover.task_id AS cover_task_id
      FROM sessions
-     LEFT JOIN tasks ON tasks.session_id = sessions.id
      LEFT JOIN image_objects cover ON cover.id = (
        SELECT image_objects.id
        FROM image_objects
@@ -334,6 +359,8 @@ historyRoutes.get("/", requireAuth, async (c) => {
       archived: number;
       deleted_at: number | null;
       task_count: number;
+      requested_image_count: number;
+      image_count: number;
       session_status: string | null;
       cover_image_id: string | null;
       cover_mime: string | null;
@@ -357,6 +384,8 @@ historyRoutes.get("/", requireAuth, async (c) => {
       archived: Boolean(row.archived),
       deletedAt: row.deleted_at,
       taskCount: row.task_count,
+      requestedImageCount: Math.max(row.requested_image_count, row.image_count),
+      imageCount: row.image_count,
       status: row.session_status,
       coverImage: row.cover_image_id
         ? {
