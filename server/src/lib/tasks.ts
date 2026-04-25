@@ -839,7 +839,12 @@ export async function runGenerateTask(
             task: {
               id: taskId,
               status: "running",
-              progress: Math.min(0.95, 0.75 + (persistedImages / Math.max(params.n, 1)) * 0.2)
+              progress: Math.min(
+                0.95,
+                0.1 +
+                  (completedGenerations / Math.max(params.n, 1)) * 0.75 +
+                  (persistedImages / Math.max(params.n, 1)) * 0.1
+              )
             }
           });
           logInfo("task.image.persisted", {
