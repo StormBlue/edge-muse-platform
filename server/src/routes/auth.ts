@@ -1,9 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import { passwordResets, users } from "../db/schema";
+import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import {
   clearAuthCookies,
@@ -15,7 +15,6 @@ import { appError } from "../lib/errors";
 import { randomBytes, base64UrlEncode } from "../lib/encoding";
 import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
-import { sendMail } from "../lib/mailer";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
@@ -126,73 +125,6 @@ authRoutes.post("/refresh", async (c) => {
   setAuthCookies(c, accessToken, refreshToken, csrf);
   return c.json({ user: publicUser(user), csrfToken: csrf, quota: await getQuota(c.env, user.id) });
 });
-
-authRoutes.post(
-  "/password/forgot",
-  rateLimit({ prefix: "forgot", limit: 5, windowSeconds: 15 * 60 }),
-  zValidator(
-    "json",
-    z.object({ email: z.string().email(), turnstileToken: z.string().optional() })
-  ),
-  async (c) => {
-    const body = c.req.valid("json");
-    if (
-      !(await verifyTurnstile(
-        c.env,
-        body.turnstileToken,
-        c.req.header("CF-Connecting-IP") ?? undefined
-      ))
-    ) {
-      throw appError("FORBIDDEN", "Turnstile verification failed");
-    }
-    const db = getDb(c.env);
-    const user = await db.query.users.findFirst({
-      where: eq(users.email, body.email.toLowerCase())
-    });
-    if (user) {
-      const token = base64UrlEncode(randomBytes(32));
-      await db.insert(passwordResets).values({
-        token,
-        userId: user.id,
-        expiresAt: now() + 30 * 60 * 1000,
-        usedAt: null,
-        createdAt: now()
-      });
-      const resetUrl = `${new URL(c.req.url).origin}/reset-password?token=${token}`;
-      await sendMail(c.env, user.email, "password-reset", { resetUrl, locale: user.locale });
-    }
-    return c.json({ ok: true });
-  }
-);
-
-authRoutes.post(
-  "/password/reset",
-  zValidator("json", z.object({ token: z.string().min(16), password: z.string().min(8) })),
-  async (c) => {
-    const body = c.req.valid("json");
-    const db = getDb(c.env);
-    const reset = await db.query.passwordResets.findFirst({
-      where: and(eq(passwordResets.token, body.token), isNull(passwordResets.usedAt))
-    });
-    if (!reset || reset.expiresAt < now())
-      throw appError("VALIDATION_ERROR", "Invalid reset token");
-    await db
-      .update(users)
-      .set({ passwordHash: await hashPassword(body.password), updatedAt: now() })
-      .where(eq(users.id, reset.userId));
-    await db
-      .update(passwordResets)
-      .set({ usedAt: now() })
-      .where(eq(passwordResets.token, body.token));
-    await audit(c.env, {
-      actorId: reset.userId,
-      action: "auth.password_reset",
-      targetType: "user",
-      targetId: reset.userId
-    });
-    return c.json({ ok: true });
-  }
-);
 
 authRoutes.post(
   "/password/change",

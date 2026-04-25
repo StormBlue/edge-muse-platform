@@ -224,7 +224,7 @@ sysadminRoutes.post(
       email: z.string().email(),
       password: z.string().min(8),
       nickname: z.string().min(1),
-      providerKeyId: z.string(),
+      providerKeyId: z.string().min(1),
       quota: z.number().int().min(0).nullable()
     })
   ),
@@ -291,7 +291,8 @@ sysadminRoutes.patch(
       nickname: z.string().min(1).optional(),
       status: z.enum(["active", "disabled"]).optional(),
       providerKeyId: z.string().optional(),
-      quota: z.number().int().min(0).nullable().optional()
+      quota: z.number().int().min(0).nullable().optional(),
+      password: z.string().min(8).optional()
     })
   ),
   async (c) => {
@@ -300,16 +301,19 @@ sysadminRoutes.patch(
     const timestamp = now();
     const admin = await getDb(c.env).query.users.findFirst({ where: eq(users.id, adminId) });
     if (!admin || admin.role !== "admin") throw appError("NOT_FOUND", "Admin not found");
-    if (body.nickname || body.status || body.providerKeyId) {
-      await getDb(c.env)
-        .update(users)
-        .set({
-          nickname: body.nickname,
-          status: body.status,
-          preferredProviderKeyId: body.providerKeyId,
-          updatedAt: timestamp
-        })
-        .where(eq(users.id, adminId));
+    const userUpdate: {
+      nickname?: string;
+      status?: "active" | "disabled";
+      preferredProviderKeyId?: string;
+      passwordHash?: string;
+      updatedAt: number;
+    } = { updatedAt: timestamp };
+    if (body.nickname !== undefined) userUpdate.nickname = body.nickname;
+    if (body.status !== undefined) userUpdate.status = body.status;
+    if (body.providerKeyId !== undefined) userUpdate.preferredProviderKeyId = body.providerKeyId;
+    if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
+    if (Object.keys(userUpdate).length > 1) {
+      await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, adminId));
     }
     if ("quota" in body) {
       await c.env.DB.prepare(
@@ -344,7 +348,7 @@ sysadminRoutes.patch(
       action: "sys.admin_update",
       targetType: "user",
       targetId: adminId,
-      payload: body
+      payload: { ...body, password: undefined, passwordReset: Boolean(body.password) }
     });
     return c.json({ ok: true });
   }

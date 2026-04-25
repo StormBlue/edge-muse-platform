@@ -6,16 +6,6 @@ const router = createRouter({
   routes: [
     { path: "/", redirect: "/workspace" },
     { path: "/login", component: () => import("@/views/auth/Login.vue"), meta: { public: true } },
-    {
-      path: "/forgot-password",
-      component: () => import("@/views/auth/ForgotPassword.vue"),
-      meta: { public: true }
-    },
-    {
-      path: "/reset-password",
-      component: () => import("@/views/auth/ResetPassword.vue"),
-      meta: { public: true }
-    },
     { path: "/workspace", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/workspace/s/:sessionId", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/history", component: () => import("@/views/history/History.vue") },

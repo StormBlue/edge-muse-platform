@@ -14,10 +14,15 @@
 - Sort by 最近, 最早, or 任务最多.
 - Select any session to resume the conversation.
 
+## Accounts
+
+- Accounts are created manually. Sysadmins create admins and assign an initial password; admins create normal users and assign an initial password.
+- Password recovery is handled by admins manually. There is no public forgot-password or invite-email flow.
+
 ## Admin
 
-- Admins can create users, grant quota within their own remaining quota, inspect usage, enable/disable users, and resend invite/reset emails.
+- Admins can create users, set or reset user passwords, grant quota within their own remaining quota, inspect usage, and enable/disable users.
 
 ## Sysadmin
 
-- Sysadmins can manage providers, provider keys, admins, global dashboard metrics, user session audits, and their own default provider key preference.
+- Sysadmins can manage providers, provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference.

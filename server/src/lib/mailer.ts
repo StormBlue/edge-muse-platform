@@ -1,6 +1,6 @@
 import type { AppBindings } from "../types";
 
-export type MailTemplate = "password-reset" | "ops-alert";
+export type MailTemplate = "ops-alert";
 
 export async function sendMail(
   env: AppBindings,
@@ -13,24 +13,8 @@ export async function sendMail(
     return;
   }
 
-  const locale = data.locale === "en-US" ? "en-US" : "zh-CN";
-  const subject =
-    template === "password-reset"
-      ? locale === "en-US"
-        ? "Reset your Edge Muse password"
-        : "重置你的 Edge Muse 密码"
-      : template === "ops-alert"
-        ? data.subject || "Edge Muse operations alert"
-        : "Edge Muse notification";
-  const resetUrl = escapeHtml(data.resetUrl ?? "");
-  const html =
-    template === "password-reset"
-      ? locale === "en-US"
-        ? `<p>Use this link to reset your password. The link will expire soon.</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
-        : `<p>请使用下面的链接重置密码。链接会在有效期后失效。</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
-      : template === "ops-alert"
-        ? `<pre>${escapeHtml(data.body ?? "")}</pre>`
-        : "<p>Edge Muse notification</p>";
+  const subject = data.subject || "Edge Muse operations alert";
+  const html = `<pre>${escapeHtml(data.body ?? "")}</pre>`;
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",

@@ -63,8 +63,9 @@ pnpm -F server seed:local
 pnpm -F server wrangler secret put JWT_SECRET
 pnpm -F server wrangler secret put KEY_ENCRYPTION_KEY
 pnpm -F server wrangler secret put TURNSTILE_SECRET_KEY
-pnpm -F server wrangler secret put RESEND_API_KEY
 ```
+
+`RESEND_API_KEY` 仅用于可选运维告警邮件;账号创建和密码重置由管理员手动完成,不依赖邮件服务。
 
 4. 运行线上迁移:
 

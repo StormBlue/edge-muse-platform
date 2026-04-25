@@ -8,12 +8,7 @@ const safeMethods = new Set(["GET", "HEAD", "OPTIONS"]);
 export const csrf = createMiddleware<AppEnv>(async (c, next) => {
   if (safeMethods.has(c.req.method)) return next();
   const path = new URL(c.req.url).pathname;
-  if (
-    path === "/api/auth/login" ||
-    path === "/api/auth/refresh" ||
-    path === "/api/auth/password/forgot" ||
-    path === "/api/auth/password/reset"
-  ) {
+  if (path === "/api/auth/login" || path === "/api/auth/refresh") {
     return next();
   }
   const header = c.req.header("X-CSRF-Token");

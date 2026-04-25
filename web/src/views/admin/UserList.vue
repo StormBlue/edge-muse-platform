@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
@@ -41,18 +42,22 @@ type UsageResponse = {
 };
 
 const auth = useAuthStore();
+const { locale, t } = useI18n();
 const users = ref<AdminUser[]>([]);
 const q = ref("");
 const status = ref("");
 const createOpen = ref(false);
 const quotaOpen = ref(false);
+const passwordOpen = ref(false);
 const selectedUser = ref<AdminUser | null>(null);
+const passwordUser = ref<AdminUser | null>(null);
 const quota = ref<QuotaSnapshot | null>(null);
 const transactions = ref<QuotaTransaction[]>([]);
 const transactionsNextCursor = ref<number | null>(null);
 const usage = ref<UsageResponse | null>(null);
 const quotaAmount = ref(10);
-const form = ref({ email: "", password: "password123", nickname: "", quota: 10 });
+const form = ref({ email: "", password: "", nickname: "", quota: 10 });
+const passwordForm = ref({ password: "", confirmPassword: "" });
 
 const actorRemaining = computed(() => auth.quota?.remainingQuota ?? null);
 const quotaPercent = computed(() => {
@@ -81,9 +86,9 @@ async function load() {
 
 async function createUser() {
   await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
-  toast.success("用户已创建");
+  toast.success(t("adminUsers.userCreated"));
   createOpen.value = false;
-  form.value = { email: "", password: "password123", nickname: "", quota: 10 };
+  form.value = { email: "", password: "", nickname: "", quota: 10 };
   await load();
 }
 
@@ -116,14 +121,14 @@ async function loadUsage(userId = selectedUser.value?.id) {
 async function grantQuota() {
   if (!selectedUser.value) return;
   if (actorRemaining.value !== null && quotaAmount.value > actorRemaining.value) {
-    toast.error("不能超过自身剩余配额");
+    toast.error(t("adminUsers.quotaTooLarge"));
     return;
   }
   await apiFetch(`/admin/users/${selectedUser.value.id}/quota`, {
     method: "POST",
     body: JSON.stringify({ amount: quotaAmount.value })
   });
-  toast.success("配额已调整");
+  toast.success(t("adminUsers.quotaAdjusted"));
   quotaOpen.value = false;
   transactions.value = [];
   transactionsNextCursor.value = null;
@@ -136,14 +141,33 @@ async function toggleStatus(user: AdminUser) {
     method: "PATCH",
     body: JSON.stringify({ status: nextStatus })
   });
-  toast.success(nextStatus === "active" ? "用户已启用" : "用户已禁用");
+  toast.success(
+    nextStatus === "active" ? t("adminUsers.userEnabled") : t("adminUsers.userDisabled")
+  );
   await load();
   if (selectedUser.value?.id === user.id) selectedUser.value.status = nextStatus;
 }
 
-async function resendInvite(user: AdminUser) {
-  await apiFetch(`/admin/users/${user.id}/invite`, { method: "POST" });
-  toast.success("邀请邮件已发送");
+function openPasswordDialog(user: AdminUser) {
+  passwordUser.value = user;
+  passwordForm.value = { password: "", confirmPassword: "" };
+  passwordOpen.value = true;
+}
+
+async function resetPassword() {
+  if (!passwordUser.value) return;
+  if (passwordForm.value.password !== passwordForm.value.confirmPassword) {
+    toast.error(t("adminUsers.passwordMismatch"));
+    return;
+  }
+  await apiFetch(`/admin/users/${passwordUser.value.id}/password`, {
+    method: "POST",
+    body: JSON.stringify({ password: passwordForm.value.password })
+  });
+  toast.success(t("adminUsers.passwordResetSuccess"));
+  passwordOpen.value = false;
+  passwordUser.value = null;
+  passwordForm.value = { password: "", confirmPassword: "" };
 }
 
 function openQuotaDialog(user: AdminUser) {
@@ -156,9 +180,27 @@ function openQuotaDialog(user: AdminUser) {
 function aggregateUsage(key: "status" | "mode") {
   const map = new Map<string, number>();
   for (const row of usage.value?.stats ?? []) {
-    map.set(row[key], (map.get(row[key]) ?? 0) + row.count);
+    const label = key === "status" ? statusLabel(row[key]) : modeLabel(row[key]);
+    map.set(label, (map.get(label) ?? 0) + row.count);
   }
   return Array.from(map, ([label, value]) => ({ label, value }));
+}
+
+function statusLabel(status: string) {
+  if (status === "active") return t("common.enabled");
+  if (status === "disabled") return t("common.disabled");
+  if (status === "succeeded") return t("common.succeeded");
+  if (status === "failed") return t("common.failed");
+  if (status === "running") return t("common.running");
+  if (status === "queued") return t("common.queued");
+  return status;
+}
+
+function modeLabel(mode: string) {
+  if (mode === "text2image") return t("workspace.text2image");
+  if (mode === "image2image") return t("workspace.image2image");
+  if (mode === "chat") return t("workspace.chat");
+  return mode;
 }
 
 onMounted(load);
@@ -167,22 +209,24 @@ onMounted(load);
 <template>
   <AppShell>
     <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-xl font-semibold">用户管理</h1>
+      <h1 class="text-xl font-semibold">{{ t("adminUsers.title") }}</h1>
       <div class="flex flex-wrap gap-2">
         <select v-model="status" class="ui-field h-10 w-32 px-3 text-sm" @change="load">
-          <option value="">全部状态</option>
-          <option value="active">启用</option>
-          <option value="disabled">禁用</option>
+          <option value="">{{ t("adminUsers.allStatuses") }}</option>
+          <option value="active">{{ t("common.enabled") }}</option>
+          <option value="disabled">{{ t("common.disabled") }}</option>
         </select>
         <input
           v-model="q"
           class="ui-field h-10 w-64 px-3"
-          placeholder="搜索邮箱"
+          :placeholder="t('adminUsers.searchEmail')"
           @keyup.enter="load"
         />
-        <button class="ui-button ui-button-secondary" type="button" @click="load">搜索</button>
+        <button class="ui-button ui-button-secondary" type="button" @click="load">
+          {{ t("common.search") }}
+        </button>
         <button class="ui-button ui-button-primary" type="button" @click="createOpen = true">
-          创建用户
+          {{ t("adminUsers.createUser") }}
         </button>
       </div>
     </div>
@@ -192,10 +236,10 @@ onMounted(load);
         <table class="w-full border-collapse text-sm">
           <thead class="bg-muted text-left text-muted-foreground">
             <tr>
-              <th class="p-3">用户</th>
-              <th class="p-3">角色</th>
-              <th class="p-3">配额</th>
-              <th class="p-3">状态</th>
+              <th class="p-3">{{ t("adminUsers.user") }}</th>
+              <th class="p-3">{{ t("adminUsers.role") }}</th>
+              <th class="p-3">{{ t("common.quota") }}</th>
+              <th class="p-3">{{ t("adminUsers.status") }}</th>
               <th class="p-3"></th>
             </tr>
           </thead>
@@ -218,7 +262,7 @@ onMounted(load);
                       : 'bg-muted text-muted-foreground'
                   "
                 >
-                  {{ user.status === "active" ? "启用" : "禁用" }}
+                  {{ user.status === "active" ? t("common.enabled") : t("common.disabled") }}
                 </span>
               </td>
               <td class="space-x-2 p-3 text-right">
@@ -227,21 +271,21 @@ onMounted(load);
                   type="button"
                   @click="openQuotaDialog(user)"
                 >
-                  改配额
+                  {{ t("adminUsers.changeQuota") }}
                 </button>
                 <button
                   class="ui-button ui-button-secondary h-8 text-xs"
                   type="button"
                   @click="toggleStatus(user)"
                 >
-                  {{ user.status === "active" ? "禁用" : "启用" }}
+                  {{ user.status === "active" ? t("common.disabled") : t("common.enabled") }}
                 </button>
                 <button
                   class="ui-button ui-button-secondary h-8 text-xs"
                   type="button"
-                  @click="resendInvite(user)"
+                  @click="openPasswordDialog(user)"
                 >
-                  重发邀请
+                  {{ t("adminUsers.resetPassword") }}
                 </button>
               </td>
             </tr>
@@ -251,13 +295,13 @@ onMounted(load);
 
       <aside v-if="selectedUser" class="panel space-y-4 p-4">
         <div>
-          <p class="text-xs text-muted-foreground">用户详情</p>
+          <p class="text-xs text-muted-foreground">{{ t("adminUsers.details") }}</p>
           <h2 class="mt-1 text-lg font-semibold">{{ selectedUser.nickname }}</h2>
           <p class="truncate text-sm text-muted-foreground">{{ selectedUser.email }}</p>
         </div>
         <div>
           <div class="flex items-center justify-between text-xs">
-            <span class="text-muted-foreground">配额使用</span>
+            <span class="text-muted-foreground">{{ t("adminUsers.quotaUsage") }}</span>
             <span>{{ quota?.usedQuota ?? 0 }} / {{ quota?.allocatedQuota ?? "∞" }}</span>
           </div>
           <div class="mt-2 h-2 overflow-hidden rounded-full bg-muted">
@@ -268,22 +312,25 @@ onMounted(load);
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <StatKPICard label="任务数" :value="usage?.total ?? 0" />
-          <StatKPICard label="剩余配额" :value="quota?.remainingQuota ?? '∞'" />
+          <StatKPICard :label="t('adminUsers.taskCount')" :value="usage?.total ?? 0" />
+          <StatKPICard
+            :label="t('adminUsers.remainingQuota')"
+            :value="quota?.remainingQuota ?? '∞'"
+          />
         </div>
-        <StatPieChart title="状态占比" :items="statusItems" />
-        <StatBarChart title="模式占比" :items="modeItems" />
-        <StatLineChart title="30 日趋势" :points="trendPoints" />
+        <StatPieChart :title="t('adminUsers.statusShare')" :items="statusItems" />
+        <StatBarChart :title="t('adminUsers.modeShare')" :items="modeItems" />
+        <StatLineChart :title="t('adminUsers.thirtyDayTrend')" :points="trendPoints" />
         <div>
           <div class="mb-2 flex items-center justify-between">
-            <h3 class="text-sm font-semibold">配额流水</h3>
+            <h3 class="text-sm font-semibold">{{ t("adminUsers.quotaLedger") }}</h3>
             <button
               v-if="transactionsNextCursor"
               class="ui-button ui-button-secondary h-8 text-xs"
               type="button"
               @click="loadQuota()"
             >
-              更多
+              {{ t("adminUsers.more") }}
             </button>
           </div>
           <div class="max-h-56 overflow-auto rounded-lg border border-border">
@@ -295,7 +342,7 @@ onMounted(load);
                     {{ tx.delta > 0 ? "+" : "" }}{{ tx.delta }}
                   </td>
                   <td class="p-2 text-right text-muted-foreground">
-                    {{ new Date(tx.createdAt).toLocaleDateString() }}
+                    {{ new Date(tx.createdAt).toLocaleDateString(locale) }}
                   </td>
                 </tr>
               </tbody>
@@ -311,22 +358,36 @@ onMounted(load);
       @click.self="createOpen = false"
     >
       <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="createUser">
-        <h2 class="font-semibold">创建用户</h2>
-        <input v-model="form.email" class="ui-field h-10 px-3" placeholder="邮箱" />
-        <input v-model="form.nickname" class="ui-field h-10 px-3" placeholder="昵称" />
+        <h2 class="font-semibold">{{ t("adminUsers.createUser") }}</h2>
+        <input
+          v-model="form.email"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.email')"
+          required
+        />
+        <input
+          v-model="form.nickname"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.nickname')"
+          required
+        />
         <input
           v-model="form.password"
           class="ui-field h-10 px-3"
-          placeholder="密码"
+          :placeholder="t('auth.password')"
+          minlength="8"
+          required
           type="password"
         />
         <input
           v-model.number="form.quota"
           class="ui-field h-10 px-3"
-          placeholder="初始配额"
+          :placeholder="t('adminUsers.initialQuota')"
           type="number"
         />
-        <button class="ui-button ui-button-primary w-full" type="submit">创建</button>
+        <button class="ui-button ui-button-primary w-full" type="submit">
+          {{ t("common.create") }}
+        </button>
       </form>
     </div>
 
@@ -336,12 +397,50 @@ onMounted(load);
       @click.self="quotaOpen = false"
     >
       <form class="panel w-full max-w-sm space-y-3 p-5" @submit.prevent="grantQuota">
-        <h2 class="font-semibold">调整配额</h2>
+        <h2 class="font-semibold">{{ t("adminUsers.adjustQuota") }}</h2>
         <p class="text-sm text-muted-foreground">
-          自身剩余: {{ actorRemaining === null ? "无限" : actorRemaining }}
+          {{
+            t("adminUsers.ownRemaining", {
+              value: actorRemaining === null ? t("common.unlimited") : actorRemaining
+            })
+          }}
         </p>
         <input v-model.number="quotaAmount" class="ui-field h-10 px-3" min="1" type="number" />
-        <button class="ui-button ui-button-primary w-full" type="submit">确认</button>
+        <button class="ui-button ui-button-primary w-full" type="submit">
+          {{ t("adminUsers.confirm") }}
+        </button>
+      </form>
+    </div>
+
+    <div
+      v-if="passwordOpen && passwordUser"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      @click.self="passwordOpen = false"
+    >
+      <form class="panel w-full max-w-sm space-y-3 p-5" @submit.prevent="resetPassword">
+        <h2 class="font-semibold">{{ t("adminUsers.resetPassword") }}</h2>
+        <p class="text-sm text-muted-foreground">
+          {{ passwordUser.nickname }} · {{ passwordUser.email }}
+        </p>
+        <input
+          v-model="passwordForm.password"
+          class="ui-field h-10 px-3"
+          minlength="8"
+          :placeholder="t('settings.newPassword')"
+          required
+          type="password"
+        />
+        <input
+          v-model="passwordForm.confirmPassword"
+          class="ui-field h-10 px-3"
+          minlength="8"
+          :placeholder="t('adminUsers.confirmNewPassword')"
+          required
+          type="password"
+        />
+        <button class="ui-button ui-button-primary w-full" type="submit">
+          {{ t("common.save") }}
+        </button>
       </form>
     </div>
   </AppShell>

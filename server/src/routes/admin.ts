@@ -3,20 +3,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import {
-  passwordResets,
-  quotaTransactions,
-  quotas,
-  tasks,
-  userProviderKeys,
-  users
-} from "../db/schema";
+import { quotaTransactions, quotas, tasks, userProviderKeys, users } from "../db/schema";
 import { assertManagedUserAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
-import { base64UrlEncode, randomBytes } from "../lib/encoding";
 import { newId, now } from "../lib/id";
-import { sendMail } from "../lib/mailer";
 import { hashPassword } from "../lib/password";
 import { getQuota, grantQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
@@ -234,26 +225,24 @@ adminRoutes.get("/users/:id/usage", async (c) => {
   return c.json({ stats: stats.results, trend: trend.results, total: totalRow[0]?.count ?? 0 });
 });
 
-adminRoutes.post("/users/:id/invite", async (c) => {
-  const actor = c.get("user");
-  const target = await assertManagedUserAccess(c.env, c.req.param("id"), actor);
-  const token = base64UrlEncode(randomBytes(32));
-  await getDb(c.env)
-    .insert(passwordResets)
-    .values({
-      token,
-      userId: target.id,
-      expiresAt: now() + 24 * 60 * 60 * 1000,
-      usedAt: null,
-      createdAt: now()
+adminRoutes.post(
+  "/users/:id/password",
+  zValidator("json", z.object({ password: z.string().min(8) })),
+  async (c) => {
+    const actor = c.get("user");
+    const target = await assertManagedUserAccess(c.env, c.req.param("id"), actor);
+    if (target.role !== "user")
+      throw appError("FORBIDDEN", "Only user passwords can be reset here");
+    await getDb(c.env)
+      .update(users)
+      .set({ passwordHash: await hashPassword(c.req.valid("json").password), updatedAt: now() })
+      .where(eq(users.id, target.id));
+    await audit(c.env, {
+      actorId: actor.id,
+      action: "admin.user_password_reset",
+      targetType: "user",
+      targetId: target.id
     });
-  const resetUrl = `${new URL(c.req.url).origin}/reset-password?token=${token}`;
-  await sendMail(c.env, target.email, "password-reset", { resetUrl, locale: target.locale });
-  await audit(c.env, {
-    actorId: actor.id,
-    action: "admin.user_invite",
-    targetType: "user",
-    targetId: target.id
-  });
-  return c.json({ ok: true });
-});
+    return c.json({ ok: true });
+  }
+);

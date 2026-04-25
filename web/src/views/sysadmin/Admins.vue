@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import { apiFetch } from "@/api/client";
@@ -23,12 +24,13 @@ type ProviderKeyRow = {
 
 const admins = ref<AdminRow[]>([]);
 const keys = ref<ProviderKeyRow[]>([]);
+const { t } = useI18n();
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<AdminRow | null>(null);
 const form = ref({
   email: "",
-  password: "password123",
+  password: "",
   nickname: "",
   providerKeyId: "",
   quota: 100
@@ -37,7 +39,8 @@ const editForm = ref({
   nickname: "",
   status: "active" as "active" | "disabled",
   providerKeyId: "",
-  quota: 100 as number | null
+  quota: 100 as number | null,
+  password: ""
 });
 
 async function load() {
@@ -51,9 +54,9 @@ async function load() {
 
 async function create() {
   await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
-  toast.success("管理员已创建");
+  toast.success(t("sysadmin.adminCreated"));
   createOpen.value = false;
-  form.value = { email: "", password: "password123", nickname: "", providerKeyId: "", quota: 100 };
+  form.value = { email: "", password: "", nickname: "", providerKeyId: "", quota: 100 };
   await load();
 }
 
@@ -63,7 +66,8 @@ function openEdit(admin: AdminRow) {
     nickname: admin.nickname,
     status: admin.status,
     providerKeyId: admin.providerKeyId ?? "",
-    quota: admin.allocatedQuota
+    quota: admin.allocatedQuota,
+    password: ""
   };
   editOpen.value = true;
 }
@@ -76,17 +80,18 @@ async function saveEdit() {
       nickname: editForm.value.nickname,
       status: editForm.value.status,
       providerKeyId: editForm.value.providerKeyId || undefined,
-      quota: editForm.value.quota
+      quota: editForm.value.quota,
+      password: editForm.value.password || undefined
     })
   });
-  toast.success("管理员已更新");
+  toast.success(t("sysadmin.adminUpdated"));
   editOpen.value = false;
   await load();
 }
 
 function keyLabel(id: string | null) {
   const key = keys.value.find((item) => item.id === id);
-  return key ? `${key.label} (${key.keyHint})` : id || "未分配";
+  return key ? `${key.label} (${key.keyHint})` : id || t("sysadmin.unassigned");
 }
 
 onMounted(load);
@@ -95,9 +100,9 @@ onMounted(load);
 <template>
   <AppShell>
     <div class="mb-4 flex items-center justify-between">
-      <h1 class="text-xl font-semibold">管理员</h1>
+      <h1 class="text-xl font-semibold">{{ t("sysadmin.adminsTitle") }}</h1>
       <button class="ui-button ui-button-primary" type="button" @click="createOpen = true">
-        创建管理员
+        {{ t("sysadmin.createAdmin") }}
       </button>
     </div>
 
@@ -105,10 +110,10 @@ onMounted(load);
       <table class="w-full text-sm">
         <thead class="bg-muted text-left text-muted-foreground">
           <tr>
-            <th class="p-3">管理员</th>
-            <th class="p-3">密钥</th>
-            <th class="p-3">配额</th>
-            <th class="p-3">状态</th>
+            <th class="p-3">{{ t("sysadmin.adminsTitle") }}</th>
+            <th class="p-3">{{ t("sysadmin.providerKey") }}</th>
+            <th class="p-3">{{ t("common.quota") }}</th>
+            <th class="p-3">{{ t("adminUsers.status") }}</th>
             <th class="p-3"></th>
           </tr>
         </thead>
@@ -120,14 +125,16 @@ onMounted(load);
             </td>
             <td class="p-3">{{ keyLabel(admin.providerKeyId) }}</td>
             <td class="p-3">{{ admin.usedQuota ?? 0 }} / {{ admin.allocatedQuota ?? "∞" }}</td>
-            <td class="p-3">{{ admin.status === "active" ? "启用" : "禁用" }}</td>
+            <td class="p-3">
+              {{ admin.status === "active" ? t("common.enabled") : t("common.disabled") }}
+            </td>
             <td class="p-3 text-right">
               <button
                 class="ui-button ui-button-secondary h-8 text-xs"
                 type="button"
                 @click="openEdit(admin)"
               >
-                编辑
+                {{ t("sysadmin.edit") }}
               </button>
             </td>
           </tr>
@@ -141,17 +148,29 @@ onMounted(load);
       @click.self="createOpen = false"
     >
       <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="create">
-        <h2 class="font-semibold">创建管理员</h2>
-        <input v-model="form.email" class="ui-field h-10 px-3" placeholder="邮箱" />
-        <input v-model="form.nickname" class="ui-field h-10 px-3" placeholder="昵称" />
+        <h2 class="font-semibold">{{ t("sysadmin.createAdmin") }}</h2>
+        <input
+          v-model="form.email"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.email')"
+          required
+        />
+        <input
+          v-model="form.nickname"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.nickname')"
+          required
+        />
         <input
           v-model="form.password"
           class="ui-field h-10 px-3"
+          minlength="8"
           type="password"
-          placeholder="密码"
+          :placeholder="t('auth.password')"
+          required
         />
-        <select v-model="form.providerKeyId" class="ui-field h-10 px-3">
-          <option value="">选择密钥</option>
+        <select v-model="form.providerKeyId" class="ui-field h-10 px-3" required>
+          <option value="">{{ t("sysadmin.selectKey") }}</option>
           <option v-for="key in keys" :key="key.id" :value="key.id">
             {{ key.label }} ({{ key.keyHint }})
           </option>
@@ -160,9 +179,11 @@ onMounted(load);
           v-model.number="form.quota"
           class="ui-field h-10 px-3"
           type="number"
-          placeholder="总配额"
+          :placeholder="t('sysadmin.totalQuota')"
         />
-        <button class="ui-button ui-button-primary w-full" type="submit">创建</button>
+        <button class="ui-button ui-button-primary w-full" type="submit">
+          {{ t("common.create") }}
+        </button>
       </form>
     </div>
 
@@ -172,14 +193,18 @@ onMounted(load);
       @click.self="editOpen = false"
     >
       <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="saveEdit">
-        <h2 class="font-semibold">编辑管理员</h2>
-        <input v-model="editForm.nickname" class="ui-field h-10 px-3" placeholder="昵称" />
+        <h2 class="font-semibold">{{ t("sysadmin.editAdmin") }}</h2>
+        <input
+          v-model="editForm.nickname"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.nickname')"
+        />
         <select v-model="editForm.status" class="ui-field h-10 px-3">
-          <option value="active">启用</option>
-          <option value="disabled">禁用</option>
+          <option value="active">{{ t("common.enabled") }}</option>
+          <option value="disabled">{{ t("common.disabled") }}</option>
         </select>
         <select v-model="editForm.providerKeyId" class="ui-field h-10 px-3">
-          <option value="">保持未分配</option>
+          <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
           <option v-for="key in keys" :key="key.id" :value="key.id">
             {{ key.label }} ({{ key.keyHint }})
           </option>
@@ -188,9 +213,18 @@ onMounted(load);
           v-model.number="editForm.quota"
           class="ui-field h-10 px-3"
           type="number"
-          placeholder="总配额"
+          :placeholder="t('sysadmin.totalQuota')"
         />
-        <button class="ui-button ui-button-primary w-full" type="submit">保存</button>
+        <input
+          v-model="editForm.password"
+          class="ui-field h-10 px-3"
+          minlength="8"
+          type="password"
+          :placeholder="t('sysadmin.passwordOptional')"
+        />
+        <button class="ui-button ui-button-primary w-full" type="submit">
+          {{ t("common.save") }}
+        </button>
       </form>
     </div>
   </AppShell>

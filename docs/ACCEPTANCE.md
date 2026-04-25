@@ -10,7 +10,7 @@ Date: 2026-04-26
 - ✅ Roles: sysadmin, admin, user; route guards and API role checks.
 - ✅ Quota pre-consumption, refund on system-side failures, admin quota grants, and quota ledger.
 - ✅ Provider abstraction with OpenAI-compatible implementation and robust response parsing.
-- ✅ Admin user management, quota UI, usage charts, and invite/reset email flow.
+- ✅ Admin user management, quota UI, usage charts, and manual password reset flow.
 - ✅ Sysadmin provider/key/admin management, dashboard, user session audit, and preference selection.
 - ✅ i18n base zh-CN/en-US, light/dark/system theme, responsive layout.
 - ⏸ Online deployment, DNS cutover, and real Cloudflare resource smoke tests are blocked until account resource IDs and secrets are available.

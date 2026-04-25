@@ -16,7 +16,6 @@ Review generated SQL before applying remote migrations.
 pnpm -F server wrangler secret put JWT_SECRET
 pnpm -F server wrangler secret put KEY_ENCRYPTION_KEY
 pnpm -F server wrangler secret put TURNSTILE_SECRET_KEY
-pnpm -F server wrangler secret put RESEND_API_KEY
 ```
 
 Provider keys are encrypted before entering D1. If `KEY_ENCRYPTION_KEY` changes, decrypt and re-encrypt provider keys before switching traffic.
@@ -31,7 +30,7 @@ Provider keys are encrypted before entering D1. If `KEY_ENCRYPTION_KEY` changes,
 
 - Daily cron runs deleted-image cleanup, failed-task digest, D1 table-size logging, and an operational D1 snapshot to R2.
 - Snapshots are written to `backups/d1-operational-snapshot/YYYY-MM-DD.json`.
-- Set `ALERT_EMAIL` and `RESEND_API_KEY` to receive failure digests.
+- To receive failure digests by email, set `ALERT_EMAIL` and optional `RESEND_API_KEY`. User account creation and password resets do not require email.
 
 ## Time Travel Drill
 
