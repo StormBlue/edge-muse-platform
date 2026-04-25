@@ -16,6 +16,7 @@ import { appError } from "./errors";
 import { isSingleActiveGenerationRole, resolveImageCountForRole } from "./generationPolicy";
 import { newId, now } from "./id";
 import { parseJson, stringifyJson } from "./json";
+import { logError, logInfo, logWarn, promptSummary, urlSummary } from "./log";
 import { putImage } from "./r2";
 import { refundQuota, tryConsumeQuota } from "./quota";
 import { defaultSessionTitle } from "./sessionTitle";
@@ -201,21 +202,18 @@ export async function assertNoActiveGenerationTask(
 
 export function startGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskId: string): void {
   const workflow = env.GEN_WORKFLOW;
+  logInfo("task.dispatch.requested", { taskId, workflowConfigured: Boolean(workflow) });
   if (workflow && typeof workflow.create === "function") {
     ctx.waitUntil(
       startWorkflowGenerateTask(env, taskId).catch((error) => {
-        console.error(
-          JSON.stringify({
-            event: "task.workflow_start_failed",
-            taskId,
-            message: error instanceof Error ? error.message : "Workflow start failed"
-          })
-        );
+        logError("task.workflow_start_failed", error, { taskId });
+        logWarn("task.dispatch.fallback_inline", { taskId });
         return runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event));
       })
     );
     return;
   }
+  logInfo("task.dispatch.inline", { taskId });
   ctx.waitUntil(runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event)));
 }
 
@@ -224,21 +222,13 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
     recoverInterruptedGenerateTasks(env, ctx)
       .then((result) => {
         if (result.scheduled === 0) return;
-        console.warn(
-          JSON.stringify({
-            event: "task.recovery_scheduled",
-            scheduled: result.scheduled,
-            taskIds: result.taskIds
-          })
-        );
+        logWarn("task.recovery_scheduled", {
+          scheduled: result.scheduled,
+          taskIds: result.taskIds
+        });
       })
       .catch((error) => {
-        console.error(
-          JSON.stringify({
-            event: "task.recovery_failed",
-            message: error instanceof Error ? error.message : "Task recovery failed"
-          })
-        );
+        logError("task.recovery_failed", error);
       })
   );
 }
@@ -281,6 +271,16 @@ export async function createGenerateTask(
 ) {
   const db = getDb(env);
   const timestamp = now();
+  logInfo("task.create.started", {
+    userId: input.userId,
+    sessionId: input.sessionId ?? null,
+    retryOf: input.retryOf ?? null,
+    mode: input.params.mode,
+    size: input.params.size,
+    requestedImageCount: input.params.n,
+    referenceImageCount: input.params.referenceImageIds?.length ?? 0,
+    ...promptSummary(input.params.prompt)
+  });
   const user = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
   if (!user) throw appError("UNAUTHORIZED", "User missing");
   await assertNoActiveGenerationTask(env, { userId: user.id, role: user.role });
@@ -322,6 +322,19 @@ export async function createGenerateTask(
       lastMessageAt: timestamp,
       archived: false,
       deletedAt: null
+    });
+    logInfo("task.create.session_created", {
+      userId: input.userId,
+      sessionId,
+      providerKeyId: key.id,
+      mode: params.mode
+    });
+  } else {
+    logInfo("task.create.session_reused", {
+      userId: input.userId,
+      sessionId,
+      providerKeyId: key.id,
+      mode: params.mode
     });
   }
 
@@ -373,6 +386,17 @@ export async function createGenerateTask(
     finishedAt: null,
     retryOf: input.retryOf ?? null
   });
+  logInfo("task.create.task_inserted", {
+    userId: input.userId,
+    taskId,
+    sessionId,
+    messageId: assistantMessageId,
+    providerKeyId: key.id,
+    retryOf: input.retryOf ?? null,
+    mode: params.mode,
+    size: params.size,
+    imageCount: params.n
+  });
   await db
     .update(sessions)
     .set({
@@ -383,8 +407,20 @@ export async function createGenerateTask(
       lastMessageAt: timestamp
     })
     .where(eq(sessions.id, sessionId));
+  logInfo("task.create.session_updated", {
+    userId: input.userId,
+    taskId,
+    sessionId,
+    providerKeyId: key.id,
+    mode: params.mode
+  });
 
   await tryConsumeQuota(env, input.userId, params.n, taskId);
+  logInfo("task.create.quota_consumed", {
+    userId: input.userId,
+    taskId,
+    imageCount: params.n
+  });
 
   return {
     taskId,
@@ -402,10 +438,26 @@ export async function runGenerateTask(
 ): Promise<void> {
   const db = getDb(env);
   const startedAt = now();
+  logInfo("task.run.claim_attempt", {
+    taskId,
+    startedAt,
+    retryable: options.retryable ?? false
+  });
   const claimed = await claimGenerateTask(env, taskId, startedAt);
-  if (!claimed) return;
+  if (!claimed) {
+    logWarn("task.run.claim_skipped", {
+      taskId,
+      startedAt,
+      reason: "not_queued_or_not_stale"
+    });
+    return;
+  }
+  logInfo("task.run.claimed", { taskId, startedAt });
   const task = await db.query.tasks.findFirst({ where: eq(tasks.id, taskId) });
-  if (!task) return;
+  if (!task) {
+    logWarn("task.run.task_missing", { taskId, startedAt });
+    return;
+  }
   const params = parseJson<GenerateParams>(task.params, {
     prompt: "",
     mode: "text2image",
@@ -414,51 +466,148 @@ export async function runGenerateTask(
   });
   const taskUser = await db.query.users.findFirst({ where: eq(users.id, task.userId) });
   const parallelGenerations = resolveParallelGenerationsForRole(taskUser?.role ?? "user");
+  const baseLogFields = {
+    taskId,
+    sessionId: task.sessionId,
+    messageId: task.messageId,
+    userId: task.userId,
+    providerKeyId: task.providerKeyId
+  };
+  logInfo("task.run.started", {
+    ...baseLogFields,
+    retryable: options.retryable ?? false,
+    mode: params.mode,
+    size: params.size,
+    imageCount: params.n,
+    model: params.model ?? null,
+    referenceImageCount: params.referenceImageIds?.length ?? 0,
+    parallelGenerations,
+    queuedAt: task.queuedAt,
+    startedAt,
+    ...promptSummary(params.prompt)
+  });
   const send = (event: TaskEvent) => notifyTaskEvent(taskId, notify, event);
   const stopHeartbeat = startTaskHeartbeat(env, taskId, startedAt);
 
   try {
     if (await recoverTaskFromPersistedImages(env, { task, params, startedAt, notify: send })) {
+      logInfo("task.run.recovered_from_persisted_images", baseLogFields);
       return;
     }
     await db.update(messages).set({ status: "running" }).where(eq(messages.id, task.messageId));
+    logInfo("task.message.status_running", baseLogFields);
     await send({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
 
     const key = await db.query.providerKeys.findFirst({
       where: and(eq(providerKeys.id, task.providerKeyId), isNull(providerKeys.deletedAt))
     });
-    if (!key || !key.enabled) throw appError("PROVIDER_ERROR", "Provider key disabled");
+    if (!key || !key.enabled) {
+      logWarn("task.provider_key_unavailable", baseLogFields);
+      throw appError("PROVIDER_ERROR", "Provider key disabled");
+    }
     const provider = await db.query.providers.findFirst({
       where: and(eq(providers.id, key.providerId), isNull(providers.deletedAt))
     });
-    if (!provider || !provider.enabled) throw appError("PROVIDER_ERROR", "Provider disabled");
+    if (!provider || !provider.enabled) {
+      logWarn("task.provider_unavailable", {
+        ...baseLogFields,
+        providerId: key.providerId
+      });
+      throw appError("PROVIDER_ERROR", "Provider disabled");
+    }
     const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
     const providerImpl = getProvider(provider.requestFormat);
+    const model = params.model ?? key.model ?? provider.defaultModel;
+    logInfo("task.provider.resolved", {
+      ...baseLogFields,
+      providerId: provider.id,
+      providerName: provider.name,
+      providerAdapter: providerImpl.id,
+      requestFormat: provider.requestFormat,
+      model,
+      keyHint: key.keyHint,
+      baseUrl: urlSummary(provider.baseUrl)
+    });
     const referenceImageIds = params.mode === "image2image" ? (params.referenceImageIds ?? []) : [];
     const referenceImages = await loadReferenceImages(env, referenceImageIds);
+    const referenceImageBytes = referenceImages.reduce((sum, image) => sum + image.bytes.length, 0);
+    const referenceLog = referenceImages.length === referenceImageIds.length ? logInfo : logWarn;
+    referenceLog("task.reference_images.loaded", {
+      ...baseLogFields,
+      requestedReferenceImageCount: referenceImageIds.length,
+      loadedReferenceImageCount: referenceImages.length,
+      missingReferenceImageCount: referenceImageIds.length - referenceImages.length,
+      referenceImageBytes
+    });
     const chatMessages =
       params.mode === "chat"
         ? await buildChatMessages(env, task.sessionId, params.prompt)
         : undefined;
+    if (chatMessages) {
+      logInfo("task.chat_context.built", {
+        ...baseLogFields,
+        messageCount: chatMessages.length,
+        contentChars: chatMessages.reduce((sum, message) => sum + message.content.length, 0)
+      });
+    }
     const images: ImageAttachment[] = [];
     const rawResponses: unknown[] = [];
     const requestIds: string[] = [];
     const textResponses: string[] = [];
     let completedGenerations = 0;
     const generateOne = async (index: number): Promise<GenerationResult> => {
+      const generationStartedAt = Date.now();
+      logInfo("task.generation.started", {
+        ...baseLogFields,
+        providerId: provider.id,
+        providerAdapter: providerImpl.id,
+        requestFormat: provider.requestFormat,
+        generationIndex: index,
+        generationNumber: index + 1,
+        totalGenerations: params.n,
+        mode: params.mode,
+        size: params.size,
+        model,
+        referenceImageCount: referenceImages.length,
+        messageCount: chatMessages?.length ?? null
+      });
       const response = await providerImpl.generate({
         prompt: params.prompt,
         mode: params.mode,
         size: params.size,
-        model: params.model ?? key.model ?? provider.defaultModel,
+        model,
         apiKey,
         baseUrl: provider.baseUrl,
         referenceImages,
-        messages: chatMessages
+        messages: chatMessages,
+        logContext: {
+          ...baseLogFields,
+          providerId: provider.id,
+          requestFormat: provider.requestFormat,
+          generationIndex: index
+        }
+      });
+      logInfo("task.generation.provider_completed", {
+        ...baseLogFields,
+        providerId: provider.id,
+        providerAdapter: providerImpl.id,
+        requestFormat: provider.requestFormat,
+        generationIndex: index,
+        providerRequestId: response.requestId ?? null,
+        imageCount: response.images.length,
+        imageKinds: providerImageKindCounts(response.images),
+        textLength: response.text?.length ?? 0,
+        latencyMs: Date.now() - generationStartedAt
       });
       await touchTaskHeartbeat(env, taskId, startedAt);
       await assertTaskClaimCurrent(env, taskId, startedAt);
       if (params.mode !== "chat" && response.images.length === 0) {
+        logWarn("task.generation.no_usable_image", {
+          ...baseLogFields,
+          generationIndex: index,
+          providerRequestId: response.requestId ?? null,
+          mode: params.mode
+        });
         throw appError("PROVIDER_ERROR", "No usable image was generated");
       }
       const generatedRawResponses = [redactProviderResponse(response.raw)];
@@ -500,7 +649,15 @@ export async function runGenerateTask(
               progress: 0.1 + (completedGenerations / params.n) * 0.75
             }
           });
-          return { ok: false, failure: generationFailureFromError(index, error, "provider") };
+          const failure = generationFailureFromError(index, error, "provider");
+          logWarn("task.generation.failed", {
+            ...baseLogFields,
+            generationIndex: index,
+            code: failure.code,
+            message: failure.message,
+            phase: failure.phase
+          });
+          return { ok: false, failure };
         }
       }
     );
@@ -510,6 +667,12 @@ export async function runGenerateTask(
     const generationFailures = settledGenerationResults
       .filter((result): result is { ok: false; failure: GenerationFailure } => !result.ok)
       .map((result) => result.failure);
+    logInfo("task.generation.settled", {
+      ...baseLogFields,
+      requestedGenerations: params.n,
+      succeededGenerations: generationResults.length,
+      failedGenerations: generationFailures.length
+    });
 
     for (const result of generationResults.sort((left, right) => left.index - right.index)) {
       if (result.requestId) requestIds.push(result.requestId);
@@ -525,11 +688,21 @@ export async function runGenerateTask(
     const providerImages = generationResults.flatMap((result) =>
       result.images.map((image) => ({ image, generationIndex: result.index }))
     );
+    logInfo("task.provider_images.collected", {
+      ...baseLogFields,
+      providerImageCount: providerImages.length,
+      imageKinds: providerImageKindCounts(providerImages.map((item) => item.image))
+    });
     let persistedImages = 0;
     const persistenceFailures: GenerationFailure[] = [];
     for (const providerImage of providerImages) {
       try {
         await assertTaskClaimCurrent(env, taskId, startedAt);
+        logInfo("task.image.persist_started", {
+          ...baseLogFields,
+          generationIndex: providerImage.generationIndex,
+          providerImage: providerImageSummary(providerImage.image)
+        });
         const stored = await persistProviderImage(env, {
           image: providerImage.image,
           ownerUserId: task.userId,
@@ -544,6 +717,15 @@ export async function runGenerateTask(
         };
         images.push(attachment);
         persistedImages += 1;
+        logInfo("task.image.persisted", {
+          ...baseLogFields,
+          generationIndex: providerImage.generationIndex,
+          imageId: stored.id,
+          mime: stored.mime,
+          byteSize: stored.byteSize,
+          persistedImages,
+          providerImageCount: providerImages.length
+        });
         await send({
           type: "task.update",
           task: {
@@ -553,9 +735,15 @@ export async function runGenerateTask(
           }
         });
       } catch (error) {
-        persistenceFailures.push(
-          generationFailureFromError(providerImage.generationIndex, error, "persist")
-        );
+        const failure = generationFailureFromError(providerImage.generationIndex, error, "persist");
+        logWarn("task.image.persist_failed", {
+          ...baseLogFields,
+          generationIndex: providerImage.generationIndex,
+          code: failure.code,
+          message: failure.message,
+          phase: failure.phase
+        });
+        persistenceFailures.push(failure);
       }
     }
 
@@ -568,6 +756,15 @@ export async function runGenerateTask(
     const errorCode = failures[0]?.code ?? null;
     const finishedAt = now();
     logSlowTask(taskId, startedAt, finishedAt);
+    logInfo("task.finish.prepared", {
+      ...baseLogFields,
+      finalStatus,
+      imageCount: images.length,
+      providerImageCount: providerImages.length,
+      failureCount: failures.length,
+      providerRequestIds: requestIds,
+      durationMs: finishedAt - startedAt
+    });
     const finished = await finishRunningTaskIfCurrent(env, {
       taskId,
       startedAt,
@@ -578,7 +775,22 @@ export async function runGenerateTask(
       providerRequestId: requestIds.length ? requestIds.join(",") : null,
       providerRawResponse: stringifyJson(rawResponses)
     });
-    if (!finished) return;
+    if (!finished) {
+      logWarn("task.finish.claim_lost", {
+        ...baseLogFields,
+        finalStatus,
+        startedAt,
+        finishedAt
+      });
+      return;
+    }
+    logInfo("task.finish.task_updated", {
+      ...baseLogFields,
+      finalStatus,
+      imageCount: images.length,
+      failureCount: failures.length,
+      providerRequestIds: requestIds
+    });
     await db
       .update(messages)
       .set({
@@ -587,6 +799,12 @@ export async function runGenerateTask(
         attachments: stringifyJson(images)
       })
       .where(eq(messages.id, task.messageId));
+    logInfo("task.finish.message_updated", {
+      ...baseLogFields,
+      finalStatus,
+      imageCount: images.length,
+      textResponseCount: textResponses.length
+    });
     for (const image of images) {
       await send({ type: "task.image", task: { id: taskId, status: "running" }, image });
     }
@@ -602,24 +820,38 @@ export async function runGenerateTask(
         }
       });
     }
+    logInfo("task.finish.notified", {
+      ...baseLogFields,
+      finalStatus,
+      imageCount: images.length
+    });
   } catch (error) {
-    if (error instanceof TaskClaimLostError) return;
-    if (!(await isTaskClaimCurrent(env, taskId, startedAt))) return;
+    if (error instanceof TaskClaimLostError) {
+      logWarn("task.run.claim_lost", baseLogFields);
+      return;
+    }
+    if (!(await isTaskClaimCurrent(env, taskId, startedAt))) {
+      logWarn("task.run.no_longer_current", baseLogFields);
+      return;
+    }
     if (options.retryable) {
+      logError("task.run.retryable_failed", error, baseLogFields);
       await cleanupTaskGeneratedImages(env, taskId);
       await releaseGenerateTaskForRetry(env, taskId, task.messageId, notify);
       throw error;
     }
+    logError("task.run.failed", error, baseLogFields);
     await failGenerateTask(env, taskId, error, notify, { task, params, startedAt });
   } finally {
     await stopHeartbeat();
+    logInfo("task.run.heartbeat_stopped", baseLogFields);
   }
 }
 
 function logSlowTask(taskId: string, startedAt: number, finishedAt: number): void {
   const durationMs = finishedAt - startedAt;
   if (durationMs <= 120_000) return;
-  console.warn(JSON.stringify({ event: "task.slow", taskId, durationMs }));
+  logWarn("task.slow", { taskId, durationMs });
 }
 
 function resolveParallelGenerationsForRole(role: UserRole): number {
@@ -674,6 +906,13 @@ async function recoverTaskFromPersistedImages(
 
   const expectedImageCount = Math.max(input.params.n, 1);
   if (persistedImages.length < expectedImageCount) {
+    logWarn("task.recovery.partial_images_found", {
+      taskId: input.task.id,
+      sessionId: input.task.sessionId,
+      messageId: input.task.messageId,
+      expectedImageCount,
+      persistedImageCount: persistedImages.length
+    });
     await cleanupTaskGeneratedImages(env, input.task.id);
     return false;
   }
@@ -700,7 +939,16 @@ async function recoverTaskFromPersistedImages(
       }
     ])
   });
-  if (!finished) return true;
+  if (!finished) {
+    logWarn("task.recovery.finish_skipped_claim_lost", {
+      taskId: input.task.id,
+      sessionId: input.task.sessionId,
+      messageId: input.task.messageId,
+      expectedImageCount,
+      persistedImageCount: persistedImages.length
+    });
+    return true;
+  }
 
   await cleanupTaskGeneratedImagesExcept(
     env,
@@ -715,6 +963,14 @@ async function recoverTaskFromPersistedImages(
       attachments: stringifyJson(images)
     })
     .where(eq(messages.id, input.task.messageId));
+  logInfo("task.recovery.succeeded", {
+    taskId: input.task.id,
+    sessionId: input.task.sessionId,
+    messageId: input.task.messageId,
+    expectedImageCount,
+    persistedImageCount: persistedImages.length,
+    recoveredImageCount: images.length
+  });
   for (const image of images) {
     await input.notify({
       type: "task.image",
@@ -786,7 +1042,7 @@ async function cleanupTaskGeneratedImagesExcept(
     await cleanupTaskGeneratedImages(env, taskId);
     return;
   }
-  await env.DB.prepare(
+  const result = await env.DB.prepare(
     `UPDATE image_objects
      SET deleted_at = COALESCE(deleted_at, ?1)
      WHERE task_id = ?2
@@ -795,6 +1051,11 @@ async function cleanupTaskGeneratedImagesExcept(
   )
     .bind(now(), taskId, ...keepImageIds)
     .run();
+  logInfo("task.images.cleanup_except_marked", {
+    taskId,
+    keepImageIds,
+    deletedImageCount: result.meta.changes ?? 0
+  });
 }
 
 async function finishRunningTaskIfCurrent(
@@ -890,10 +1151,18 @@ export async function failGenerateTask(
     });
   const finishedAt = now();
   logSlowTask(taskId, context.startedAt ?? task.startedAt ?? task.queuedAt, finishedAt);
-  await cleanupTaskGeneratedImages(env, taskId);
   const message = error instanceof Error ? error.message : "Generation failed";
   const code =
     error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
+  logError("task.fail.started", error, {
+    taskId,
+    userId: task.userId,
+    messageId: task.messageId,
+    code,
+    mode: params.mode,
+    imageCount: params.n
+  });
+  const deletedImageCount = await cleanupTaskGeneratedImages(env, taskId);
   await db
     .update(tasks)
     .set({
@@ -908,7 +1177,23 @@ export async function failGenerateTask(
     .update(messages)
     .set({ status: "failed", attachments: stringifyJson([]) })
     .where(eq(messages.id, task.messageId));
-  if (code !== "PROVIDER_ERROR") await refundQuota(env, task.userId, params.n, taskId);
+  logWarn("task.fail.persisted", {
+    taskId,
+    userId: task.userId,
+    messageId: task.messageId,
+    code,
+    message,
+    deletedImageCount
+  });
+  if (code !== "PROVIDER_ERROR") {
+    await refundQuota(env, task.userId, params.n, taskId);
+    logInfo("task.fail.quota_refunded", {
+      taskId,
+      userId: task.userId,
+      imageCount: params.n,
+      code
+    });
+  }
   await notifyTaskEvent(taskId, notify, {
     type: "task.failed",
     task: { id: taskId, status: "failed" },
@@ -923,14 +1208,9 @@ async function notifyTaskEvent(
 ): Promise<void> {
   try {
     await notify(event);
+    logInfo("task.notify.sent", { taskId, ...taskEventSummary(event) });
   } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "task.notify_failed",
-        taskId,
-        message: error instanceof Error ? error.message : "Task notification failed"
-      })
-    );
+    logError("task.notify_failed", error, { taskId, ...taskEventSummary(event) });
   }
 }
 
@@ -981,20 +1261,24 @@ async function releaseGenerateTaskForRetry(
     .update(messages)
     .set({ status: "queued", attachments: stringifyJson([]) })
     .where(eq(messages.id, messageId));
+  logWarn("task.retry.released", { taskId, messageId });
   await notifyTaskEvent(taskId, notify, {
     type: "task.update",
     task: { id: taskId, status: "queued", progress: 0 }
   });
 }
 
-async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<void> {
-  await env.DB.prepare(
+async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<number> {
+  const result = await env.DB.prepare(
     `UPDATE image_objects
      SET deleted_at = COALESCE(deleted_at, ?1)
      WHERE task_id = ?2 AND deleted_at IS NULL`
   )
     .bind(now(), taskId)
     .run();
+  const deletedImageCount = result.meta.changes ?? 0;
+  logInfo("task.images.cleanup_marked", { taskId, deletedImageCount });
+  return deletedImageCount;
 }
 
 function startTaskHeartbeat(
@@ -1004,7 +1288,12 @@ function startTaskHeartbeat(
 ): () => Promise<void> {
   let pending = touchTaskHeartbeat(env, taskId, startedAt);
   const pulse = () => {
-    pending = pending.catch(() => undefined).then(() => touchTaskHeartbeat(env, taskId, startedAt));
+    pending = pending
+      .catch(() => undefined)
+      .then(async () => {
+        await touchTaskHeartbeat(env, taskId, startedAt);
+        logInfo("task.heartbeat.touched", { taskId, startedAt });
+      });
   };
   const interval = setInterval(pulse, TASK_HEARTBEAT_INTERVAL_MS);
   return async () => {
@@ -1012,13 +1301,7 @@ function startTaskHeartbeat(
     try {
       await pending;
     } catch (error) {
-      console.warn(
-        JSON.stringify({
-          event: "task.heartbeat_failed",
-          taskId,
-          message: error instanceof Error ? error.message : "Task heartbeat failed"
-        })
-      );
+      logError("task.heartbeat_failed", error, { taskId, startedAt });
     }
   };
 }
@@ -1044,12 +1327,7 @@ async function claimRecoveryWindow(env: AppBindings): Promise<boolean> {
     });
     return true;
   } catch (error) {
-    console.warn(
-      JSON.stringify({
-        event: "task.recovery_throttle_failed",
-        message: error instanceof Error ? error.message : "Task recovery throttle failed"
-      })
-    );
+    logError("task.recovery_throttle_failed", error);
     return true;
   }
 }
@@ -1059,27 +1337,40 @@ export async function broadcastTaskEvent(
   taskId: string,
   event: TaskEvent
 ): Promise<void> {
-  if (!env.TASK_ROOM) return;
+  if (!env.TASK_ROOM) {
+    logWarn("task.broadcast.skipped_no_room", { taskId, ...taskEventSummary(event) });
+    return;
+  }
   const id = env.TASK_ROOM.idFromName(taskId);
   const stub = env.TASK_ROOM.get(id);
   await stub.updateStatus(event);
+  logInfo("task.broadcast.sent", { taskId, ...taskEventSummary(event) });
 }
 
 async function startWorkflowGenerateTask(env: AppBindings, taskId: string): Promise<void> {
   const workflow = env.GEN_WORKFLOW;
   if (!workflow) return;
   try {
+    logInfo("task.workflow_create.started", { taskId });
     await workflow.create({ id: taskId, params: { taskId } });
+    logInfo("task.workflow_create.succeeded", { taskId });
     return;
-  } catch {
+  } catch (error) {
+    logWarn("task.workflow_create.needs_existing_instance", {
+      taskId,
+      message: error instanceof Error ? error.message : "Workflow create failed"
+    });
     const instance = await workflow.get(taskId);
     const status = await instance.status();
+    logInfo("task.workflow_existing.status", { taskId, status: status.status });
     if (status.status === "paused") {
       await instance.resume();
+      logInfo("task.workflow_existing.resumed", { taskId });
       return;
     }
     if (["errored", "terminated", "complete", "unknown"].includes(status.status)) {
       await instance.restart();
+      logInfo("task.workflow_existing.restarted", { taskId, previousStatus: status.status });
     }
   }
 }
@@ -1152,10 +1443,38 @@ async function persistProviderImage(
   env: AppBindings,
   input: { image: ProviderImage; ownerUserId: string; sessionId: string; taskId: string }
 ): Promise<ImageAttachment> {
+  const baseFields = {
+    taskId: input.taskId,
+    sessionId: input.sessionId,
+    ownerUserId: input.ownerUserId,
+    providerImage: providerImageSummary(input.image)
+  };
   if (input.image.kind === "url") {
+    const startedAt = Date.now();
+    logInfo("provider.image.download_started", {
+      ...baseFields,
+      sourceUrl: urlSummary(input.image.url)
+    });
     const response = await fetch(input.image.url);
-    if (!response.ok) throw appError("PROVIDER_ERROR", "Provider image download failed");
+    if (!response.ok) {
+      logWarn("provider.image.download_failed", {
+        ...baseFields,
+        sourceUrl: urlSummary(input.image.url),
+        status: response.status,
+        statusText: response.statusText,
+        latencyMs: Date.now() - startedAt
+      });
+      throw appError("PROVIDER_ERROR", "Provider image download failed");
+    }
     const bytes = new Uint8Array(await response.arrayBuffer());
+    logInfo("provider.image.download_succeeded", {
+      ...baseFields,
+      sourceUrl: urlSummary(input.image.url),
+      status: response.status,
+      mime: response.headers.get("Content-Type") ?? "image/png",
+      byteSize: bytes.byteLength,
+      latencyMs: Date.now() - startedAt
+    });
     return putImage(env, {
       ownerUserId: input.ownerUserId,
       sessionId: input.sessionId,
@@ -1165,14 +1484,25 @@ async function persistProviderImage(
     });
   }
   if (input.image.kind === "base64") {
+    const bytes = base64ToBytes(input.image.data);
+    logInfo("provider.image.base64_decoded", {
+      ...baseFields,
+      mime: input.image.mime,
+      byteSize: bytes.byteLength
+    });
     return putImage(env, {
       ownerUserId: input.ownerUserId,
       sessionId: input.sessionId,
       taskId: input.taskId,
-      bytes: base64ToBytes(input.image.data),
+      bytes,
       mime: input.image.mime
     });
   }
+  logInfo("provider.image.bytes_ready", {
+    ...baseFields,
+    mime: input.image.mime,
+    byteSize: input.image.bytes.byteLength
+  });
   return putImage(env, {
     ownerUserId: input.ownerUserId,
     sessionId: input.sessionId,
@@ -1184,6 +1514,10 @@ async function persistProviderImage(
 
 async function loadReferenceImages(env: AppBindings, imageIds: string[]) {
   if (imageIds.length === 0) return [];
+  logInfo("task.reference_images.load_started", {
+    imageIds,
+    requestedReferenceImageCount: imageIds.length
+  });
   const rows = await getDb(env)
     .select()
     .from(imageObjects)
@@ -1191,7 +1525,30 @@ async function loadReferenceImages(env: AppBindings, imageIds: string[]) {
   const images: Array<{ bytes: Uint8Array; mime: string }> = [];
   for (const row of rows) {
     const object = await env.R2.get(row.r2Key);
-    if (object) images.push({ bytes: new Uint8Array(await object.arrayBuffer()), mime: row.mime });
+    if (object) {
+      const bytes = new Uint8Array(await object.arrayBuffer());
+      logInfo("task.reference_image.loaded", {
+        imageId: row.id,
+        ownerUserId: row.ownerUserId,
+        r2Key: row.r2Key,
+        mime: row.mime,
+        byteSize: bytes.byteLength
+      });
+      images.push({ bytes, mime: row.mime });
+    } else {
+      logWarn("task.reference_image.r2_missing", {
+        imageId: row.id,
+        ownerUserId: row.ownerUserId,
+        r2Key: row.r2Key,
+        mime: row.mime
+      });
+    }
+  }
+  if (rows.length < imageIds.length) {
+    logWarn("task.reference_images.db_missing", {
+      requestedImageIds: imageIds,
+      foundImageIds: rows.map((row) => row.id)
+    });
   }
   return images;
 }
@@ -1201,4 +1558,62 @@ function redactProviderResponse(raw: unknown): unknown {
   const json = JSON.stringify(raw);
   if (json.length <= 16_384) return raw;
   return { truncated: true, length: json.length };
+}
+
+function providerImageKindCounts(images: ProviderImage[]): Record<string, number> {
+  return images.reduce<Record<string, number>>((counts, image) => {
+    counts[image.kind] = (counts[image.kind] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function providerImageSummary(image: ProviderImage): Record<string, unknown> {
+  if (image.kind === "url") {
+    return { kind: image.kind, url: urlSummary(image.url) };
+  }
+  if (image.kind === "base64") {
+    return {
+      kind: image.kind,
+      mime: image.mime,
+      base64Chars: image.data.length
+    };
+  }
+  return {
+    kind: image.kind,
+    mime: image.mime,
+    byteSize: image.bytes.byteLength
+  };
+}
+
+function taskEventSummary(event: TaskEvent): Record<string, unknown> {
+  if (event.type === "task.image") {
+    return {
+      taskEvent: event.type,
+      status: event.task.status,
+      imageId: event.image.id,
+      mime: event.image.mime,
+      byteSize: event.image.byteSize
+    };
+  }
+  if (event.type === "task.done") {
+    return {
+      taskEvent: event.type,
+      status: event.task.status,
+      imageCount: event.images.length,
+      imageIds: event.images.map((image) => image.id)
+    };
+  }
+  if (event.type === "task.failed") {
+    return {
+      taskEvent: event.type,
+      status: event.task.status,
+      code: event.error.code,
+      message: event.error.message
+    };
+  }
+  return {
+    taskEvent: event.type,
+    status: event.task.status,
+    progress: event.task.progress ?? null
+  };
 }

@@ -1,5 +1,12 @@
 import { base64ToBytes, bytesToBase64 } from "../lib/encoding";
-import type { GenerateRequest, GenerateResponse, ImageProvider, ProviderImage } from "./types";
+import { logError, logInfo, logWarn, urlSummary } from "../lib/log";
+import type {
+  GenerateRequest,
+  GenerateResponse,
+  ImageProvider,
+  ProviderImage,
+  ProviderLogContext
+} from "./types";
 import { ProviderError } from "./types";
 
 const DEFAULT_SIZES = [
@@ -21,19 +28,59 @@ export class OpenAICompatibleProvider implements ImageProvider {
   supportedSizes = DEFAULT_SIZES;
 
   async health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean> {
+    const startedAt = Date.now();
+    logInfo("provider.health.started", {
+      providerAdapter: this.id,
+      baseUrl: urlSummary(req.baseUrl),
+      model: req.model
+    });
     const response = await fetch(`${req.baseUrl.replace(/\/$/, "")}/v1/models`, {
       headers: { Authorization: `Bearer ${req.apiKey}` }
+    });
+    logInfo("provider.health.finished", {
+      providerAdapter: this.id,
+      baseUrl: urlSummary(req.baseUrl),
+      model: req.model,
+      status: response.status,
+      ok: response.ok,
+      latencyMs: Date.now() - startedAt
     });
     return response.ok;
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
-    if (req.baseUrl === "mock:") return mockGenerate(req);
+    logInfo("provider.generate.started", {
+      ...req.logContext,
+      providerAdapter: this.id,
+      mode: req.mode,
+      model: req.model,
+      size: req.size,
+      baseUrl: urlSummary(req.baseUrl),
+      referenceImageCount: req.referenceImages?.length ?? 0,
+      messageCount: req.messages?.length ?? null
+    });
+    if (req.baseUrl === "mock:") {
+      const response = mockGenerate(req);
+      logInfo("provider.generate.mock_finished", {
+        ...req.logContext,
+        providerAdapter: this.id,
+        requestId: response.requestId,
+        imageCount: response.images.length
+      });
+      return response;
+    }
     if (req.mode === "chat") return this.chat(req);
     try {
       return await this.responses(req);
     } catch (error) {
       if (error instanceof ProviderError && [404, 405, 501].includes(error.status ?? 0)) {
+        logWarn("provider.generate.responses_fallback", {
+          ...req.logContext,
+          providerAdapter: this.id,
+          status: error.status,
+          code: error.code,
+          fallbackEndpoint: req.mode === "image2image" ? "chat.completions" : "images.generations"
+        });
         return req.mode === "image2image" ? this.chat(req) : this.legacyImage(req);
       }
       throw error;
@@ -65,25 +112,68 @@ export class OpenAICompatibleProvider implements ImageProvider {
             input: req.prompt,
             tools: [{ type: "image_generation", size: req.size }]
           };
-    const json = await providerFetch(`${baseUrl}/v1/responses`, req.apiKey, body);
+    const json = await providerFetch(`${baseUrl}/v1/responses`, req.apiKey, body, {
+      ...req.logContext,
+      providerAdapter: this.id,
+      endpoint: "responses",
+      mode: req.mode,
+      model: req.model,
+      size: req.size,
+      referenceImageCount: req.referenceImages?.length ?? 0
+    });
+    const images = parseProviderImages(json);
+    const requestId = stringValue((json as UnknownRecord).id);
+    logInfo("provider.response.parsed", {
+      ...req.logContext,
+      providerAdapter: this.id,
+      endpoint: "responses",
+      requestId: requestId ?? null,
+      imageCount: images.length,
+      imageKinds: imageKindCounts(images),
+      payloadShape: payloadShape(json)
+    });
     return {
-      requestId: stringValue((json as UnknownRecord).id),
-      images: parseProviderImages(json),
+      requestId,
+      images,
       raw: json
     };
   }
 
   private async legacyImage(req: GenerateRequest): Promise<GenerateResponse> {
     const baseUrl = req.baseUrl.replace(/\/$/, "");
-    const json = await providerFetch(`${baseUrl}/v1/images/generations`, req.apiKey, {
-      model: req.model,
-      prompt: req.prompt,
-      n: 1,
-      size: req.size
+    const json = await providerFetch(
+      `${baseUrl}/v1/images/generations`,
+      req.apiKey,
+      {
+        model: req.model,
+        prompt: req.prompt,
+        n: 1,
+        size: req.size
+      },
+      {
+        ...req.logContext,
+        providerAdapter: this.id,
+        endpoint: "images.generations",
+        mode: req.mode,
+        model: req.model,
+        size: req.size,
+        requestedImageCount: 1
+      }
+    );
+    const images = parseProviderImages(json);
+    const requestId = stringValue((json as UnknownRecord).id);
+    logInfo("provider.response.parsed", {
+      ...req.logContext,
+      providerAdapter: this.id,
+      endpoint: "images.generations",
+      requestId: requestId ?? null,
+      imageCount: images.length,
+      imageKinds: imageKindCounts(images),
+      payloadShape: payloadShape(json)
     });
     return {
-      requestId: stringValue((json as UnknownRecord).id),
-      images: parseProviderImages(json),
+      requestId,
+      images,
       raw: json
     };
   }
@@ -108,23 +198,73 @@ export class OpenAICompatibleProvider implements ImageProvider {
             : req.prompt
       }
     ];
-    const json = await providerFetch(`${baseUrl}/v1/chat/completions`, req.apiKey, {
-      model: req.model,
-      messages
-    });
+    const json = await providerFetch(
+      `${baseUrl}/v1/chat/completions`,
+      req.apiKey,
+      {
+        model: req.model,
+        messages
+      },
+      {
+        ...req.logContext,
+        providerAdapter: this.id,
+        endpoint: "chat.completions",
+        mode: req.mode,
+        model: req.model,
+        size: req.size,
+        messageCount: messages.length,
+        referenceImageCount: req.referenceImages?.length ?? 0
+      }
+    );
     const text = extractText(json);
+    const images = parseProviderImages(json);
+    const requestId = stringValue((json as UnknownRecord).id);
+    logInfo("provider.response.parsed", {
+      ...req.logContext,
+      providerAdapter: this.id,
+      endpoint: "chat.completions",
+      requestId: requestId ?? null,
+      imageCount: images.length,
+      imageKinds: imageKindCounts(images),
+      textLength: text?.length ?? 0,
+      payloadShape: payloadShape(json)
+    });
     return {
-      requestId: stringValue((json as UnknownRecord).id),
-      images: parseProviderImages(json),
+      requestId,
+      images,
       text,
       raw: json
     };
   }
 }
 
-async function providerFetch(url: string, apiKey: string, body: unknown): Promise<unknown> {
+type ProviderFetchLogContext = ProviderLogContext & {
+  providerAdapter: string;
+  endpoint: string;
+  mode?: string;
+  model?: string;
+  size?: string;
+  referenceImageCount?: number;
+  requestedImageCount?: number;
+  messageCount?: number;
+};
+
+async function providerFetch(
+  url: string,
+  apiKey: string,
+  body: unknown,
+  logContext: ProviderFetchLogContext
+): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 95_000);
+  const startedAt = Date.now();
+  const bodyText = JSON.stringify(body);
+  logInfo("provider.fetch.started", {
+    ...logContext,
+    url: urlSummary(url),
+    requestBodyChars: bodyText.length,
+    requestBodyShape: requestBodyShape(body)
+  });
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -133,20 +273,44 @@ async function providerFetch(url: string, apiKey: string, body: unknown): Promis
         "Content-Type": "application/json",
         Accept: "application/json"
       },
-      body: JSON.stringify(body),
+      body: bodyText,
       signal: controller.signal
     });
     const responseText = await response.text();
     const json = tryJson(responseText);
+    const responseFields = {
+      ...logContext,
+      url: urlSummary(url),
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      latencyMs: Date.now() - startedAt,
+      responseChars: responseText.length,
+      responseContentType: response.headers.get("Content-Type"),
+      responseRequestId:
+        response.headers.get("x-request-id") ??
+        response.headers.get("cf-ray") ??
+        response.headers.get("request-id") ??
+        null,
+      responseJson: json !== null,
+      responseShape: payloadShape(json)
+    };
     if (!response.ok) {
+      logWarn("provider.fetch.failed", responseFields);
       throw new ProviderError("PROVIDER_HTTP_ERROR", providerMessage(json, responseText), {
         status: response.status,
         body: json ?? responseText
       });
     }
+    logInfo("provider.fetch.succeeded", responseFields);
     return json ?? {};
   } catch (error) {
     if (error instanceof ProviderError) throw error;
+    logError("provider.fetch.exception", error, {
+      ...logContext,
+      url: urlSummary(url),
+      latencyMs: Date.now() - startedAt
+    });
     throw new ProviderError(
       "PROVIDER_FETCH_ERROR",
       error instanceof Error ? error.message : "Provider failed"
@@ -252,6 +416,54 @@ function dedupeImages(images: ProviderImage[]): ProviderImage[] {
     seen.add(key);
     return true;
   });
+}
+
+function imageKindCounts(images: ProviderImage[]): Record<string, number> {
+  return images.reduce<Record<string, number>>((counts, image) => {
+    counts[image.kind] = (counts[image.kind] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function requestBodyShape(body: unknown): UnknownRecord {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { type: typeof body };
+  const record = body as UnknownRecord;
+  const shape: UnknownRecord = { keys: Object.keys(record).sort() };
+  if (typeof record.model === "string") shape.model = record.model;
+  if (typeof record.prompt === "string") shape.promptLength = record.prompt.length;
+  if (typeof record.input === "string") shape.inputType = "string";
+  if (Array.isArray(record.input)) shape.inputItems = record.input.length;
+  if (Array.isArray(record.messages)) shape.messageCount = record.messages.length;
+  if (Array.isArray(record.tools)) {
+    shape.toolTypes = record.tools
+      .filter((tool): tool is UnknownRecord => Boolean(tool) && typeof tool === "object")
+      .map((tool) => stringValue(tool.type) ?? "unknown");
+  }
+  return shape;
+}
+
+function payloadShape(payload: unknown): UnknownRecord {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { type: Array.isArray(payload) ? "array" : typeof payload };
+  }
+  const record = payload as UnknownRecord;
+  const shape: UnknownRecord = { keys: Object.keys(record).slice(0, 30).sort() };
+  if (Array.isArray(record.output)) {
+    shape.outputItems = record.output.length;
+    shape.outputTypes = record.output
+      .filter((item): item is UnknownRecord => Boolean(item) && typeof item === "object")
+      .map((item) => stringValue(item.type) ?? "unknown")
+      .slice(0, 20);
+  }
+  if (Array.isArray(record.data)) shape.dataItems = record.data.length;
+  if (Array.isArray(record.choices)) shape.choiceItems = record.choices.length;
+  if (record.error && typeof record.error === "object") {
+    const error = record.error as UnknownRecord;
+    shape.errorCode = stringValue(error.code);
+    shape.errorType = stringValue(error.type);
+    shape.errorMessage = stringValue(error.message);
+  }
+  return shape;
 }
 
 function tryJson(text: string): unknown {

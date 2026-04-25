@@ -8,6 +8,7 @@ import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
+import { logInfo, logWarn, promptSummary } from "../lib/log";
 import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
@@ -48,9 +49,28 @@ generateRoutes.post(
   async (c) => {
     const user = c.get("user");
     const rawBody = c.req.valid("json");
+    const traceId = c.get("traceId");
+    logInfo("generate.request.received", {
+      traceId,
+      userId: user.id,
+      role: user.role,
+      sessionId: rawBody.sessionId ?? null,
+      mode: rawBody.mode,
+      size: rawBody.size,
+      requestedImageCount: rawBody.n,
+      model: rawBody.model ?? null,
+      referenceImageCount: rawBody.referenceImageIds?.length ?? 0,
+      ...promptSummary(rawBody.prompt)
+    });
     const referenceImageIds =
       rawBody.mode === "image2image" ? (rawBody.referenceImageIds ?? []) : [];
     if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
+      logWarn("generate.request.rejected", {
+        traceId,
+        userId: user.id,
+        mode: rawBody.mode,
+        reason: "missing_reference_image"
+      });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
     const body = {
@@ -58,10 +78,30 @@ generateRoutes.post(
       n: resolveImageCountForRole(user.role, rawBody.mode, rawBody.n),
       referenceImageIds
     };
+    logInfo("generate.request.normalized", {
+      traceId,
+      userId: user.id,
+      role: user.role,
+      mode: body.mode,
+      size: body.size,
+      requestedImageCount: rawBody.n,
+      resolvedImageCount: body.n,
+      referenceImageCount: body.referenceImageIds.length
+    });
     const result = await createGenerateTask(c.env, {
       userId: user.id,
       sessionId: body.sessionId,
       params: body
+    });
+    logInfo("generate.task.created", {
+      traceId,
+      userId: user.id,
+      taskId: result.taskId,
+      sessionId: result.sessionId,
+      messageId: result.messageId,
+      mode: body.mode,
+      size: body.size,
+      imageCount: body.n
     });
     await audit(c.env, {
       actorId: user.id,
@@ -70,9 +110,21 @@ generateRoutes.post(
       targetId: result.taskId,
       payload: { mode: body.mode, size: body.size, n: body.n }
     });
+    logInfo("generate.task.audit_written", {
+      traceId,
+      userId: user.id,
+      taskId: result.taskId
+    });
     startGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//${new URL(c.req.url).host}/ws/task/${result.taskId}`;
+    logInfo("generate.task.dispatched", {
+      traceId,
+      userId: user.id,
+      taskId: result.taskId,
+      workflowConfigured: Boolean(c.env.GEN_WORKFLOW),
+      wsProtocol
+    });
     return c.json({ ...result, wsUrl }, 202);
   }
 );
@@ -94,6 +146,13 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
     type: "task.update",
     task: { id: task.id, status: "cancelled" }
   });
+  logInfo("task.cancelled", {
+    traceId: c.get("traceId"),
+    taskId: task.id,
+    sessionId: task.sessionId,
+    messageId: task.messageId,
+    userId: c.get("user").id
+  });
   return c.json({ ok: true });
 });
 
@@ -113,6 +172,14 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
     retryOf: task.id
   });
   startGenerateTask(c.env, c.executionCtx, result.taskId);
+  logInfo("task.retry.created", {
+    traceId: c.get("traceId"),
+    userId: user.id,
+    retryOf: task.id,
+    taskId: result.taskId,
+    sessionId: result.sessionId,
+    messageId: result.messageId
+  });
   return c.json(result, 202);
 });
 
@@ -125,5 +192,10 @@ export async function handleTaskWebSocket(c: AppContext) {
   if (!taskId) throw appError("VALIDATION_ERROR", "Task id required");
   const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);
+  logInfo("task.websocket.connecting", {
+    traceId: c.get("traceId"),
+    taskId,
+    path: new URL(c.req.url).pathname
+  });
   return stub.fetch(c.req.raw);
 }

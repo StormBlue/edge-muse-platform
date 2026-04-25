@@ -32,6 +32,24 @@ Provider keys are encrypted before entering D1. If `KEY_ENCRYPTION_KEY` changes,
 - Snapshots are written to `backups/d1-operational-snapshot/YYYY-MM-DD.json`.
 - To receive failure digests by email, set `ALERT_EMAIL` and optional `RESEND_API_KEY`. User account creation and password resets do not require email.
 
+## Runtime Logs
+
+Cloudflare Workers logs are structured JSON. For live debugging:
+
+```bash
+pnpm -F server wrangler tail --format pretty
+```
+
+Useful filters:
+
+- `event=generate.request.received` confirms the platform accepted a generation request.
+- `event=provider.fetch.started` and `event=provider.fetch.succeeded` show outbound provider calls without API keys or full request bodies.
+- `event=provider.response.parsed` shows provider request id, parsed image count, response shape, and text length.
+- `event=image.r2.put_succeeded` and `event=image.db.inserted` confirm R2 and D1 persistence.
+- `event=task.finish.task_updated` and `event=task.finish.message_updated` confirm final task/message state.
+
+Trace by `taskId` first. For the initial HTTP request, use `traceId`; after async workflow dispatch, `taskId` is the stable correlation id.
+
 ## Time Travel Drill
 
 1. Pick a timestamp within the D1 Time Travel retention window.

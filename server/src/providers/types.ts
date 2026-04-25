@@ -14,6 +14,7 @@ export type GenerateRequest = {
   baseUrl: string;
   referenceImages?: Array<{ bytes: Uint8Array; mime: string }>;
   messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
+  logContext?: ProviderLogContext;
 };
 
 export type GenerateResponse = {
@@ -21,6 +22,17 @@ export type GenerateResponse = {
   images: ProviderImage[];
   text?: string;
   raw: unknown;
+};
+
+export type ProviderLogContext = {
+  taskId?: string;
+  sessionId?: string;
+  messageId?: string;
+  userId?: string;
+  providerId?: string;
+  providerKeyId?: string;
+  requestFormat?: string;
+  generationIndex?: number;
 };
 
 export interface ImageProvider {

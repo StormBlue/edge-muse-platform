@@ -5,6 +5,7 @@ import {
   runGenerateTask,
   type TaskEvent
 } from "../lib/tasks";
+import { logError, logInfo } from "../lib/log";
 import type { AppBindings } from "../types";
 
 export type GenerateImageWorkflowParams = {
@@ -18,16 +19,21 @@ export class GenerateImageWorkflow extends WorkflowEntrypoint<
   async run(event: Readonly<WorkflowEvent<GenerateImageWorkflowParams>>, step: WorkflowStep) {
     const { taskId } = event.payload;
     const notify = (payload: TaskEvent) => broadcastTaskEvent(this.env, taskId, payload);
+    logInfo("workflow.generate.started", { taskId });
     try {
       await step.do(
         "generate-and-persist",
         { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
         async () => {
+          logInfo("workflow.generate.step_started", { taskId, step: "generate-and-persist" });
           await runGenerateTask(this.env, taskId, notify, { retryable: true });
+          logInfo("workflow.generate.step_finished", { taskId, step: "generate-and-persist" });
           return { ok: true };
         }
       );
+      logInfo("workflow.generate.finished", { taskId });
     } catch (error) {
+      logError("workflow.generate.failed", error, { taskId });
       await failGenerateTask(this.env, taskId, error, notify);
     }
   }
