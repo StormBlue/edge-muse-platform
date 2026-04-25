@@ -19,6 +19,7 @@ const DEFAULT_SIZES = [
   "2160x3840",
   "auto"
 ];
+const PROVIDER_FETCH_TIMEOUT_MS = 10 * 60 * 1000;
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -256,7 +257,7 @@ async function providerFetch(
   logContext: ProviderFetchLogContext
 ): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 95_000);
+  const timeout = setTimeout(() => controller.abort(), PROVIDER_FETCH_TIMEOUT_MS);
   const startedAt = Date.now();
   const bodyText = JSON.stringify(body);
   logInfo("provider.fetch.started", {
