@@ -13,6 +13,7 @@ import { securityHeaders } from "./middleware/security";
 import { csrf } from "./middleware/csrf";
 import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
+import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -55,6 +56,13 @@ app.get("/ws/task/:id", handleTaskWebSocket);
 export default {
   fetch: (request, env, ctx) => app.fetch(request, env, ctx),
   scheduled: (_controller, env, ctx) => {
-    ctx.waitUntil(cleanupDeletedImages(env));
+    ctx.waitUntil(
+      Promise.all([
+        cleanupDeletedImages(env),
+        sendFailureDigest(env),
+        logD1TableSizes(env),
+        backupOperationalSnapshot(env)
+      ])
+    );
   }
 } satisfies ExportedHandler<Cloudflare.Env>;

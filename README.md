@@ -22,6 +22,8 @@ pnpm test
 pnpm build
 pnpm -F server db:gen
 pnpm -F server db:migrate:local
+pnpm -F server db:migrate:remote
+pnpm -F server deploy
 ```
 
 ## 环境变量与密钥
@@ -29,10 +31,14 @@ pnpm -F server db:migrate:local
 本地创建 `server/.dev.vars`:
 
 ```ini
+ENVIRONMENT=dev
 JWT_SECRET=replace-with-local-secret
 KEY_ENCRYPTION_KEY=replace-with-32-byte-or-longer-secret
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 RESEND_API_KEY=
+AI_GATEWAY_URL=
+TURNSTILE_SITE_KEY=1x00000000000000000000AA
+ALERT_EMAIL=
 ```
 
 Cloudflare 线上环境使用 `wrangler secret put` 写入同名密钥。
@@ -49,18 +55,27 @@ pnpm -F server seed:local
 
 ## 部署
 
-1. 在 Cloudflare 创建 D1、R2、KV、Turnstile、AI Gateway。
-2. 将真实资源 ID 填入 `server/wrangler.jsonc` 的 `env.staging` 与 `env.production`。
-3. 运行迁移:
+1. 在 Cloudflare 创建一套线上资源:D1、R2、KV、Turnstile、AI Gateway。
+2. 将真实 D1 / KV ID 填入 `server/wrangler.jsonc`,并配置 `TURNSTILE_SITE_KEY` / `AI_GATEWAY_URL`。
+3. 写入线上 Worker Secrets:
 
 ```bash
-pnpm -F server db:migrate:staging
+pnpm -F server wrangler secret put JWT_SECRET
+pnpm -F server wrangler secret put KEY_ENCRYPTION_KEY
+pnpm -F server wrangler secret put TURNSTILE_SECRET_KEY
+pnpm -F server wrangler secret put RESEND_API_KEY
 ```
 
-4. 部署 staging:
+4. 运行线上迁移:
 
 ```bash
-pnpm -F server deploy:staging
+pnpm -F server db:migrate:remote
 ```
 
-生产环境使用 tag 触发 GitHub Actions，或手动运行 `pnpm -F server deploy:prod`。
+5. 部署线上 Worker + SPA:
+
+```bash
+pnpm -F server deploy
+```
+
+GitHub Actions 在 `main` 分支推送时执行同一套 `db:migrate:remote` + `deploy` 流程。

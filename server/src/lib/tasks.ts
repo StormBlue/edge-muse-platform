@@ -236,6 +236,7 @@ export async function runGenerateTask(
     }
 
     const finishedAt = now();
+    logSlowTask(taskId, startedAt, finishedAt);
     await db
       .update(tasks)
       .set({
@@ -255,6 +256,7 @@ export async function runGenerateTask(
       .where(eq(messages.id, task.messageId));
     await notify({ type: "task.done", task: { id: taskId, status: "succeeded" }, images });
   } catch (error) {
+    logSlowTask(taskId, startedAt, now());
     const message = error instanceof Error ? error.message : "Generation failed";
     const code =
       error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
@@ -278,6 +280,12 @@ export async function runGenerateTask(
       error: { code, message }
     });
   }
+}
+
+function logSlowTask(taskId: string, startedAt: number, finishedAt: number): void {
+  const durationMs = finishedAt - startedAt;
+  if (durationMs <= 120_000) return;
+  console.warn(JSON.stringify({ event: "task.slow", taskId, durationMs }));
 }
 
 async function buildChatMessages(

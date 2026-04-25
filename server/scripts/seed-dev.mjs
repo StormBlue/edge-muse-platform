@@ -76,7 +76,7 @@ VALUES ('usr_sysadmin', 'key_mock', ${timestamp});
 
 execFileSync(
   "pnpm",
-  ["wrangler", "d1", "execute", "edge-muse-dev", "--local", "--command", command],
+  ["wrangler", "d1", "execute", "edge-muse", "--local", "--command", command],
   {
     cwd: new URL("..", import.meta.url),
     stdio: "inherit"

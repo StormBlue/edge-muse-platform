@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "edge-muse-dev",
+  "name": "edge-muse",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-25",
   "compatibility_flags": ["nodejs_compat"],
@@ -18,27 +18,28 @@
     "crons": ["17 18 * * *"]
   },
   "vars": {
-    "ENVIRONMENT": "dev",
+    "ENVIRONMENT": "production",
     "AI_GATEWAY_URL": "",
-    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+    "TURNSTILE_SITE_KEY": "",
+    "ALERT_EMAIL": ""
   },
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "edge-muse-dev",
-      "database_id": "local-edge-muse-dev"
+      "database_name": "edge-muse",
+      "database_id": "REPLACE_WITH_D1_ID"
     }
   ],
   "r2_buckets": [
     {
       "binding": "R2",
-      "bucket_name": "edge-muse-images-dev"
+      "bucket_name": "edge-muse-images"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "local-edge-muse-kv"
+      "id": "REPLACE_WITH_KV_ID"
     }
   ],
   "durable_objects": {
@@ -61,61 +62,5 @@
       "binding": "GEN_WORKFLOW",
       "class_name": "GenerateImageWorkflow"
     }
-  ],
-  "env": {
-    "staging": {
-      "name": "edge-muse-staging",
-      "vars": {
-        "ENVIRONMENT": "staging",
-        "AI_GATEWAY_URL": "",
-        "TURNSTILE_SITE_KEY": ""
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "edge-muse-staging",
-          "database_id": "REPLACE_WITH_STAGING_D1_ID"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "R2",
-          "bucket_name": "edge-muse-images-staging"
-        }
-      ],
-      "kv_namespaces": [
-        {
-          "binding": "KV",
-          "id": "REPLACE_WITH_STAGING_KV_ID"
-        }
-      ]
-    },
-    "production": {
-      "name": "edge-muse",
-      "vars": {
-        "ENVIRONMENT": "production",
-        "AI_GATEWAY_URL": "",
-        "TURNSTILE_SITE_KEY": ""
-      },
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "edge-muse-prod",
-          "database_id": "REPLACE_WITH_PRODUCTION_D1_ID"
-        }
-      ],
-      "r2_buckets": [
-        {
-          "binding": "R2",
-          "bucket_name": "edge-muse-images"
-        }
-      ],
-      "kv_namespaces": [
-        {
-          "binding": "KV",
-          "id": "REPLACE_WITH_PRODUCTION_KV_ID"
-        }
-      ]
-    }
-  }
+  ]
 }
