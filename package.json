@@ -1,0 +1,36 @@
+{
+  "name": "edge-muse-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.1+sha512.05ba3c1d5d1c18f68df06470d74055e62d41fc110a0c660db1b2dfb2785327f04cf0f68345d4609bc52089e7fa0343c31593b2f9594e2c5d5da426230acc9820",
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "dev:web": "pnpm -F web dev",
+    "dev:server": "pnpm -F server dev",
+    "build": "pnpm -F web build && pnpm -F server build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "25.6.0",
+    "concurrently": "9.2.1",
+    "eslint": "10.2.1",
+    "eslint-plugin-vue": "10.9.0",
+    "husky": "9.1.7",
+    "lint-staged": "16.4.0",
+    "prettier": "3.8.3",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.59.0"
+  },
+  "lint-staged": {
+    "*.{ts,vue,js,json,md,css}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "build": "wrangler deploy --dry-run --outdir dist --env=\"\"",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:prod": "wrangler deploy --env production",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "types": "wrangler types",
+    "db:gen": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply edge-muse-dev --local",
+    "db:migrate:staging": "wrangler d1 migrations apply edge-muse-staging --remote --env staging",
+    "db:migrate:prod": "wrangler d1 migrations apply edge-muse-prod --remote --env production",
+    "seed:local": "node scripts/seed-dev.mjs"
+  },
+  "dependencies": {
+    "@hono/zod-validator": "0.7.0",
+    "@noble/hashes": "2.2.0",
+    "drizzle-orm": "0.45.2",
+    "hono": "4.7.8",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260425.1",
+    "drizzle-kit": "0.31.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.5",
+    "wrangler": "4.13.2"
+  }
+}

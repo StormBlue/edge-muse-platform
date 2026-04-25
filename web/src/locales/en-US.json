@@ -1,0 +1,37 @@
+{
+  "common": {
+    "appName": "Edge Muse",
+    "login": "Login",
+    "logout": "Logout",
+    "save": "Save",
+    "create": "Create",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "delete": "Delete",
+    "search": "Search",
+    "loading": "Loading",
+    "quota": "Quota",
+    "settings": "Settings"
+  },
+  "nav": {
+    "workspace": "Workspace",
+    "history": "History",
+    "admin": "Users",
+    "sysadmin": "System"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "forgot": "Forgot password",
+    "reset": "Reset password",
+    "nickname": "Nickname"
+  },
+  "workspace": {
+    "newSession": "New session",
+    "promptPlaceholder": "Describe the image you want...",
+    "generate": "Generate",
+    "text2image": "Text to image",
+    "image2image": "Image to image",
+    "chat": "Chat"
+  }
+}
