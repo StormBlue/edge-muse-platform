@@ -31,6 +31,9 @@ const DEFAULT_PARALLEL_GENERATIONS = 4;
 const SYSADMIN_PARALLEL_GENERATIONS = 10;
 const TASK_RECOVERY_THROTTLE_KEY = "tasks:interrupted-recovery";
 const TASK_RECOVERY_THROTTLE_SECONDS = 60;
+const PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS = 6;
+const PROVIDER_IMAGE_DOWNLOAD_ATTEMPT_TIMEOUT_MS = 30_000;
+const PROVIDER_IMAGE_DOWNLOAD_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
 
 export type ActiveGenerationTask = {
   taskId: string;
@@ -77,7 +80,9 @@ type GenerationResult = {
   requestId?: string;
   rawResponses: unknown[];
   textResponse?: string;
-  images: ProviderImage[];
+  images: TaskImageAttachment[];
+  providerImageCount: number;
+  persistenceFailures: GenerationFailure[];
 };
 
 type GenerationFailure = {
@@ -704,11 +709,31 @@ export async function runGenerateTask(
         contentChars: chatMessages.reduce((sum, message) => sum + message.content.length, 0)
       });
     }
-    const images: ImageAttachment[] = [];
+    const images: TaskImageAttachment[] = [];
     const rawResponses: unknown[] = [];
     const requestIds: string[] = [];
     const textResponses: string[] = [];
     let completedGenerations = 0;
+    let persistedImages = 0;
+    let messageAttachmentUpdate = Promise.resolve();
+    const queueMessageAttachmentUpdate = (reason: string): Promise<void> => {
+      const attachments = sortTaskImages(images).map((image) => ({ ...image }));
+      messageAttachmentUpdate = messageAttachmentUpdate
+        .catch(() => undefined)
+        .then(async () => {
+          await db
+            .update(messages)
+            .set({ status: "running", attachments: stringifyJson(attachments) })
+            .where(eq(messages.id, task.messageId));
+          logInfo("task.message.attachments_updated", {
+            ...baseLogFields,
+            reason,
+            imageCount: attachments.length,
+            imageIds: attachments.map((image) => image.id)
+          });
+        });
+      return messageAttachmentUpdate;
+    };
     const generateOne = async (index: number): Promise<GenerationResult> => {
       const generationStartedAt = Date.now();
       logInfo("task.generation.started", {
@@ -777,12 +802,77 @@ export async function runGenerateTask(
           progress: 0.1 + (completedGenerations / params.n) * 0.75
         }
       });
+      const persistedGenerationImages: TaskImageAttachment[] = [];
+      const persistenceFailures: GenerationFailure[] = [];
+      for (const [providerImageIndex, image] of response.images.entries()) {
+        try {
+          await assertTaskClaimCurrent(env, taskId, startedAt);
+          logInfo("task.image.persist_started", {
+            ...baseLogFields,
+            generationIndex: index,
+            providerImageIndex,
+            providerImage: providerImageSummary(image)
+          });
+          const stored = await persistProviderImage(env, {
+            image,
+            ownerUserId: task.userId,
+            sessionId: task.sessionId,
+            taskId
+          });
+          await touchTaskHeartbeat(env, taskId, startedAt);
+          const attachment: TaskImageAttachment = {
+            ...stored,
+            prompt: params.prompt,
+            generationIndex: index
+          };
+          images.push(attachment);
+          persistedGenerationImages.push(attachment);
+          persistedImages += 1;
+          await queueMessageAttachmentUpdate("image_persisted");
+          await send({
+            type: "task.image",
+            task: { id: taskId, status: "running" },
+            image: attachment
+          });
+          await send({
+            type: "task.update",
+            task: {
+              id: taskId,
+              status: "running",
+              progress: Math.min(0.95, 0.75 + (persistedImages / Math.max(params.n, 1)) * 0.2)
+            }
+          });
+          logInfo("task.image.persisted", {
+            ...baseLogFields,
+            generationIndex: index,
+            providerImageIndex,
+            imageId: stored.id,
+            mime: stored.mime,
+            byteSize: stored.byteSize,
+            persistedImages,
+            requestedGenerations: params.n
+          });
+        } catch (error) {
+          const failure = generationFailureFromError(index, error, "persist");
+          logWarn("task.image.persist_failed", {
+            ...baseLogFields,
+            generationIndex: index,
+            providerImageIndex,
+            code: failure.code,
+            message: failure.message,
+            phase: failure.phase
+          });
+          persistenceFailures.push(failure);
+        }
+      }
       return {
         index,
         requestId: response.requestId,
         rawResponses: generatedRawResponses,
         textResponse: response.images.length === 0 ? response.text : undefined,
-        images: response.images
+        images: persistedGenerationImages,
+        providerImageCount: response.images.length,
+        persistenceFailures
       };
     };
 
@@ -839,67 +929,21 @@ export async function runGenerateTask(
       if (result.textResponse) textResponses.push(result.textResponse);
     }
 
-    const providerImages = generationResults.flatMap((result) =>
-      result.images.map((image) => ({ image, generationIndex: result.index }))
+    const providerImageCount = generationResults.reduce(
+      (count, result) => count + result.providerImageCount,
+      0
     );
+    const finalImages = sortTaskImages(generationResults.flatMap((result) => result.images));
+    const persistenceFailures = generationResults
+      .flatMap((result) => result.persistenceFailures)
+      .sort((left, right) => left.index - right.index);
     logInfo("task.provider_images.collected", {
       ...baseLogFields,
-      providerImageCount: providerImages.length,
-      imageKinds: providerImageKindCounts(providerImages.map((item) => item.image))
+      providerImageCount,
+      persistedImageCount: finalImages.length,
+      persistenceFailureCount: persistenceFailures.length
     });
-    let persistedImages = 0;
-    const persistenceFailures: GenerationFailure[] = [];
-    for (const providerImage of providerImages) {
-      try {
-        await assertTaskClaimCurrent(env, taskId, startedAt);
-        logInfo("task.image.persist_started", {
-          ...baseLogFields,
-          generationIndex: providerImage.generationIndex,
-          providerImage: providerImageSummary(providerImage.image)
-        });
-        const stored = await persistProviderImage(env, {
-          image: providerImage.image,
-          ownerUserId: task.userId,
-          sessionId: task.sessionId,
-          taskId
-        });
-        await touchTaskHeartbeat(env, taskId, startedAt);
-        const attachment = {
-          ...stored,
-          prompt: params.prompt,
-          generationIndex: providerImage.generationIndex
-        };
-        images.push(attachment);
-        persistedImages += 1;
-        logInfo("task.image.persisted", {
-          ...baseLogFields,
-          generationIndex: providerImage.generationIndex,
-          imageId: stored.id,
-          mime: stored.mime,
-          byteSize: stored.byteSize,
-          persistedImages,
-          providerImageCount: providerImages.length
-        });
-        await send({
-          type: "task.update",
-          task: {
-            id: taskId,
-            status: "running",
-            progress: 0.75 + (persistedImages / Math.max(providerImages.length, 1)) * 0.2
-          }
-        });
-      } catch (error) {
-        const failure = generationFailureFromError(providerImage.generationIndex, error, "persist");
-        logWarn("task.image.persist_failed", {
-          ...baseLogFields,
-          generationIndex: providerImage.generationIndex,
-          code: failure.code,
-          message: failure.message,
-          phase: failure.phase
-        });
-        persistenceFailures.push(failure);
-      }
-    }
+    await messageAttachmentUpdate;
 
     const failures = [...generationFailures, ...persistenceFailures].sort(
       (left, right) => left.index - right.index
@@ -913,8 +957,8 @@ export async function runGenerateTask(
     logInfo("task.finish.prepared", {
       ...baseLogFields,
       finalStatus,
-      imageCount: images.length,
-      providerImageCount: providerImages.length,
+      imageCount: finalImages.length,
+      providerImageCount,
       failureCount: failures.length,
       providerRequestIds: requestIds,
       durationMs: finishedAt - startedAt
@@ -941,7 +985,7 @@ export async function runGenerateTask(
     logInfo("task.finish.task_updated", {
       ...baseLogFields,
       finalStatus,
-      imageCount: images.length,
+      imageCount: finalImages.length,
       failureCount: failures.length,
       providerRequestIds: requestIds
     });
@@ -950,20 +994,21 @@ export async function runGenerateTask(
       .set({
         status: finalStatus,
         prompt: textResponses.join("\n\n") || params.prompt,
-        attachments: stringifyJson(images)
+        attachments: stringifyJson(finalImages)
       })
       .where(eq(messages.id, task.messageId));
     logInfo("task.finish.message_updated", {
       ...baseLogFields,
       finalStatus,
-      imageCount: images.length,
+      imageCount: finalImages.length,
       textResponseCount: textResponses.length
     });
-    for (const image of images) {
-      await send({ type: "task.image", task: { id: taskId, status: "running" }, image });
-    }
     if (finalStatus === "succeeded") {
-      await send({ type: "task.done", task: { id: taskId, status: "succeeded" }, images });
+      await send({
+        type: "task.done",
+        task: { id: taskId, status: "succeeded" },
+        images: finalImages
+      });
     } else {
       await send({
         type: "task.failed",
@@ -977,7 +1022,7 @@ export async function runGenerateTask(
     logInfo("task.finish.notified", {
       ...baseLogFields,
       finalStatus,
-      imageCount: images.length
+      imageCount: finalImages.length
     });
   } catch (error) {
     if (error instanceof TaskClaimLostError) {
@@ -1605,37 +1650,28 @@ async function persistProviderImage(
     providerImage: providerImageSummary(input.image)
   };
   if (input.image.kind === "url") {
-    const startedAt = Date.now();
     logInfo("provider.image.download_started", {
       ...baseFields,
-      sourceUrl: urlSummary(input.image.url)
+      sourceUrl: urlSummary(input.image.url),
+      maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+      attemptTimeoutMs: PROVIDER_IMAGE_DOWNLOAD_ATTEMPT_TIMEOUT_MS
     });
-    const response = await fetch(input.image.url);
-    if (!response.ok) {
-      logWarn("provider.image.download_failed", {
-        ...baseFields,
-        sourceUrl: urlSummary(input.image.url),
-        status: response.status,
-        statusText: response.statusText,
-        latencyMs: Date.now() - startedAt
-      });
-      throw appError("PROVIDER_ERROR", "Provider image download failed");
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
+    const downloaded = await downloadProviderImageWithRetry(input.image.url, baseFields);
     logInfo("provider.image.download_succeeded", {
       ...baseFields,
       sourceUrl: urlSummary(input.image.url),
-      status: response.status,
-      mime: response.headers.get("Content-Type") ?? "image/png",
-      byteSize: bytes.byteLength,
-      latencyMs: Date.now() - startedAt
+      status: downloaded.status,
+      mime: downloaded.mime,
+      byteSize: downloaded.bytes.byteLength,
+      attempts: downloaded.attempts,
+      latencyMs: downloaded.latencyMs
     });
     return putImage(env, {
       ownerUserId: input.ownerUserId,
       sessionId: input.sessionId,
       taskId: input.taskId,
-      bytes,
-      mime: response.headers.get("Content-Type") ?? "image/png"
+      bytes: downloaded.bytes,
+      mime: downloaded.mime
     });
   }
   if (input.image.kind === "base64") {
@@ -1665,6 +1701,146 @@ async function persistProviderImage(
     bytes: input.image.bytes,
     mime: input.image.mime
   });
+}
+
+type DownloadedProviderImage = {
+  bytes: Uint8Array;
+  mime: string;
+  status: number;
+  attempts: number;
+  latencyMs: number;
+};
+
+async function downloadProviderImageWithRetry(
+  url: string,
+  logFields: Record<string, unknown>
+): Promise<DownloadedProviderImage> {
+  const totalStartedAt = Date.now();
+  let lastMessage = "Provider image download failed";
+  let lastStatus: number | null = null;
+
+  for (let attempt = 1; attempt <= PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS; attempt += 1) {
+    const attemptStartedAt = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      PROVIDER_IMAGE_DOWNLOAD_ATTEMPT_TIMEOUT_MS
+    );
+    try {
+      logInfo("provider.image.download_attempt_started", {
+        ...logFields,
+        sourceUrl: urlSummary(url),
+        attempt,
+        maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS
+      });
+      const response = await fetch(url, {
+        headers: {
+          Accept: "image/avif,image/webp,image/png,image/jpeg,image/*,*/*;q=0.8",
+          "User-Agent": "Edge-Muse-Platform/1.0"
+        },
+        signal: controller.signal
+      });
+      lastStatus = response.status;
+      lastMessage = `Provider image download failed with HTTP ${response.status}`;
+      if (!response.ok) {
+        const retryable = isRetryableDownloadStatus(response.status);
+        const nextDelayMs = retryable ? downloadBackoffDelayMs(attempt) : null;
+        logWarn("provider.image.download_attempt_failed", {
+          ...logFields,
+          sourceUrl: urlSummary(url),
+          attempt,
+          maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+          status: response.status,
+          statusText: response.statusText,
+          retryable,
+          nextDelayMs,
+          latencyMs: Date.now() - attemptStartedAt
+        });
+        if (!retryable || nextDelayMs === null) break;
+        await sleep(nextDelayMs);
+        continue;
+      }
+
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength === 0) {
+        lastMessage = "Provider image download returned an empty response";
+        const nextDelayMs = downloadBackoffDelayMs(attempt);
+        logWarn("provider.image.download_attempt_empty", {
+          ...logFields,
+          sourceUrl: urlSummary(url),
+          attempt,
+          maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+          status: response.status,
+          nextDelayMs,
+          latencyMs: Date.now() - attemptStartedAt
+        });
+        if (nextDelayMs === null) break;
+        await sleep(nextDelayMs);
+        continue;
+      }
+
+      logInfo("provider.image.download_attempt_succeeded", {
+        ...logFields,
+        sourceUrl: urlSummary(url),
+        attempt,
+        maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+        status: response.status,
+        mime: response.headers.get("Content-Type") ?? "image/png",
+        byteSize: bytes.byteLength,
+        latencyMs: Date.now() - attemptStartedAt
+      });
+      return {
+        bytes,
+        mime: response.headers.get("Content-Type") ?? "image/png",
+        status: response.status,
+        attempts: attempt,
+        latencyMs: Date.now() - totalStartedAt
+      };
+    } catch (error) {
+      lastMessage = error instanceof Error ? error.message : "Provider image download failed";
+      const nextDelayMs = downloadBackoffDelayMs(attempt);
+      logError("provider.image.download_attempt_exception", error, {
+        ...logFields,
+        sourceUrl: urlSummary(url),
+        attempt,
+        maxAttempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+        retryable: nextDelayMs !== null,
+        nextDelayMs,
+        latencyMs: Date.now() - attemptStartedAt
+      });
+      if (nextDelayMs === null) break;
+      await sleep(nextDelayMs);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  logWarn("provider.image.download_failed", {
+    ...logFields,
+    sourceUrl: urlSummary(url),
+    attempts: PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS,
+    lastStatus,
+    message: lastMessage,
+    latencyMs: Date.now() - totalStartedAt
+  });
+  throw appError(
+    "PROVIDER_ERROR",
+    `Provider image download failed after ${PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS} attempts`
+  );
+}
+
+function isRetryableDownloadStatus(status: number): boolean {
+  return status >= 400;
+}
+
+function downloadBackoffDelayMs(attempt: number): number | null {
+  if (attempt >= PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS) return null;
+  const baseDelay = PROVIDER_IMAGE_DOWNLOAD_BACKOFF_MS[attempt - 1] ?? 16_000;
+  return Math.round(baseDelay * (0.8 + Math.random() * 0.4));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function loadReferenceImages(env: AppBindings, imageIds: string[]) {
@@ -1720,6 +1896,15 @@ function providerImageKindCounts(images: ProviderImage[]): Record<string, number
     counts[image.kind] = (counts[image.kind] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function sortTaskImages(images: TaskImageAttachment[]): TaskImageAttachment[] {
+  return [...images].sort((left, right) => {
+    const leftIndex = left.generationIndex ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = right.generationIndex ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+    return left.id.localeCompare(right.id);
+  });
 }
 
 function providerImageSummary(image: ProviderImage): Record<string, unknown> {
