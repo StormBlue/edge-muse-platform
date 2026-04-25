@@ -24,7 +24,7 @@ import { getProvider } from "../providers/registry";
 import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus, UserRole } from "../types";
 import type { GenerateRequest, ProviderImage } from "../providers/types";
 
-const INTERRUPTED_TASK_TIMEOUT_MS = 2 * 60 * 1000;
+const GENERATION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const INTERRUPTED_TASK_RECOVERY_LIMIT = 20;
 const TASK_HEARTBEAT_INTERVAL_MS = 30 * 1000;
 const DEFAULT_PARALLEL_GENERATIONS = 4;
@@ -63,13 +63,14 @@ export type TaskRecoveryResult = {
   scheduled: number;
   taskIds: string[];
   throttled: boolean;
+  timedOut: {
+    failed: number;
+    recovered: number;
+    taskIds: string[];
+  };
 };
 
 type WaitUntilContext = Pick<ExecutionContext, "waitUntil">;
-
-type RunGenerateTaskOptions = {
-  retryable?: boolean;
-};
 
 type GenerationResult = {
   index: number;
@@ -102,6 +103,18 @@ class TaskClaimLostError extends Error {
   constructor(taskId: string) {
     super(`Task claim lost: ${taskId}`);
     this.name = "TaskClaimLostError";
+  }
+}
+
+class TaskAttemptTimeoutError extends Error {
+  readonly code = "GENERATION_TIMEOUT";
+
+  constructor(taskId: string) {
+    super(
+      `Image generation did not finish within ${GENERATION_ATTEMPT_TIMEOUT_MS / 60_000} minutes`
+    );
+    this.name = "TaskAttemptTimeoutError";
+    this.cause = { taskId };
   }
 }
 
@@ -221,10 +234,16 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
   ctx.waitUntil(
     recoverInterruptedGenerateTasks(env, ctx)
       .then((result) => {
-        if (result.scheduled === 0) return;
+        if (
+          result.scheduled === 0 &&
+          result.timedOut.failed === 0 &&
+          result.timedOut.recovered === 0
+        )
+          return;
         logWarn("task.recovery_scheduled", {
           scheduled: result.scheduled,
-          taskIds: result.taskIds
+          taskIds: result.taskIds,
+          timedOut: result.timedOut
         });
       })
       .catch((error) => {
@@ -236,28 +255,166 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
 export async function recoverInterruptedGenerateTasks(
   env: AppBindings,
   ctx: WaitUntilContext,
-  options: { staleMs?: number; limit?: number; throttle?: boolean } = {}
+  options: { limit?: number; throttle?: boolean } = {}
 ): Promise<TaskRecoveryResult> {
   const throttled = options.throttle !== false && !(await claimRecoveryWindow(env));
-  if (throttled) return { scheduled: 0, taskIds: [], throttled: true };
+  const emptyTimedOut = { failed: 0, recovered: 0, taskIds: [] };
+  if (throttled) return { scheduled: 0, taskIds: [], throttled: true, timedOut: emptyTimedOut };
 
-  const staleBefore = now() - (options.staleMs ?? INTERRUPTED_TASK_TIMEOUT_MS);
   const limit = options.limit ?? INTERRUPTED_TASK_RECOVERY_LIMIT;
+  const timedOut = await sweepTimedOutGenerateTasks(env, {
+    limit,
+    notify: (taskId, event) => broadcastTaskEvent(env, taskId, event)
+  });
   const result = await env.DB.prepare(
     `SELECT id
      FROM tasks
      WHERE status = 'queued'
-        OR (status = 'running' AND COALESCE(heartbeat_at, started_at, queued_at) <= ?1)
      ORDER BY queued_at ASC
-     LIMIT ?2`
+     LIMIT ?1`
   )
-    .bind(staleBefore, limit)
+    .bind(limit)
     .all<{ id: string }>();
   const taskIds = result.results.map((row) => row.id);
   for (const taskId of taskIds) {
     startGenerateTask(env, ctx, taskId);
   }
-  return { scheduled: taskIds.length, taskIds, throttled: false };
+  return {
+    scheduled: taskIds.length,
+    taskIds,
+    throttled: false,
+    timedOut: {
+      failed: timedOut.failedTaskIds.length,
+      recovered: timedOut.recoveredTaskIds.length,
+      taskIds: [...timedOut.failedTaskIds, ...timedOut.recoveredTaskIds]
+    }
+  };
+}
+
+type TimedOutTaskRow = {
+  id: string;
+  session_id: string;
+  message_id: string;
+  user_id: string;
+  params: string;
+  queued_at: number;
+  started_at: number;
+};
+
+type TimedOutSweepResult = {
+  failedTaskIds: string[];
+  recoveredTaskIds: string[];
+};
+
+type TimedOutTaskResult = "failed" | "recovered" | "skipped";
+
+export async function failTimedOutGenerateTaskIfNeeded(
+  env: AppBindings,
+  taskId: string,
+  notify: (event: TaskEvent) => Promise<void> = async () => undefined
+): Promise<TimedOutTaskResult> {
+  const timeoutBefore = now() - GENERATION_ATTEMPT_TIMEOUT_MS;
+  const row = await env.DB.prepare(
+    `SELECT id,
+            session_id,
+            message_id,
+            user_id,
+            params,
+            queued_at,
+            started_at
+     FROM tasks
+     WHERE id = ?1
+       AND status = 'running'
+       AND started_at IS NOT NULL
+       AND started_at <= ?2`
+  )
+    .bind(taskId, timeoutBefore)
+    .first<TimedOutTaskRow>();
+  if (!row) return "skipped";
+  return settleTimedOutGenerateTask(env, row, notify);
+}
+
+async function sweepTimedOutGenerateTasks(
+  env: AppBindings,
+  input: {
+    limit: number;
+    notify: (taskId: string, event: TaskEvent) => Promise<void>;
+  }
+): Promise<TimedOutSweepResult> {
+  const timeoutBefore = now() - GENERATION_ATTEMPT_TIMEOUT_MS;
+  const result = await env.DB.prepare(
+    `SELECT id,
+            session_id,
+            message_id,
+            user_id,
+            params,
+            queued_at,
+            started_at
+     FROM tasks
+     WHERE status = 'running'
+       AND started_at IS NOT NULL
+       AND started_at <= ?1
+     ORDER BY started_at ASC
+     LIMIT ?2`
+  )
+    .bind(timeoutBefore, input.limit)
+    .all<TimedOutTaskRow>();
+
+  const failedTaskIds: string[] = [];
+  const recoveredTaskIds: string[] = [];
+  for (const row of result.results) {
+    const result = await settleTimedOutGenerateTask(env, row, (event) =>
+      input.notify(row.id, event)
+    );
+    if (result === "recovered") recoveredTaskIds.push(row.id);
+    if (result === "failed") failedTaskIds.push(row.id);
+  }
+
+  if (failedTaskIds.length || recoveredTaskIds.length) {
+    logWarn("task.timeout_sweep.finished", {
+      failedTaskIds,
+      recoveredTaskIds,
+      timeoutMs: GENERATION_ATTEMPT_TIMEOUT_MS
+    });
+  }
+  return { failedTaskIds, recoveredTaskIds };
+}
+
+async function settleTimedOutGenerateTask(
+  env: AppBindings,
+  row: TimedOutTaskRow,
+  notify: (event: TaskEvent) => Promise<void>
+): Promise<"failed" | "recovered"> {
+  const task = {
+    id: row.id,
+    sessionId: row.session_id,
+    messageId: row.message_id,
+    userId: row.user_id,
+    params: row.params,
+    queuedAt: row.queued_at,
+    startedAt: row.started_at
+  };
+  const params = parseJson<GenerateParams>(task.params, {
+    prompt: "",
+    mode: "text2image",
+    size: "1024x1024",
+    n: 1
+  });
+  const recovered = await recoverTaskFromPersistedImages(env, {
+    task,
+    params,
+    startedAt: task.startedAt,
+    notify: (event) => notifyTaskEvent(task.id, notify, event)
+  });
+  if (recovered) return "recovered";
+
+  await failGenerateTask(env, task.id, new TaskAttemptTimeoutError(task.id), notify, {
+    task,
+    params,
+    startedAt: task.startedAt,
+    expectedStartedAt: task.startedAt
+  });
+  return "failed";
 }
 
 export async function createGenerateTask(
@@ -433,15 +590,13 @@ export async function createGenerateTask(
 export async function runGenerateTask(
   env: AppBindings,
   taskId: string,
-  notify: (event: TaskEvent) => Promise<void> = async () => undefined,
-  options: RunGenerateTaskOptions = {}
+  notify: (event: TaskEvent) => Promise<void> = async () => undefined
 ): Promise<void> {
   const db = getDb(env);
   const startedAt = now();
   logInfo("task.run.claim_attempt", {
     taskId,
-    startedAt,
-    retryable: options.retryable ?? false
+    startedAt
   });
   const claimed = await claimGenerateTask(env, taskId, startedAt);
   if (!claimed) {
@@ -475,7 +630,6 @@ export async function runGenerateTask(
   };
   logInfo("task.run.started", {
     ...baseLogFields,
-    retryable: options.retryable ?? false,
     mode: params.mode,
     size: params.size,
     imageCount: params.n,
@@ -834,12 +988,6 @@ export async function runGenerateTask(
       logWarn("task.run.no_longer_current", baseLogFields);
       return;
     }
-    if (options.retryable) {
-      logError("task.run.retryable_failed", error, baseLogFields);
-      await cleanupTaskGeneratedImages(env, taskId);
-      await releaseGenerateTaskForRetry(env, taskId, task.messageId, notify);
-      throw error;
-    }
     logError("task.run.failed", error, baseLogFields);
     await failGenerateTask(env, taskId, error, notify, { task, params, startedAt });
   } finally {
@@ -1128,6 +1276,7 @@ type FailureContext = {
   };
   params?: GenerateParams;
   startedAt?: number;
+  expectedStartedAt?: number;
 };
 
 export async function failGenerateTask(
@@ -1162,17 +1311,23 @@ export async function failGenerateTask(
     mode: params.mode,
     imageCount: params.n
   });
+  const persisted = await markGenerateTaskFailed(env, {
+    taskId,
+    code,
+    message,
+    finishedAt,
+    expectedStartedAt: context.expectedStartedAt
+  });
+  if (!persisted) {
+    logWarn("task.fail.skipped_not_current", {
+      taskId,
+      userId: task.userId,
+      messageId: task.messageId,
+      expectedStartedAt: context.expectedStartedAt ?? null
+    });
+    return;
+  }
   const deletedImageCount = await cleanupTaskGeneratedImages(env, taskId);
-  await db
-    .update(tasks)
-    .set({
-      status: "failed",
-      errorCode: code,
-      errorMsg: message,
-      heartbeatAt: finishedAt,
-      finishedAt
-    })
-    .where(eq(tasks.id, taskId));
   await db
     .update(messages)
     .set({ status: "failed", attachments: stringifyJson([]) })
@@ -1201,6 +1356,39 @@ export async function failGenerateTask(
   });
 }
 
+async function markGenerateTaskFailed(
+  env: AppBindings,
+  input: {
+    taskId: string;
+    code: string;
+    message: string;
+    finishedAt: number;
+    expectedStartedAt?: number;
+  }
+): Promise<boolean> {
+  const whereCurrent =
+    input.expectedStartedAt === undefined
+      ? "AND status IN ('queued', 'running')"
+      : "AND status = 'running' AND started_at = ?5";
+  const statement = env.DB.prepare(
+    `UPDATE tasks
+     SET status = 'failed',
+         error_code = ?1,
+         error_msg = ?2,
+         heartbeat_at = ?3,
+         finished_at = ?3
+     WHERE id = ?4
+       ${whereCurrent}`
+  );
+  const result =
+    input.expectedStartedAt === undefined
+      ? await statement.bind(input.code, input.message, input.finishedAt, input.taskId).run()
+      : await statement
+          .bind(input.code, input.message, input.finishedAt, input.taskId, input.expectedStartedAt)
+          .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
 async function notifyTaskEvent(
   taskId: string,
   notify: (event: TaskEvent) => Promise<void>,
@@ -1219,7 +1407,6 @@ async function claimGenerateTask(
   taskId: string,
   startedAt: number
 ): Promise<boolean> {
-  const staleBefore = startedAt - INTERRUPTED_TASK_TIMEOUT_MS;
   const result = await env.DB.prepare(
     `UPDATE tasks
      SET status = 'running',
@@ -1229,43 +1416,11 @@ async function claimGenerateTask(
          error_code = NULL,
          error_msg = NULL
      WHERE id = ?2
-       AND (
-         status = 'queued'
-         OR (status = 'running' AND COALESCE(heartbeat_at, started_at, queued_at) <= ?3)
-       )`
+       AND status = 'queued'`
   )
-    .bind(startedAt, taskId, staleBefore)
+    .bind(startedAt, taskId)
     .run();
   return (result.meta.changes ?? 0) > 0;
-}
-
-async function releaseGenerateTaskForRetry(
-  env: AppBindings,
-  taskId: string,
-  messageId: string,
-  notify: (event: TaskEvent) => Promise<void>
-): Promise<void> {
-  const db = getDb(env);
-  await db
-    .update(tasks)
-    .set({
-      status: "queued",
-      heartbeatAt: null,
-      startedAt: null,
-      finishedAt: null,
-      errorCode: null,
-      errorMsg: null
-    })
-    .where(eq(tasks.id, taskId));
-  await db
-    .update(messages)
-    .set({ status: "queued", attachments: stringifyJson([]) })
-    .where(eq(messages.id, messageId));
-  logWarn("task.retry.released", { taskId, messageId });
-  await notifyTaskEvent(taskId, notify, {
-    type: "task.update",
-    task: { id: taskId, status: "queued", progress: 0 }
-  });
 }
 
 async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<number> {

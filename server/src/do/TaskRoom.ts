@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AppBindings } from "../types";
-import { runGenerateTask, type TaskEvent } from "../lib/tasks";
+import { failTimedOutGenerateTaskIfNeeded, type TaskEvent } from "../lib/tasks";
 import { logError, logInfo, logWarn } from "../lib/log";
 
 export class TaskRoom extends DurableObject<AppBindings> {
@@ -62,13 +62,14 @@ export class TaskRoom extends DurableObject<AppBindings> {
       logInfo("task.room.alarm_no_running_task", { latestEventType: latest?.type ?? null });
       return;
     }
-    logWarn("task.room.alarm_recovering_task", { taskId });
+    logWarn("task.room.alarm_checking_task_timeout", { taskId });
     try {
-      await runGenerateTask(this.env, taskId, async (event) => {
+      const result = await failTimedOutGenerateTaskIfNeeded(this.env, taskId, async (event) => {
         await this.updateStatus(event);
       });
+      logInfo("task.room.alarm_timeout_check_finished", { taskId, result });
     } catch (error) {
-      logError("task.room.alarm_recovery_failed", error, { taskId });
+      logError("task.room.alarm_timeout_check_failed", error, { taskId });
       throw error;
     }
   }

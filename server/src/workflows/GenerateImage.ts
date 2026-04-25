@@ -21,16 +21,12 @@ export class GenerateImageWorkflow extends WorkflowEntrypoint<
     const notify = (payload: TaskEvent) => broadcastTaskEvent(this.env, taskId, payload);
     logInfo("workflow.generate.started", { taskId });
     try {
-      await step.do(
-        "generate-and-persist",
-        { retries: { limit: 3, delay: "5 seconds", backoff: "exponential" } },
-        async () => {
-          logInfo("workflow.generate.step_started", { taskId, step: "generate-and-persist" });
-          await runGenerateTask(this.env, taskId, notify, { retryable: true });
-          logInfo("workflow.generate.step_finished", { taskId, step: "generate-and-persist" });
-          return { ok: true };
-        }
-      );
+      await step.do("generate-and-persist", async () => {
+        logInfo("workflow.generate.step_started", { taskId, step: "generate-and-persist" });
+        await runGenerateTask(this.env, taskId, notify);
+        logInfo("workflow.generate.step_finished", { taskId, step: "generate-and-persist" });
+        return { ok: true };
+      });
       logInfo("workflow.generate.finished", { taskId });
     } catch (error) {
       logError("workflow.generate.failed", error, { taskId });
