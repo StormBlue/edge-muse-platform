@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import type { ImageAttachment, Message, Session, SessionMode } from "@/stores/session";
@@ -90,6 +91,8 @@ const pageSize = 12;
 const total = ref(0);
 const loading = ref(false);
 const detailLoading = ref(false);
+const openPromptMessageId = ref<string | null>(null);
+let promptPopoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const selectedSessionId = computed(() => selectedSession.value?.id ?? getRouteSessionId());
@@ -133,6 +136,10 @@ onMounted(async () => {
   await loadSessions(1);
   const sessionId = getRouteSessionId();
   if (sessionId) await loadDetail(sessionId);
+});
+
+onBeforeUnmount(() => {
+  clearPromptPopoverCloseTimer();
 });
 
 function resolveRouteUserId() {
@@ -336,6 +343,34 @@ function taskParameters(message: AuditMessage) {
   };
 }
 
+function messagePromptText(message: AuditMessage) {
+  return message.prompt || message.task?.params?.prompt || "";
+}
+
+function shouldShowPromptPopover(message: AuditMessage) {
+  const prompt = messagePromptText(message);
+  return prompt.length > 120 || prompt.includes("\n");
+}
+
+function clearPromptPopoverCloseTimer() {
+  if (!promptPopoverCloseTimer) return;
+  clearTimeout(promptPopoverCloseTimer);
+  promptPopoverCloseTimer = null;
+}
+
+function openPromptPopover(messageId: string) {
+  clearPromptPopoverCloseTimer();
+  openPromptMessageId.value = messageId;
+}
+
+function schedulePromptPopoverClose(messageId: string) {
+  clearPromptPopoverCloseTimer();
+  promptPopoverCloseTimer = setTimeout(() => {
+    if (openPromptMessageId.value === messageId) openPromptMessageId.value = null;
+    promptPopoverCloseTimer = null;
+  }, 120);
+}
+
 function generationFailures(message: AuditMessage) {
   return message.task?.generationFailures ?? [];
 }
@@ -439,7 +474,34 @@ function formatDuration(value?: number | null) {
                 <tr v-for="message in messages" :key="message.id" class="border-t border-border">
                   <td class="p-3 font-medium">{{ roleLabel(message.role) }}</td>
                   <td class="max-w-xl p-3">
-                    <p class="line-clamp-3 whitespace-pre-wrap">{{ message.prompt ?? "-" }}</p>
+                    <Popover
+                      v-if="shouldShowPromptPopover(message)"
+                      :open="openPromptMessageId === message.id"
+                    >
+                      <PopoverTrigger as-child>
+                        <button
+                          class="line-clamp-3 w-full cursor-help appearance-none rounded-sm border-0 bg-transparent p-0 text-left leading-5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                          type="button"
+                          @click.prevent.stop
+                          @mouseenter="openPromptPopover(message.id)"
+                          @mouseleave="schedulePromptPopoverClose(message.id)"
+                        >
+                          {{ messagePromptText(message) }}
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="start"
+                        class="max-h-80 w-[min(42rem,calc(100vw-2rem))] overflow-auto whitespace-pre-wrap text-sm leading-6"
+                        side="top"
+                        @mouseenter="openPromptPopover(message.id)"
+                        @mouseleave="schedulePromptPopoverClose(message.id)"
+                      >
+                        {{ messagePromptText(message) }}
+                      </PopoverContent>
+                    </Popover>
+                    <p v-else class="line-clamp-3 whitespace-pre-wrap">
+                      {{ messagePromptText(message) || "-" }}
+                    </p>
                     <div v-if="message.attachments.length" class="mt-2 flex flex-wrap gap-2">
                       <div v-for="image in message.attachments" :key="image.id" class="w-16">
                         <button
