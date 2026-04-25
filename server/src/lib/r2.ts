@@ -38,7 +38,9 @@ export async function putImage(
       mime: duplicate.mime,
       width: duplicate.width,
       height: duplicate.height,
-      byteSize: duplicate.byteSize
+      byteSize: duplicate.byteSize,
+      taskId: input.taskId ?? duplicate.taskId,
+      sessionId: input.sessionId ?? duplicate.sessionId
     };
   }
 
@@ -69,7 +71,9 @@ export async function putImage(
     mime: input.mime,
     width: null,
     height: null,
-    byteSize: input.bytes.byteLength
+    byteSize: input.bytes.byteLength,
+    taskId: input.taskId ?? null,
+    sessionId: input.sessionId ?? null
   };
 }
 

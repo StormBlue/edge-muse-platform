@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
   History,
@@ -12,15 +13,20 @@ import {
   Settings,
   Shield,
   Sun,
+  SunMoon,
   Users
 } from "lucide-vue-next";
+import BrandMark from "@/components/brand/BrandMark.vue";
 import { useAuthStore } from "@/stores/auth";
-import { useUiStore } from "@/stores/ui";
+import { type ThemeMode, useUiStore } from "@/stores/ui";
 
 const auth = useAuthStore();
 const ui = useUiStore();
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
+const themeMenuOpen = ref(false);
+const themeMenuRef = ref<HTMLElement | null>(null);
 
 const quotaLabel = computed(() => {
   if (!auth.quota) return "--";
@@ -37,10 +43,36 @@ const nav = computed(() => [
   { to: "/sysadmin/keys", label: "密钥", icon: KeyRound, show: auth.isSysadmin }
 ]);
 
+const themeOptions = computed(() => [
+  { value: "auto" as ThemeMode, label: t("theme.system"), icon: SunMoon },
+  { value: "light" as ThemeMode, label: t("theme.light"), icon: Sun },
+  { value: "dark" as ThemeMode, label: t("theme.dark"), icon: Moon }
+]);
+
+const currentTheme = computed(
+  () => themeOptions.value.find((option) => option.value === ui.theme) ?? themeOptions.value[0]
+);
+
+const themeTitle = computed(() => `${t("theme.label")}: ${currentTheme.value.label}`);
+
+function selectTheme(theme: ThemeMode) {
+  ui.setTheme(theme);
+  themeMenuOpen.value = false;
+}
+
 async function logout() {
   await auth.logout();
   await router.push("/login");
 }
+
+function closeThemeMenu(event: PointerEvent) {
+  if (!themeMenuOpen.value) return;
+  if (themeMenuRef.value?.contains(event.target as Node)) return;
+  themeMenuOpen.value = false;
+}
+
+onMounted(() => document.addEventListener("pointerdown", closeThemeMenu));
+onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu));
 </script>
 
 <template>
@@ -50,11 +82,7 @@ async function logout() {
       :class="ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
     >
       <div class="flex h-16 items-center gap-3 border-b border-border px-5">
-        <div
-          class="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-black text-white"
-        >
-          EM
-        </div>
+        <BrandMark class="size-9" />
         <div>
           <p class="text-sm font-semibold">Edge Muse</p>
           <p class="text-xs text-muted-foreground">Image operations</p>
@@ -111,15 +139,39 @@ async function logout() {
             <option value="zh-CN">中文</option>
             <option value="en-US">EN</option>
           </select>
-          <button
-            class="ui-button ui-button-secondary"
-            type="button"
-            title="Theme"
-            @click="ui.setTheme(ui.theme === 'dark' ? 'light' : 'dark')"
-          >
-            <Sun v-if="ui.theme === 'dark'" class="h-4 w-4" />
-            <Moon v-else class="h-4 w-4" />
-          </button>
+          <div ref="themeMenuRef" class="relative">
+            <button
+              class="ui-button ui-button-secondary ui-icon-button"
+              type="button"
+              :title="themeTitle"
+              :aria-label="themeTitle"
+              :aria-expanded="themeMenuOpen"
+              aria-haspopup="menu"
+              @click="themeMenuOpen = !themeMenuOpen"
+              @keydown.esc="themeMenuOpen = false"
+            >
+              <component :is="currentTheme.icon" class="h-6 w-6" :stroke-width="2.25" />
+            </button>
+            <div
+              v-if="themeMenuOpen"
+              class="absolute right-0 z-50 mt-2 w-36 rounded-lg border border-border bg-card p-1 shadow-lg"
+              role="menu"
+            >
+              <button
+                v-for="option in themeOptions"
+                :key="option.value"
+                class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-muted"
+                :class="option.value === ui.theme ? 'text-foreground' : 'text-muted-foreground'"
+                type="button"
+                role="menuitemradio"
+                :aria-checked="option.value === ui.theme"
+                @click="selectTheme(option.value)"
+              >
+                <component :is="option.icon" class="h-5 w-5" :stroke-width="2.25" />
+                <span>{{ option.label }}</span>
+              </button>
+            </div>
+          </div>
           <RouterLink class="ui-button ui-button-secondary" to="/settings/profile" title="Settings">
             <Settings class="h-4 w-4" />
           </RouterLink>

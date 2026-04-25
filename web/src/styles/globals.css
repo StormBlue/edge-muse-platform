@@ -109,6 +109,16 @@ button:disabled {
   color: var(--foreground);
 }
 
+.ui-icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+}
+
+.ui-icon-button > svg {
+  flex-shrink: 0;
+}
+
 .ui-field {
   width: 100%;
   border-radius: 0.625rem;

@@ -18,12 +18,16 @@ import { putImage } from "./r2";
 import { refundQuota, tryConsumeQuota } from "./quota";
 import { getProvider } from "../providers/registry";
 import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus } from "../types";
-import type { ProviderImage } from "../providers/types";
+import type { GenerateRequest, ProviderImage } from "../providers/types";
 
 export type TaskEvent =
   | { type: "task.update"; task: { id: string; status: TaskStatus; progress?: number } }
-  | { type: "task.image"; image: ImageAttachment }
-  | { type: "task.failed"; error: { code: string; message: string } }
+  | { type: "task.image"; task: { id: string; status: "running" }; image: ImageAttachment }
+  | {
+      type: "task.failed";
+      task: { id: string; status: "failed" };
+      error: { code: string; message: string };
+    }
   | { type: "task.done"; task: { id: string; status: "succeeded" }; images: ImageAttachment[] };
 
 export async function resolveProviderKey(env: AppBindings, userId: string) {
@@ -176,8 +180,13 @@ export async function runGenerateTask(
     const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
     const providerImpl = getProvider(provider.requestFormat);
     const referenceImages = await loadReferenceImages(env, params.referenceImageIds ?? []);
+    const chatMessages =
+      params.mode === "chat"
+        ? await buildChatMessages(env, task.sessionId, params.prompt)
+        : undefined;
     const images: ImageAttachment[] = [];
     const rawResponses: unknown[] = [];
+    const requestIds: string[] = [];
 
     for (let index = 0; index < params.n; index += 1) {
       const response = await providerImpl.generate({
@@ -187,8 +196,10 @@ export async function runGenerateTask(
         model: params.model ?? provider.defaultModel,
         apiKey,
         baseUrl: provider.baseUrl,
-        referenceImages
+        referenceImages,
+        messages: chatMessages
       });
+      if (response.requestId) requestIds.push(response.requestId);
       rawResponses.push(redactProviderResponse(response.raw));
       if (response.images.length === 0 && response.text) {
         rawResponses.push({ text: response.text });
@@ -200,8 +211,13 @@ export async function runGenerateTask(
           sessionId: task.sessionId,
           taskId
         });
-        images.push({ ...stored, prompt: params.prompt });
-        await notify({ type: "task.image", image: stored });
+        const attachment = { ...stored, prompt: params.prompt };
+        images.push(attachment);
+        await notify({
+          type: "task.image",
+          task: { id: taskId, status: "running" },
+          image: attachment
+        });
       }
       await notify({
         type: "task.update",
@@ -215,6 +231,7 @@ export async function runGenerateTask(
       .set({
         status: "succeeded",
         finishedAt,
+        providerRequestId: requestIds.length ? requestIds.join(",") : null,
         providerRawResponse: stringifyJson(rawResponses)
       })
       .where(eq(tasks.id, taskId));
@@ -241,8 +258,50 @@ export async function runGenerateTask(
       .set({ status: "failed", attachments: stringifyJson([]) })
       .where(eq(messages.id, task.messageId));
     if (code !== "PROVIDER_ERROR") await refundQuota(env, task.userId, params.n, taskId);
-    await notify({ type: "task.failed", error: { code, message } });
+    await notify({
+      type: "task.failed",
+      task: { id: taskId, status: "failed" },
+      error: { code, message }
+    });
   }
+}
+
+async function buildChatMessages(
+  env: AppBindings,
+  sessionId: string,
+  prompt: string
+): Promise<NonNullable<GenerateRequest["messages"]>> {
+  const rows = await getDb(env)
+    .select({
+      role: messages.role,
+      prompt: messages.prompt,
+      attachments: messages.attachments,
+      status: messages.status,
+      createdAt: messages.createdAt
+    })
+    .from(messages)
+    .where(and(eq(messages.sessionId, sessionId), isNull(messages.deletedAt)))
+    .orderBy(desc(messages.createdAt))
+    .limit(20);
+  return rows
+    .reverse()
+    .filter(
+      (row) =>
+        (row.role === "user" || row.status === "succeeded") &&
+        (row.prompt || parseJson<ImageAttachment[]>(row.attachments, []).length > 0)
+    )
+    .slice(-12)
+    .map((row) => {
+      const attachments = parseJson<ImageAttachment[]>(row.attachments, []);
+      const imageText =
+        attachments.length > 0
+          ? `\nGenerated images: ${attachments.map((image) => image.url).join(", ")}`
+          : "";
+      return {
+        role: (row.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
+        content: `${row.prompt ?? ""}${imageText}`.trim() || prompt
+      };
+    });
 }
 
 async function persistProviderImage(

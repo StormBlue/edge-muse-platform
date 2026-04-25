@@ -38,6 +38,7 @@ export class TaskRoom extends DurableObject<AppBindings> {
     if (latest?.type === "task.update" && latest.task.status === "running") {
       await this.updateStatus({
         type: "task.failed",
+        task: { id: latest.task.id, status: "failed" },
         error: { code: "TASK_TIMEOUT", message: "Task timed out" }
       });
     }

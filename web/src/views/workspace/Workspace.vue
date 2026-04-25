@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { toast } from "sonner";
+import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import ChatInput from "@/components/chat/ChatInput.vue";
 import ChatMessage from "@/components/chat/ChatMessage.vue";
@@ -21,6 +21,7 @@ const router = useRouter();
 const sessions = useSessionStore();
 const auth = useAuthStore();
 const selectedImage = ref<ImageAttachment | null>(null);
+const allImages = computed(() => sessions.messages.flatMap((message) => message.attachments));
 const { status, connect } = useTaskWebSocket((payload) => {
   sessions.applyTaskEvent(payload);
   if (
@@ -88,6 +89,19 @@ async function retry(message: Message) {
   });
   connect(`/ws/task/${body.taskId}`);
 }
+
+function openImage(image: ImageAttachment) {
+  selectedImage.value = image;
+}
+
+async function deleteImageMessage(image: ImageAttachment) {
+  if (!image.sessionId || !image.messageId) return;
+  if (!window.confirm("删除这条消息及其图片记录?")) return;
+  await apiFetch(`/sessions/${image.sessionId}/messages/${image.messageId}`, { method: "DELETE" });
+  sessions.messages = sessions.messages.filter((message) => message.id !== image.messageId);
+  selectedImage.value = null;
+  toast.success("消息已删除");
+}
 </script>
 
 <template>
@@ -149,7 +163,7 @@ async function retry(message: Message) {
             v-for="message in sessions.messages"
             :key="message.id"
             :message="message"
-            @open="selectedImage = $event"
+            @open="openImage"
             @retry="retry"
           />
         </div>
@@ -158,6 +172,12 @@ async function retry(message: Message) {
         </div>
       </section>
     </div>
-    <ImageViewer :image="selectedImage" @close="selectedImage = null" />
+    <ImageViewer
+      :image="selectedImage"
+      :images="allImages"
+      @close="selectedImage = null"
+      @delete="deleteImageMessage"
+      @select="selectedImage = $event"
+    />
   </AppShell>
 </template>

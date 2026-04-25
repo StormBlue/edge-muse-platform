@@ -1,0 +1,64 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 360 96"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Edge Muse</title>
+  <desc id="desc">Logo for the Edge Muse AI image generation platform.</desc>
+  <defs>
+    <linearGradient id="edge-muse-bg" x1="20" y1="16" x2="76" y2="80">
+      <stop stop-color="#25232b" />
+      <stop offset="1" stop-color="#111217" />
+    </linearGradient>
+    <linearGradient id="edge-muse-mark" x1="29" y1="31" x2="66" y2="66">
+      <stop stop-color="#f5b942" />
+      <stop offset="0.54" stop-color="#d65cff" />
+      <stop offset="1" stop-color="#3dd6c6" />
+    </linearGradient>
+  </defs>
+  <rect x="16" y="16" width="64" height="64" rx="16" fill="url(#edge-muse-bg)" />
+  <path
+    d="M34 45V36a2 2 0 0 1 2-2h10"
+    fill="none"
+    stroke="#fff9ed"
+    stroke-linecap="round"
+    stroke-width="4"
+  />
+  <path
+    d="M62 51v9a2 2 0 0 1-2 2H50"
+    fill="none"
+    stroke="#fff9ed"
+    stroke-linecap="round"
+    stroke-width="4"
+  />
+  <path
+    d="M36 60V39h6.8L48 48.2 53.2 39H60v21h-6.3V49.8l-4.3 7.3h-2.8l-4.3-7.3V60H36Z"
+    fill="url(#edge-muse-mark)"
+  />
+  <path
+    d="M64 31.5 65.8 36l4.7 1.9-4.7 1.9L64 44.5l-1.8-4.7-4.7-1.9 4.7-1.9L64 31.5Z"
+    fill="#fff9ed"
+  />
+  <text
+    x="100"
+    y="48"
+    fill="#17171d"
+    font-family="Inter, Geist, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
+    font-size="28"
+    font-weight="760"
+  >
+    Edge Muse
+  </text>
+  <text
+    x="101"
+    y="68"
+    fill="#6b6872"
+    font-family="Inter, Geist, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif"
+    font-size="12"
+    font-weight="560"
+    letter-spacing="1.8"
+  >
+    AI IMAGE GENERATION
+  </text>
+</svg>

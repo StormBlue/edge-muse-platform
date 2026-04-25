@@ -13,6 +13,12 @@
     "quota": "配额",
     "settings": "设置"
   },
+  "theme": {
+    "label": "主题",
+    "system": "跟随系统",
+    "light": "浅色",
+    "dark": "深色"
+  },
   "nav": {
     "workspace": "工作台",
     "history": "历史",

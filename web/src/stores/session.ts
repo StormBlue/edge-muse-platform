@@ -9,6 +9,9 @@ export type ImageAttachment = {
   width?: number | null;
   height?: number | null;
   byteSize: number;
+  taskId?: string | null;
+  sessionId?: string | null;
+  messageId?: string | null;
   prompt?: string | null;
 };
 export type Message = {
@@ -60,7 +63,7 @@ export const useSessionStore = defineStore("sessions", {
     async loadMessages(sessionId: string) {
       const body = await apiFetch<{ items: Message[] }>(`/sessions/${sessionId}/messages`);
       this.currentSessionId = sessionId;
-      this.messages = body.items;
+      this.messages = body.items.map(normalizeMessageAttachments);
     },
     async generate(input: {
       prompt: string;
@@ -120,22 +123,45 @@ export const useSessionStore = defineStore("sessions", {
       if (payload.type === "task.update" && message && payload.task)
         message.status = payload.task.status;
       if (payload.type === "task.image" && payload.image) {
-        const target = this.messages.find((item) => item.taskId);
-        if (target) target.attachments.push(payload.image);
+        const target = this.messages.find((item) => item.taskId === payload.task?.id);
+        if (target && !target.attachments.some((image) => image.id === payload.image?.id)) {
+          target.attachments.push({
+            ...payload.image,
+            taskId: target.taskId,
+            sessionId: target.sessionId,
+            messageId: target.id
+          });
+        }
       }
       if (payload.type === "task.done" && payload.images) {
         const target = this.messages.find((item) => item.taskId === payload.task?.id);
         if (target) {
           target.status = "succeeded";
-          target.attachments = payload.images;
+          target.attachments = payload.images.map((image) => ({
+            ...image,
+            taskId: target.taskId,
+            sessionId: target.sessionId,
+            messageId: target.id
+          }));
         }
       }
       if (payload.type === "task.failed") {
-        const target = this.messages.find(
-          (item) => item.status === "queued" || item.status === "running"
-        );
+        const target = this.messages.find((item) => item.taskId === payload.task?.id);
         if (target) target.status = "failed";
       }
     }
   }
 });
+
+function normalizeMessageAttachments(message: Message): Message {
+  return {
+    ...message,
+    attachments: message.attachments.map((image) => ({
+      ...image,
+      taskId: image.taskId ?? message.taskId ?? null,
+      sessionId: image.sessionId ?? message.sessionId,
+      messageId: image.messageId ?? message.id,
+      prompt: image.prompt ?? message.prompt ?? null
+    }))
+  };
+}

@@ -104,13 +104,17 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   return c.json(result, 202);
 });
 
-generateRoutes.get("/ws/task/:id", async (c) => {
+generateRoutes.get("/ws/task/:id", handleTaskWebSocket);
+
+export async function handleTaskWebSocket(c: AppContext) {
   if (c.req.header("Upgrade") !== "websocket") return c.text("Expected websocket", 426);
   if (!c.env.TASK_ROOM) throw appError("INTERNAL", "Task room binding is missing");
-  const id = c.env.TASK_ROOM.idFromName(c.req.param("id"));
+  const taskId = c.req.param("id");
+  if (!taskId) throw appError("VALIDATION_ERROR", "Task id required");
+  const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);
   return stub.fetch(c.req.raw);
-});
+}
 
 function startTask(c: AppContext, taskId: string) {
   const workflow = c.env.GEN_WORKFLOW;

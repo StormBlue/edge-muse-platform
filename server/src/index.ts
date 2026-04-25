@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { authRoutes } from "./routes/auth";
 import { meRoutes } from "./routes/me";
 import { sessionRoutes, historyRoutes } from "./routes/sessions";
-import { generateRoutes } from "./routes/generate";
+import { generateRoutes, handleTaskWebSocket } from "./routes/generate";
 import { imageRoutes } from "./routes/images";
 import { uploadRoutes } from "./routes/uploads";
 import { adminRoutes } from "./routes/admin";
@@ -49,5 +49,6 @@ app.route("/api", imageRoutes);
 app.route("/api", uploadRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
+app.get("/ws/task/:id", handleTaskWebSocket);
 
 export default app;

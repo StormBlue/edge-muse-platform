@@ -53,6 +53,8 @@ export type ImageAttachment = {
   width?: number | null;
   height?: number | null;
   byteSize: number;
+  taskId?: string | null;
+  sessionId?: string | null;
   prompt?: string | null;
 };
 

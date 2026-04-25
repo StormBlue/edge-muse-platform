@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { toast } from "sonner";
-import { Sparkles } from "lucide-vue-next";
+import { toast } from "vue-sonner";
+import BrandMark from "@/components/brand/BrandMark.vue";
 import { useAuthStore } from "@/stores/auth";
 
 const auth = useAuthStore();
@@ -36,9 +36,7 @@ async function submit() {
     <section class="flex items-center justify-center px-6 py-10">
       <div class="w-full max-w-sm">
         <div class="mb-8 flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-white">
-            <Sparkles class="h-5 w-5" />
-          </div>
+          <BrandMark class="size-10" />
           <div>
             <h1 class="text-xl font-semibold">Edge Muse</h1>
             <p class="text-sm text-muted-foreground">Cloudflare image generation platform</p>
@@ -73,7 +71,9 @@ async function submit() {
       <div class="w-full rounded-[2rem] border border-border bg-card p-8">
         <div class="mb-8 flex items-center justify-between">
           <p class="text-sm font-semibold">Live task room</p>
-          <span class="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">mock ready</span>
+          <span class="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
+            mock ready
+          </span>
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div class="rounded-xl border border-border bg-background p-4">

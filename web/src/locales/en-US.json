@@ -13,6 +13,12 @@
     "quota": "Quota",
     "settings": "Settings"
   },
+  "theme": {
+    "label": "Theme",
+    "system": "System",
+    "light": "Light",
+    "dark": "Dark"
+  },
   "nav": {
     "workspace": "Workspace",
     "history": "History",
