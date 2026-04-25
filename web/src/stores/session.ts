@@ -23,6 +23,7 @@ export type Message = {
   referenceImageIds: string[];
   taskId?: string | null;
   status: string;
+  progress?: number | null;
   createdAt: number;
 };
 export type Session = {
@@ -32,6 +33,15 @@ export type Session = {
   settings: { size: string; n: number; model?: string };
   lastMessageAt: number;
 };
+export type ActiveGeneration = {
+  taskId: string;
+  sessionId: string;
+  messageId: string;
+  status: "queued" | "running";
+  queuedAt: number;
+  startedAt?: number | null;
+  session: Session;
+};
 
 export const useSessionStore = defineStore("sessions", {
   state: () => ({
@@ -39,7 +49,9 @@ export const useSessionStore = defineStore("sessions", {
     currentSessionId: null as string | null,
     messages: [] as Message[],
     loading: false,
+    sessionsLoading: false,
     olderMessagesLoading: false,
+    nextSessionCursor: null as number | null,
     nextMessageCursor: null as number | null
   }),
   getters: {
@@ -47,10 +59,48 @@ export const useSessionStore = defineStore("sessions", {
       state.sessions.find((session) => session.id === state.currentSessionId) ?? null
   },
   actions: {
+    upsertSession(session: Session) {
+      const index = this.sessions.findIndex((item) => item.id === session.id);
+      if (index >= 0) {
+        this.sessions[index] = { ...this.sessions[index], ...session };
+      } else {
+        this.sessions.unshift(session);
+      }
+    },
     async loadSessions() {
-      const body = await apiFetch<{ items: Session[] }>("/sessions");
-      this.sessions = body.items;
+      this.sessionsLoading = true;
+      try {
+        const body = await apiFetch<{ items: Session[]; nextCursor: number | null }>("/sessions");
+        this.sessions = body.items;
+        this.nextSessionCursor = body.nextCursor;
+      } finally {
+        this.sessionsLoading = false;
+      }
       if (!this.currentSessionId && this.sessions[0]) this.currentSessionId = this.sessions[0].id;
+    },
+    async loadActiveGeneration() {
+      const body = await apiFetch<{ active: ActiveGeneration | null }>(
+        "/sessions/active-generation"
+      );
+      if (body.active?.session) this.upsertSession(body.active.session);
+      return body.active;
+    },
+    async loadMoreSessions() {
+      if (!this.nextSessionCursor || this.sessionsLoading) return;
+      this.sessionsLoading = true;
+      try {
+        const body = await apiFetch<{ items: Session[]; nextCursor: number | null }>(
+          `/sessions?cursor=${this.nextSessionCursor}`
+        );
+        const existingIds = new Set(this.sessions.map((session) => session.id));
+        this.sessions = [
+          ...this.sessions,
+          ...body.items.filter((session) => !existingIds.has(session.id))
+        ];
+        this.nextSessionCursor = body.nextCursor;
+      } finally {
+        this.sessionsLoading = false;
+      }
     },
     async createSession(mode: SessionMode = "text2image") {
       const body = await apiFetch<{ session: Session }>("/sessions", {
@@ -89,6 +139,7 @@ export const useSessionStore = defineStore("sessions", {
       }
     },
     async generate(input: {
+      title?: string;
       prompt: string;
       mode: SessionMode;
       size: string;
@@ -102,20 +153,41 @@ export const useSessionStore = defineStore("sessions", {
           sessionId: string;
           messageId: string;
           wsUrl: string;
+          title: string;
         }>("/generate", {
           method: "POST",
           body: JSON.stringify({ ...input, sessionId: this.currentSessionId ?? undefined })
         });
+        const createdAt = Date.now();
+        const currentSession = this.sessions.find((session) => session.id === body.sessionId);
+        if (currentSession) {
+          currentSession.title = body.title ?? input.title ?? currentSession.title;
+          currentSession.mode = input.mode;
+          currentSession.settings = {
+            ...currentSession.settings,
+            size: input.size,
+            n: input.n
+          };
+          currentSession.lastMessageAt = createdAt;
+        } else {
+          this.sessions.unshift({
+            id: body.sessionId,
+            title: body.title ?? input.title ?? input.prompt.trim().slice(0, 20),
+            mode: input.mode,
+            settings: { size: input.size, n: input.n },
+            lastMessageAt: createdAt
+          });
+        }
         this.currentSessionId = body.sessionId;
         this.messages.push({
-          id: `local-${Date.now()}`,
+          id: `local-${createdAt}`,
           sessionId: body.sessionId,
           role: "user",
           prompt: input.prompt,
           attachments: [],
           referenceImageIds: input.referenceImageIds ?? [],
           status: "succeeded",
-          createdAt: Date.now()
+          createdAt
         });
         this.messages.push({
           id: body.messageId,
@@ -126,7 +198,8 @@ export const useSessionStore = defineStore("sessions", {
           referenceImageIds: [],
           taskId: body.taskId,
           status: "queued",
-          createdAt: Date.now() + 1
+          progress: 0,
+          createdAt: createdAt + 1
         });
         return body;
       } finally {
@@ -137,14 +210,16 @@ export const useSessionStore = defineStore("sessions", {
       if (!event || typeof event !== "object") return;
       const payload = event as {
         type?: string;
-        task?: { id: string; status: string };
+        task?: { id: string; status: string; progress?: number };
         image?: ImageAttachment;
         images?: ImageAttachment[];
         error?: { message: string };
       };
       const message = this.messages.find((item) => item.taskId === payload.task?.id);
-      if (payload.type === "task.update" && message && payload.task)
+      if (payload.type === "task.update" && message && payload.task) {
         message.status = payload.task.status;
+        if (typeof payload.task.progress === "number") message.progress = payload.task.progress;
+      }
       if (payload.type === "task.image" && payload.image) {
         const target = this.messages.find((item) => item.taskId === payload.task?.id);
         if (target && !target.attachments.some((image) => image.id === payload.image?.id)) {
@@ -160,6 +235,7 @@ export const useSessionStore = defineStore("sessions", {
         const target = this.messages.find((item) => item.taskId === payload.task?.id);
         if (target) {
           target.status = "succeeded";
+          target.progress = 1;
           target.attachments = payload.images.map((image) => ({
             ...image,
             taskId: target.taskId,
@@ -170,7 +246,10 @@ export const useSessionStore = defineStore("sessions", {
       }
       if (payload.type === "task.failed") {
         const target = this.messages.find((item) => item.taskId === payload.task?.id);
-        if (target) target.status = "failed";
+        if (target) {
+          target.status = "failed";
+          target.progress = null;
+        }
       }
     }
   }

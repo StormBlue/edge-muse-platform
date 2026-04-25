@@ -1,9 +1,13 @@
 import { defineStore } from "pinia";
 
 const THEME_STORAGE_KEY = "edge-muse-theme";
+const LOCALE_STORAGE_KEY = "edge-muse-locale";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "edge-muse-sidebar-collapsed";
 const themeModes = ["auto", "light", "dark"] as const;
+const locales = ["zh-CN", "en-US"] as const;
 
 export type ThemeMode = (typeof themeModes)[number];
+export type AppLocale = (typeof locales)[number];
 
 let stopSystemThemeSync: (() => void) | null = null;
 
@@ -11,9 +15,22 @@ function isThemeMode(value: string | null): value is ThemeMode {
   return themeModes.includes(value as ThemeMode);
 }
 
+function isAppLocale(value: string | null): value is AppLocale {
+  return locales.includes(value as AppLocale);
+}
+
 function getInitialTheme(): ThemeMode {
   const storedTheme = localStorage.getItem(THEME_STORAGE_KEY);
   return isThemeMode(storedTheme) ? storedTheme : "auto";
+}
+
+export function getInitialLocale(): AppLocale {
+  const storedLocale = localStorage.getItem(LOCALE_STORAGE_KEY);
+  return isAppLocale(storedLocale) ? storedLocale : "zh-CN";
+}
+
+function getInitialSidebarCollapsed() {
+  return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
 }
 
 function prefersDarkTheme() {
@@ -23,8 +40,9 @@ function prefersDarkTheme() {
 export const useUiStore = defineStore("ui", {
   state: () => ({
     theme: getInitialTheme(),
-    locale: localStorage.getItem("edge-muse-locale") ?? "zh-CN",
-    sidebarOpen: false
+    locale: getInitialLocale(),
+    sidebarOpen: false,
+    sidebarCollapsed: getInitialSidebarCollapsed()
   }),
   actions: {
     applyTheme() {
@@ -52,8 +70,25 @@ export const useUiStore = defineStore("ui", {
       stopSystemThemeSync = null;
     },
     setLocale(locale: string) {
-      this.locale = locale;
-      localStorage.setItem("edge-muse-locale", locale);
+      const nextLocale = isAppLocale(locale) ? locale : "zh-CN";
+      this.locale = nextLocale;
+      localStorage.setItem(LOCALE_STORAGE_KEY, nextLocale);
+    },
+    openSidebar() {
+      this.sidebarOpen = true;
+    },
+    closeSidebar() {
+      this.sidebarOpen = false;
+    },
+    toggleSidebar() {
+      this.sidebarOpen = !this.sidebarOpen;
+    },
+    setSidebarCollapsed(collapsed: boolean) {
+      this.sidebarCollapsed = collapsed;
+      localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
+    },
+    toggleSidebarCollapsed() {
+      this.setSidebarCollapsed(!this.sidebarCollapsed);
     }
   }
 });

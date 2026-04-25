@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
 import {
@@ -29,29 +29,44 @@ const router = useRouter();
 const { t } = useI18n();
 const themeMenuOpen = ref(false);
 const themeMenuRef = ref<HTMLElement | null>(null);
+const isDesktopSidebar = ref(false);
+let sidebarModeQuery: MediaQueryList | null = null;
+let stopSidebarModeSync: (() => void) | null = null;
 
 const quotaLabel = computed(() => {
   if (!auth.quota) return "--";
-  if (auth.quota.allocatedQuota === null) return "Unlimited";
+  if (auth.quota.allocatedQuota === null) return t("common.unlimited");
   return `${Math.max(auth.quota.allocatedQuota - auth.quota.usedQuota, 0)}/${auth.quota.allocatedQuota}`;
 });
 
 const nav = computed(() => [
-  { to: "/workspace", label: "工作台", icon: Image, show: true },
-  { to: "/history", label: "历史", icon: History, show: true },
-  { to: "/admin/users", label: "用户管理", icon: Users, show: auth.isAdmin },
-  { to: "/sysadmin/dashboard", label: "系统看板", icon: LayoutDashboard, show: auth.isSysadmin },
-  { to: "/sysadmin/providers", label: "服务商", icon: Shield, show: auth.isSysadmin },
-  { to: "/sysadmin/keys", label: "密钥", icon: KeyRound, show: auth.isSysadmin },
-  { to: "/sysadmin/admins", label: "管理员", icon: Users, show: auth.isSysadmin },
+  { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
+  { to: "/history", label: t("nav.history"), icon: History, show: true },
+  { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin },
+  {
+    to: "/sysadmin/dashboard",
+    label: t("nav.dashboard"),
+    icon: LayoutDashboard,
+    show: auth.isSysadmin
+  },
+  { to: "/sysadmin/providers", label: t("nav.providers"), icon: Shield, show: auth.isSysadmin },
+  { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
+  { to: "/sysadmin/admins", label: t("nav.admins"), icon: Users, show: auth.isSysadmin },
   {
     to: "/sysadmin/users/_/sessions",
-    label: "会话审计",
+    label: t("nav.sessionAudit"),
     icon: MessagesSquare,
     show: auth.isSysadmin
   },
-  { to: "/sysadmin/preferences", label: "偏好", icon: SlidersHorizontal, show: auth.isSysadmin }
+  {
+    to: "/sysadmin/preferences",
+    label: t("nav.preferences"),
+    icon: SlidersHorizontal,
+    show: auth.isSysadmin
+  }
 ]);
+
+const visibleNav = computed(() => nav.value.filter((entry) => entry.show));
 
 const themeOptions = computed(() => [
   { value: "auto" as ThemeMode, label: t("theme.system"), icon: Monitor },
@@ -65,9 +80,43 @@ const currentTheme = computed(
 
 const themeTitle = computed(() => `${t("theme.label")}: ${currentTheme.value.label}`);
 
+const sidebarToggleLabel = computed(() => {
+  if (isDesktopSidebar.value) {
+    return ui.sidebarCollapsed ? t("shell.expandSidebar") : t("shell.collapseSidebar");
+  }
+  return ui.sidebarOpen ? t("shell.closeSidebar") : t("shell.openSidebar");
+});
+
+const userInitial = computed(() => auth.user?.nickname?.trim().charAt(0).toUpperCase() || "U");
+
+const userSummaryTitle = computed(() =>
+  [auth.user?.nickname, auth.user?.email].filter(Boolean).join(" · ")
+);
+
 function selectTheme(theme: ThemeMode) {
   ui.setTheme(theme);
   themeMenuOpen.value = false;
+}
+
+function isActiveNav(to: string) {
+  return route.path.startsWith(to.split("/").slice(0, 3).join("/"));
+}
+
+function syncSidebarMode() {
+  isDesktopSidebar.value = sidebarModeQuery?.matches ?? false;
+  if (isDesktopSidebar.value) ui.closeSidebar();
+}
+
+function toggleSidebarNav() {
+  if (isDesktopSidebar.value) {
+    ui.toggleSidebarCollapsed();
+    return;
+  }
+  ui.toggleSidebar();
+}
+
+function closeMobileSidebar() {
+  if (!isDesktopSidebar.value) ui.closeSidebar();
 }
 
 async function logout() {
@@ -81,47 +130,94 @@ function closeThemeMenu(event: PointerEvent) {
   themeMenuOpen.value = false;
 }
 
-onMounted(() => document.addEventListener("pointerdown", closeThemeMenu));
-onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu));
+watch(
+  () => route.fullPath,
+  () => closeMobileSidebar()
+);
+
+onMounted(() => {
+  document.addEventListener("pointerdown", closeThemeMenu);
+  sidebarModeQuery = window.matchMedia("(min-width: 1024px)");
+  syncSidebarMode();
+  sidebarModeQuery.addEventListener("change", syncSidebarMode);
+  stopSidebarModeSync = () => sidebarModeQuery?.removeEventListener("change", syncSidebarMode);
+});
+
+onBeforeUnmount(() => {
+  document.removeEventListener("pointerdown", closeThemeMenu);
+  stopSidebarModeSync?.();
+});
 </script>
 
 <template>
   <div class="min-h-screen bg-background text-foreground lg:flex">
+    <button
+      v-if="ui.sidebarOpen"
+      class="fixed inset-0 z-20 bg-black/45 lg:hidden"
+      type="button"
+      :aria-label="t('shell.closeSidebar')"
+      @click="ui.closeSidebar()"
+    />
     <aside
-      class="fixed inset-y-0 left-0 z-40 w-72 border-r border-border bg-card transition-transform lg:static lg:translate-x-0"
-      :class="ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+      id="app-sidebar"
+      class="fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-border bg-card transition-[transform,width] duration-200 ease-out lg:static lg:translate-x-0"
+      :class="[
+        ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+        ui.sidebarCollapsed ? 'lg:w-20' : 'lg:w-72'
+      ]"
     >
-      <div class="flex h-16 items-center gap-3 border-b border-border px-5">
-        <BrandMark class="size-9" />
-        <div>
+      <div
+        class="flex h-16 items-center gap-3 border-b border-border px-5"
+        :class="ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''"
+      >
+        <BrandMark class="size-9 shrink-0" />
+        <div class="min-w-0" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
           <p class="text-sm font-semibold">Edge Muse</p>
-          <p class="text-xs text-muted-foreground">Image operations</p>
+          <p class="text-xs text-muted-foreground">{{ t("shell.subtitle") }}</p>
         </div>
       </div>
-      <nav class="space-y-1 px-3 py-4">
+      <nav class="flex-1 space-y-1 px-3 py-4">
         <RouterLink
-          v-for="item in nav.filter((entry) => entry.show)"
+          v-for="item in visibleNav"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
-          :class="
-            route.path.startsWith(item.to.split('/').slice(0, 3).join('/'))
-              ? 'bg-muted text-foreground'
-              : ''
-          "
+          class="flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          :class="[
+            isActiveNav(item.to) ? 'bg-muted text-foreground' : '',
+            ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+          ]"
+          :title="item.label"
+          :aria-label="item.label"
+          @click="closeMobileSidebar"
         >
-          <component :is="item.icon" class="h-4 w-4" />
-          {{ item.label }}
+          <component :is="item.icon" class="h-4 w-4 shrink-0" />
+          <span class="truncate" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
+            {{ item.label }}
+          </span>
         </RouterLink>
       </nav>
-      <div class="absolute bottom-0 left-0 right-0 border-t border-border p-4">
-        <div class="rounded-xl border border-border bg-background p-3">
+      <div
+        class="border-t border-border p-4"
+        :class="ui.sidebarCollapsed ? 'lg:flex lg:justify-center lg:p-3' : ''"
+      >
+        <div
+          class="rounded-xl border border-border bg-background p-3"
+          :class="ui.sidebarCollapsed ? 'lg:hidden' : ''"
+        >
           <p class="text-sm font-semibold">{{ auth.user?.nickname }}</p>
           <p class="truncate text-xs text-muted-foreground">{{ auth.user?.email }}</p>
           <div class="mt-3 flex items-center justify-between text-xs">
-            <span class="text-muted-foreground">配额</span>
+            <span class="text-muted-foreground">{{ t("common.quota") }}</span>
             <span class="font-mono">{{ quotaLabel }}</span>
           </div>
+        </div>
+        <div
+          v-if="ui.sidebarCollapsed"
+          class="hidden size-10 items-center justify-center rounded-lg border border-border bg-background text-sm font-semibold lg:flex"
+          :title="userSummaryTitle"
+          :aria-label="userSummaryTitle"
+        >
+          {{ userInitial }}
         </div>
       </div>
     </aside>
@@ -131,14 +227,18 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu
         class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur"
       >
         <button
-          class="ui-button ui-button-secondary lg:hidden"
+          class="ui-button ui-button-secondary ui-icon-button"
           type="button"
-          @click="ui.sidebarOpen = !ui.sidebarOpen"
+          aria-controls="app-sidebar"
+          :aria-expanded="isDesktopSidebar ? !ui.sidebarCollapsed : ui.sidebarOpen"
+          :aria-label="sidebarToggleLabel"
+          :title="sidebarToggleLabel"
+          @click="toggleSidebarNav"
         >
           <Menu class="h-4 w-4" />
         </button>
         <div class="hidden text-sm text-muted-foreground lg:block">
-          Create, review, and govern image generation tasks.
+          {{ t("shell.tagline") }}
         </div>
         <div class="flex items-center gap-2">
           <select
@@ -182,20 +282,24 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu
               </button>
             </div>
           </div>
-          <RouterLink class="ui-button ui-button-secondary" to="/settings/profile" title="Settings">
+          <RouterLink
+            class="ui-button ui-button-secondary"
+            to="/settings/profile"
+            :title="t('common.settings')"
+          >
             <Settings class="h-4 w-4" />
           </RouterLink>
           <button
             class="ui-button ui-button-secondary"
             type="button"
-            title="Logout"
+            :title="t('common.logout')"
             @click="logout"
           >
             <LogOut class="h-4 w-4" />
           </button>
         </div>
       </header>
-      <main class="mx-auto w-full max-w-7xl px-4 py-5 lg:px-6">
+      <main class="mx-auto w-full max-w-none px-4 py-4 lg:px-5">
         <slot />
       </main>
     </div>

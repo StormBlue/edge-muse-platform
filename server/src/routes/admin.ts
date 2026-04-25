@@ -1,10 +1,18 @@
-import { and, desc, eq, like, lt, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, like, lt, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import { quotaTransactions, quotas, tasks, userProviderKeys, users } from "../db/schema";
+import {
+  providerKeys,
+  quotaTransactions,
+  quotas,
+  tasks,
+  userProviderKeys,
+  users
+} from "../db/schema";
 import { assertManagedUserAccess } from "../lib/access";
+import { generatedEmailForUserId, normalizeOptionalEmail } from "../lib/account";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
 import { newId, now } from "../lib/id";
@@ -18,6 +26,23 @@ export const adminRoutes = new Hono<AppEnv>();
 
 adminRoutes.use("*", requireAuth, requireRole("admin"));
 
+const optionalEmailSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}, z.string().email().optional());
+
+const optionalProviderKeySchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}, z.string().min(1).optional());
+
+const usernameSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  return value.trim();
+}, z.string().min(1).max(40));
+
 adminRoutes.get("/users", async (c) => {
   const actor = c.get("user");
   const q = c.req.query("q");
@@ -27,6 +52,7 @@ adminRoutes.get("/users", async (c) => {
     .select({
       id: users.id,
       email: users.email,
+      username: users.username,
       nickname: users.nickname,
       role: users.role,
       status: users.status,
@@ -41,11 +67,51 @@ adminRoutes.get("/users", async (c) => {
         actor.role === "sysadmin" ? undefined : eq(users.createdBy, actor.id),
         role ? eq(users.role, role as "sysadmin" | "admin" | "user") : undefined,
         status ? eq(users.status, status as "active" | "disabled") : undefined,
-        q ? like(users.email, `%${q}%`) : undefined
+        q
+          ? or(
+              like(users.email, `%${q}%`),
+              like(users.username, `%${q}%`),
+              like(users.nickname, `%${q}%`)
+            )
+          : undefined
       )
     )
     .orderBy(desc(users.createdAt))
     .limit(100);
+  return c.json({ items: rows });
+});
+
+adminRoutes.get("/provider-keys", async (c) => {
+  const actor = c.get("user");
+  const db = getDb(c.env);
+  const baseSelect = {
+    id: providerKeys.id,
+    label: providerKeys.label,
+    keyHint: providerKeys.keyHint,
+    enabled: providerKeys.enabled
+  };
+
+  if (actor.role === "sysadmin") {
+    const rows = await db
+      .select(baseSelect)
+      .from(providerKeys)
+      .where(and(eq(providerKeys.enabled, true), isNull(providerKeys.deletedAt)))
+      .orderBy(desc(providerKeys.createdAt));
+    return c.json({ items: rows });
+  }
+
+  const rows = await db
+    .select(baseSelect)
+    .from(providerKeys)
+    .innerJoin(userProviderKeys, eq(userProviderKeys.providerKeyId, providerKeys.id))
+    .where(
+      and(
+        eq(userProviderKeys.userId, actor.id),
+        eq(providerKeys.enabled, true),
+        isNull(providerKeys.deletedAt)
+      )
+    )
+    .orderBy(desc(providerKeys.createdAt));
   return c.json({ items: rows });
 });
 
@@ -54,15 +120,46 @@ adminRoutes.post(
   zValidator(
     "json",
     z.object({
-      email: z.string().email(),
+      email: optionalEmailSchema,
+      username: usernameSchema,
       password: z.string().min(8),
       nickname: z.string().min(1).max(40),
+      providerKeyId: optionalProviderKeySchema,
       quota: z.number().int().min(0).default(0)
     })
   ),
   async (c) => {
     const actor = c.get("user");
     const body = c.req.valid("json");
+    const email = normalizeOptionalEmail(body.email);
+    const existing = await getDb(c.env).query.users.findFirst({
+      where: email
+        ? or(eq(users.email, email), eq(users.username, body.username))
+        : eq(users.username, body.username)
+    });
+    if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
+
+    let providerKeyId = body.providerKeyId;
+    const actorKey = await getDb(c.env).query.userProviderKeys.findFirst({
+      where: eq(userProviderKeys.userId, actor.id)
+    });
+
+    if (actor.role !== "sysadmin" && providerKeyId && providerKeyId !== actorKey?.providerKeyId) {
+      throw appError("FORBIDDEN", "No access to provider key");
+    }
+    providerKeyId = providerKeyId ?? actorKey?.providerKeyId;
+
+    if (providerKeyId) {
+      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
+        where: and(
+          eq(providerKeys.id, providerKeyId),
+          eq(providerKeys.enabled, true),
+          isNull(providerKeys.deletedAt)
+        )
+      });
+      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+    }
+
     if (actor.role !== "sysadmin") {
       const actorQuota = await getQuota(c.env, actor.id);
       if (actorQuota.remainingQuota !== null && body.quota > actorQuota.remainingQuota) {
@@ -75,12 +172,13 @@ adminRoutes.post(
       .insert(users)
       .values({
         id,
-        email: body.email.toLowerCase(),
+        email: email ?? generatedEmailForUserId(id),
+        username: body.username,
         passwordHash: await hashPassword(body.password),
         nickname: body.nickname,
         role: "user",
         createdBy: actor.id,
-        preferredProviderKeyId: null,
+        preferredProviderKeyId: providerKeyId ?? null,
         locale: "zh-CN",
         status: "active",
         createdAt: timestamp,
@@ -93,13 +191,10 @@ adminRoutes.post(
       usedQuota: 0,
       updatedAt: timestamp
     });
-    const actorKey = await getDb(c.env).query.userProviderKeys.findFirst({
-      where: eq(userProviderKeys.userId, actor.id)
-    });
-    if (actorKey) {
+    if (providerKeyId) {
       await getDb(c.env).insert(userProviderKeys).values({
         userId: id,
-        providerKeyId: actorKey.providerKeyId,
+        providerKeyId,
         assignedAt: timestamp
       });
     }

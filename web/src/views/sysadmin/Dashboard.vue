@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import AppShell from "@/components/layout/AppShell.vue";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
 import StatKPICard from "@/components/stats/StatKPICard.vue";
@@ -19,6 +20,7 @@ type DashboardStats = {
 };
 
 const stats = ref<DashboardStats | null>(null);
+const { t } = useI18n();
 const userTotal = computed(() => sum(stats.value?.userCounts));
 const taskTotal = computed(() => sum(stats.value?.taskCounts));
 const successCount = computed(
@@ -33,13 +35,13 @@ const userItems = computed(
 );
 const taskItems = computed(
   () =>
-    stats.value?.taskCounts.map((row) => ({ label: row.status ?? "unknown", value: row.count })) ??
+    stats.value?.taskCounts.map((row) => ({ label: statusLabel(row.status), value: row.count })) ??
     []
 );
 const providerItems = computed(
   () =>
     stats.value?.providerCounts.map((row) => ({
-      label: row.name ?? "未绑定",
+      label: row.name ?? t("sysadmin.unbound"),
       value: row.count
     })) ?? []
 );
@@ -55,6 +57,14 @@ function sum(rows?: CountRow[]) {
   return rows?.reduce((total, row) => total + row.count, 0) ?? 0;
 }
 
+function statusLabel(status?: string) {
+  if (status === "succeeded") return t("common.succeeded");
+  if (status === "failed") return t("common.failed");
+  if (status === "running") return t("common.running");
+  if (status === "queued") return t("common.queued");
+  return status ?? "unknown";
+}
+
 onMounted(async () => {
   stats.value = await apiFetch<DashboardStats>("/sysadmin/dashboard/stats");
 });
@@ -62,25 +72,25 @@ onMounted(async () => {
 
 <template>
   <AppShell>
-    <h1 class="mb-4 text-xl font-semibold">系统看板</h1>
+    <h1 class="mb-4 text-xl font-semibold">{{ t("sysadmin.dashboardTitle") }}</h1>
     <div class="grid gap-3 md:grid-cols-4">
-      <StatKPICard label="用户数" :value="userTotal" />
-      <StatKPICard label="任务数" :value="taskTotal" />
-      <StatKPICard label="成功率" :value="successRate" />
-      <StatKPICard label="服务商数" :value="providerItems.length" />
+      <StatKPICard :label="t('sysadmin.usersCount')" :value="userTotal" />
+      <StatKPICard :label="t('sysadmin.tasksCount')" :value="taskTotal" />
+      <StatKPICard :label="t('sysadmin.successRate')" :value="successRate" />
+      <StatKPICard :label="t('sysadmin.providersCount')" :value="providerItems.length" />
     </div>
     <div class="mt-4 grid gap-4 lg:grid-cols-2">
-      <StatPieChart title="用户分布" :items="userItems" />
-      <StatPieChart title="服务商占比" :items="providerItems" />
-      <StatBarChart title="任务状态" :items="taskItems" />
-      <StatLineChart title="30 日任务趋势" :points="trendPoints" />
+      <StatPieChart :title="t('sysadmin.userDistribution')" :items="userItems" />
+      <StatPieChart :title="t('sysadmin.providerShare')" :items="providerItems" />
+      <StatBarChart :title="t('sysadmin.taskStatus')" :items="taskItems" />
+      <StatLineChart :title="t('sysadmin.taskTrend')" :points="trendPoints" />
     </div>
     <div class="panel mt-4 overflow-hidden">
       <table class="w-full text-sm">
         <thead class="bg-muted text-left text-muted-foreground">
           <tr>
-            <th class="p-3">Top 用户</th>
-            <th class="p-3">任务数</th>
+            <th class="p-3">{{ t("sysadmin.topUsers") }}</th>
+            <th class="p-3">{{ t("sysadmin.tasksCount") }}</th>
             <th class="p-3"></th>
           </tr>
         </thead>
@@ -96,7 +106,7 @@ onMounted(async () => {
                 class="ui-button ui-button-secondary h-8 text-xs"
                 :to="`/sysadmin/users/${user.id}/sessions`"
               >
-                查看会话
+                {{ t("sysadmin.viewSessions") }}
               </RouterLink>
             </td>
           </tr>

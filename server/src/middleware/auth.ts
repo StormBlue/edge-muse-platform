@@ -18,6 +18,7 @@ export const optionalAuth = createMiddleware<AppEnv>(async (c, next) => {
       c.set("user", {
         id: user.id,
         email: user.email,
+        username: user.username,
         nickname: user.nickname,
         role: user.role,
         status: user.status,
@@ -46,6 +47,7 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
   c.set("user", {
     id: user.id,
     email: user.email,
+    username: user.username,
     nickname: user.nickname,
     role: user.role,
     status: user.status,

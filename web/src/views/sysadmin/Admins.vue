@@ -8,6 +8,7 @@ import { apiFetch } from "@/api/client";
 type AdminRow = {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   status: "active" | "disabled";
   providerKeyId: string | null;
@@ -30,6 +31,7 @@ const editOpen = ref(false);
 const editing = ref<AdminRow | null>(null);
 const form = ref({
   email: "",
+  username: "",
   password: "",
   nickname: "",
   providerKeyId: "",
@@ -56,7 +58,14 @@ async function create() {
   await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
   toast.success(t("sysadmin.adminCreated"));
   createOpen.value = false;
-  form.value = { email: "", password: "", nickname: "", providerKeyId: "", quota: 100 };
+  form.value = {
+    email: "",
+    username: "",
+    password: "",
+    nickname: "",
+    providerKeyId: "",
+    quota: 100
+  };
   await load();
 }
 
@@ -121,7 +130,7 @@ onMounted(load);
           <tr v-for="admin in admins" :key="admin.id" class="border-t border-border">
             <td class="p-3">
               <p class="font-medium">{{ admin.nickname }}</p>
-              <p class="text-xs text-muted-foreground">{{ admin.email }}</p>
+              <p class="text-xs text-muted-foreground">{{ admin.username }} · {{ admin.email }}</p>
             </td>
             <td class="p-3">{{ keyLabel(admin.providerKeyId) }}</td>
             <td class="p-3">{{ admin.usedQuota ?? 0 }} / {{ admin.allocatedQuota ?? "∞" }}</td>
@@ -150,9 +159,9 @@ onMounted(load);
       <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="create">
         <h2 class="font-semibold">{{ t("sysadmin.createAdmin") }}</h2>
         <input
-          v-model="form.email"
+          v-model="form.username"
           class="ui-field h-10 px-3"
-          :placeholder="t('auth.email')"
+          :placeholder="t('auth.username')"
           required
         />
         <input
@@ -169,6 +178,12 @@ onMounted(load);
           :placeholder="t('auth.password')"
           required
         />
+        <input
+          v-model="form.email"
+          class="ui-field h-10 px-3"
+          type="email"
+          :placeholder="t('auth.emailOptional')"
+        />
         <select v-model="form.providerKeyId" class="ui-field h-10 px-3" required>
           <option value="">{{ t("sysadmin.selectKey") }}</option>
           <option v-for="key in keys" :key="key.id" :value="key.id">
@@ -179,7 +194,7 @@ onMounted(load);
           v-model.number="form.quota"
           class="ui-field h-10 px-3"
           type="number"
-          :placeholder="t('sysadmin.totalQuota')"
+          :placeholder="t('adminUsers.quotaAmount')"
         />
         <button class="ui-button ui-button-primary w-full" type="submit">
           {{ t("common.create") }}

@@ -5,6 +5,7 @@ import type { ApiErrorBody, ApiErrorCode } from "../types";
 const STATUS_BY_CODE: Record<ApiErrorCode, ContentfulStatusCode> = {
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
+  CONFLICT: 409,
   QUOTA_EXCEEDED: 402,
   PROVIDER_ERROR: 502,
   PAYLOAD_TOO_LARGE: 413,

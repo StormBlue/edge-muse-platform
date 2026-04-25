@@ -18,6 +18,7 @@ watch(
   () => ui.locale,
   (value) => {
     locale.value = value;
+    document.documentElement.lang = value;
   },
   { immediate: true }
 );

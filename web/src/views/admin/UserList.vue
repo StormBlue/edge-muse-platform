@@ -13,6 +13,7 @@ import { useAuthStore } from "@/stores/auth";
 type AdminUser = {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   role: string;
   status: "active" | "disabled";
@@ -41,9 +42,17 @@ type UsageResponse = {
   trend: Array<{ day: number; count: number }>;
 };
 
+type ProviderKeyRow = {
+  id: string;
+  label: string;
+  keyHint: string;
+  enabled: boolean;
+};
+
 const auth = useAuthStore();
 const { locale, t } = useI18n();
 const users = ref<AdminUser[]>([]);
+const keys = ref<ProviderKeyRow[]>([]);
 const q = ref("");
 const status = ref("");
 const createOpen = ref(false);
@@ -56,7 +65,7 @@ const transactions = ref<QuotaTransaction[]>([]);
 const transactionsNextCursor = ref<number | null>(null);
 const usage = ref<UsageResponse | null>(null);
 const quotaAmount = ref(10);
-const form = ref({ email: "", password: "", nickname: "", quota: 10 });
+const form = ref(defaultCreateForm());
 const passwordForm = ref({ password: "", confirmPassword: "" });
 
 const actorRemaining = computed(() => auth.quota?.remainingQuota ?? null);
@@ -84,11 +93,36 @@ async function load() {
   users.value = body.items;
 }
 
+async function loadKeys() {
+  const body = await apiFetch<{ items: ProviderKeyRow[] }>("/admin/provider-keys");
+  keys.value = body.items;
+  if (!form.value.providerKeyId && keys.value.length) {
+    form.value.providerKeyId = keys.value[0].id;
+  }
+}
+
+function defaultCreateForm() {
+  return {
+    username: "",
+    nickname: "",
+    password: "",
+    email: "",
+    providerKeyId: keys.value[0]?.id ?? "",
+    quota: 10
+  };
+}
+
+function openCreateDialog() {
+  form.value = defaultCreateForm();
+  createOpen.value = true;
+  if (!keys.value.length) void loadKeys();
+}
+
 async function createUser() {
   await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
   toast.success(t("adminUsers.userCreated"));
   createOpen.value = false;
-  form.value = { email: "", password: "", nickname: "", quota: 10 };
+  form.value = defaultCreateForm();
   await load();
 }
 
@@ -203,101 +237,125 @@ function modeLabel(mode: string) {
   return mode;
 }
 
-onMounted(load);
+onMounted(() => {
+  void load();
+  void loadKeys();
+});
 </script>
 
 <template>
   <AppShell>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <h1 class="text-xl font-semibold">{{ t("adminUsers.title") }}</h1>
-      <div class="flex flex-wrap gap-2">
-        <select v-model="status" class="ui-field h-10 w-32 px-3 text-sm" @change="load">
+    <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <h1 class="text-xl font-semibold leading-8">{{ t("adminUsers.title") }}</h1>
+      <form
+        class="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
+        @submit.prevent="load"
+      >
+        <select v-model="status" class="ui-field h-10 !w-full px-3 text-sm sm:!w-40" @change="load">
           <option value="">{{ t("adminUsers.allStatuses") }}</option>
           <option value="active">{{ t("common.enabled") }}</option>
           <option value="disabled">{{ t("common.disabled") }}</option>
         </select>
         <input
           v-model="q"
-          class="ui-field h-10 w-64 px-3"
+          class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-72"
           :placeholder="t('adminUsers.searchEmail')"
-          @keyup.enter="load"
         />
-        <button class="ui-button ui-button-secondary" type="button" @click="load">
+        <button class="ui-button ui-button-secondary h-10" type="submit">
           {{ t("common.search") }}
         </button>
-        <button class="ui-button ui-button-primary" type="button" @click="createOpen = true">
+        <button class="ui-button ui-button-primary h-10" type="button" @click="openCreateDialog">
           {{ t("adminUsers.createUser") }}
         </button>
-      </div>
+      </form>
     </div>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+    <div
+      class="grid gap-4"
+      :class="selectedUser ? 'xl:grid-cols-[minmax(0,1fr)_24rem]' : 'xl:grid-cols-1'"
+    >
       <div class="panel overflow-hidden">
-        <table class="w-full border-collapse text-sm">
-          <thead class="bg-muted text-left text-muted-foreground">
-            <tr>
-              <th class="p-3">{{ t("adminUsers.user") }}</th>
-              <th class="p-3">{{ t("adminUsers.role") }}</th>
-              <th class="p-3">{{ t("common.quota") }}</th>
-              <th class="p-3">{{ t("adminUsers.status") }}</th>
-              <th class="p-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in users" :key="user.id" class="border-t border-border">
-              <td class="p-3">
-                <button class="text-left" type="button" @click="openDetails(user)">
-                  <p class="font-medium">{{ user.nickname }}</p>
-                  <p class="text-xs text-muted-foreground">{{ user.email }}</p>
-                </button>
-              </td>
-              <td class="p-3">{{ user.role }}</td>
-              <td class="p-3">{{ user.usedQuota ?? 0 }} / {{ user.allocatedQuota ?? "∞" }}</td>
-              <td class="p-3">
-                <span
-                  class="rounded-full px-2 py-1 text-xs"
-                  :class="
-                    user.status === 'active'
-                      ? 'bg-primary/15 text-primary'
-                      : 'bg-muted text-muted-foreground'
-                  "
-                >
-                  {{ user.status === "active" ? t("common.enabled") : t("common.disabled") }}
-                </span>
-              </td>
-              <td class="space-x-2 p-3 text-right">
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
-                  type="button"
-                  @click="openQuotaDialog(user)"
-                >
-                  {{ t("adminUsers.changeQuota") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
-                  type="button"
-                  @click="toggleStatus(user)"
-                >
-                  {{ user.status === "active" ? t("common.disabled") : t("common.enabled") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
-                  type="button"
-                  @click="openPasswordDialog(user)"
-                >
-                  {{ t("adminUsers.resetPassword") }}
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="thin-scrollbar max-h-[calc(100vh-10rem)] overflow-auto">
+          <table class="w-full min-w-[56rem] border-collapse text-sm">
+            <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
+              <tr>
+                <th class="p-3">{{ t("adminUsers.user") }}</th>
+                <th class="p-3">{{ t("adminUsers.role") }}</th>
+                <th class="p-3">{{ t("common.quota") }}</th>
+                <th class="p-3">{{ t("adminUsers.status") }}</th>
+                <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="!users.length" class="border-t border-border">
+                <td class="p-6 text-center text-muted-foreground" colspan="5">
+                  {{ t("adminUsers.noUsers") }}
+                </td>
+              </tr>
+              <tr v-for="user in users" :key="user.id" class="border-t border-border">
+                <td class="p-3">
+                  <button class="max-w-full text-left" type="button" @click="openDetails(user)">
+                    <p class="truncate font-medium">{{ user.nickname }}</p>
+                    <p class="truncate text-xs text-muted-foreground">
+                      {{ user.username }} · {{ user.email }}
+                    </p>
+                  </button>
+                </td>
+                <td class="p-3">{{ user.role }}</td>
+                <td class="p-3">{{ user.usedQuota ?? 0 }} / {{ user.allocatedQuota ?? "∞" }}</td>
+                <td class="p-3">
+                  <span
+                    class="rounded-full px-2 py-1 text-xs"
+                    :class="
+                      user.status === 'active'
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-muted text-muted-foreground'
+                    "
+                  >
+                    {{ user.status === "active" ? t("common.enabled") : t("common.disabled") }}
+                  </span>
+                </td>
+                <td class="p-3">
+                  <div class="flex flex-wrap justify-end gap-2">
+                    <button
+                      class="ui-button ui-button-secondary h-8 text-xs"
+                      type="button"
+                      @click="openQuotaDialog(user)"
+                    >
+                      {{ t("adminUsers.changeQuota") }}
+                    </button>
+                    <button
+                      class="ui-button ui-button-secondary h-8 text-xs"
+                      type="button"
+                      @click="toggleStatus(user)"
+                    >
+                      {{ user.status === "active" ? t("common.disabled") : t("common.enabled") }}
+                    </button>
+                    <button
+                      class="ui-button ui-button-secondary h-8 text-xs"
+                      type="button"
+                      @click="openPasswordDialog(user)"
+                    >
+                      {{ t("adminUsers.resetPassword") }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <aside v-if="selectedUser" class="panel space-y-4 p-4">
+      <aside
+        v-if="selectedUser"
+        class="panel thin-scrollbar flex max-h-[calc(100vh-10rem)] flex-col gap-4 overflow-auto p-4 xl:sticky xl:top-20 xl:self-start"
+      >
         <div>
           <p class="text-xs text-muted-foreground">{{ t("adminUsers.details") }}</p>
           <h2 class="mt-1 text-lg font-semibold">{{ selectedUser.nickname }}</h2>
-          <p class="truncate text-sm text-muted-foreground">{{ selectedUser.email }}</p>
+          <p class="truncate text-sm text-muted-foreground">
+            {{ selectedUser.username }} · {{ selectedUser.email }}
+          </p>
         </div>
         <div>
           <div class="flex items-center justify-between text-xs">
@@ -357,12 +415,12 @@ onMounted(load);
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="createOpen = false"
     >
-      <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="createUser">
+      <form class="panel flex w-full max-w-md flex-col gap-3 p-5" @submit.prevent="createUser">
         <h2 class="font-semibold">{{ t("adminUsers.createUser") }}</h2>
         <input
-          v-model="form.email"
+          v-model="form.username"
           class="ui-field h-10 px-3"
-          :placeholder="t('auth.email')"
+          :placeholder="t('auth.username')"
           required
         />
         <input
@@ -380,9 +438,21 @@ onMounted(load);
           type="password"
         />
         <input
+          v-model="form.email"
+          class="ui-field h-10 px-3"
+          :placeholder="t('auth.emailOptional')"
+          type="email"
+        />
+        <select v-model="form.providerKeyId" class="ui-field h-10 px-3" required>
+          <option value="">{{ t("sysadmin.selectKey") }}</option>
+          <option v-for="key in keys" :key="key.id" :value="key.id">
+            {{ key.label }} ({{ key.keyHint }})
+          </option>
+        </select>
+        <input
           v-model.number="form.quota"
           class="ui-field h-10 px-3"
-          :placeholder="t('adminUsers.initialQuota')"
+          :placeholder="t('adminUsers.quotaAmount')"
           type="number"
         />
         <button class="ui-button ui-button-primary w-full" type="submit">
@@ -396,7 +466,7 @@ onMounted(load);
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="quotaOpen = false"
     >
-      <form class="panel w-full max-w-sm space-y-3 p-5" @submit.prevent="grantQuota">
+      <form class="panel flex w-full max-w-sm flex-col gap-3 p-5" @submit.prevent="grantQuota">
         <h2 class="font-semibold">{{ t("adminUsers.adjustQuota") }}</h2>
         <p class="text-sm text-muted-foreground">
           {{
@@ -417,10 +487,10 @@ onMounted(load);
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       @click.self="passwordOpen = false"
     >
-      <form class="panel w-full max-w-sm space-y-3 p-5" @submit.prevent="resetPassword">
+      <form class="panel flex w-full max-w-sm flex-col gap-3 p-5" @submit.prevent="resetPassword">
         <h2 class="font-semibold">{{ t("adminUsers.resetPassword") }}</h2>
         <p class="text-sm text-muted-foreground">
-          {{ passwordUser.nickname }} · {{ passwordUser.email }}
+          {{ passwordUser.nickname }} · {{ passwordUser.username }}
         </p>
         <input
           v-model="passwordForm.password"

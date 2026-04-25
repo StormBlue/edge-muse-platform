@@ -1,12 +1,29 @@
 <script setup lang="ts">
-import { Loader2, RotateCw } from "lucide-vue-next";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
+import { ImageOff, Loader2, RotateCw } from "lucide-vue-next";
 import ImageMessage from "./ImageMessage.vue";
 import type { ImageAttachment, Message } from "@/stores/session";
 
-defineProps<{
+const props = defineProps<{
   message: Message;
 }>();
 const emit = defineEmits<{ open: [image: ImageAttachment]; retry: [message: Message] }>();
+const { t } = useI18n();
+
+const isGenerating = computed(
+  () => props.message.status === "queued" || props.message.status === "running"
+);
+const generationProgress = computed(() => {
+  if (typeof props.message.progress === "number") {
+    return Math.min(99, Math.max(6, Math.round(props.message.progress * 100)));
+  }
+  return props.message.status === "queued" ? 6 : 28;
+});
+const generationStatus = computed(() =>
+  props.message.status === "queued" ? t("common.queued") : t("workspace.generationRunning")
+);
+const isFailed = computed(() => props.message.status === "failed");
 </script>
 
 <template>
@@ -24,11 +41,33 @@ const emit = defineEmits<{ open: [image: ImageAttachment]; retry: [message: Mess
     >
       <p v-if="message.prompt" class="whitespace-pre-wrap leading-6">{{ message.prompt }}</p>
       <div
-        v-if="message.status === 'queued' || message.status === 'running'"
-        class="mt-3 flex items-center gap-2 text-muted-foreground"
+        v-if="isGenerating"
+        class="mt-3 rounded-xl border border-primary/25 bg-primary/5 p-3 text-foreground"
       >
-        <Loader2 class="h-4 w-4 animate-spin" />
-        正在生成
+        <div class="flex items-center gap-3">
+          <span
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+          >
+            <Loader2 class="h-4 w-4 animate-spin" />
+          </span>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center justify-between gap-3">
+              <span class="font-semibold">{{ generationStatus }}</span>
+              <span class="text-xs tabular-nums text-muted-foreground">
+                {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+              </span>
+            </div>
+            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+              <div
+                class="h-full rounded-full bg-primary transition-all duration-500"
+                :style="{ width: `${generationProgress}%` }"
+              ></div>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">
+              {{ t("workspace.generationHint") }}
+            </p>
+          </div>
+        </div>
       </div>
       <ImageMessage
         v-if="message.attachments?.length"
@@ -36,16 +75,33 @@ const emit = defineEmits<{ open: [image: ImageAttachment]; retry: [message: Mess
         :images="message.attachments"
         @open="emit('open', $event)"
       />
-      <div v-if="message.status === 'failed'" class="mt-3 flex items-center gap-2 text-destructive">
-        <span>生成失败</span>
-        <button
-          class="ui-button ui-button-secondary h-8"
-          type="button"
-          @click="emit('retry', message)"
-        >
-          <RotateCw class="h-3.5 w-3.5" />
-          重试
-        </button>
+      <div
+        v-if="isFailed"
+        class="mt-3 overflow-hidden rounded-xl border border-destructive/30 bg-destructive/5"
+      >
+        <div class="flex aspect-[4/3] min-h-44 items-center justify-center p-4 text-center">
+          <div class="flex max-w-xs flex-col items-center gap-3">
+            <span
+              class="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+            >
+              <ImageOff class="h-6 w-6" />
+            </span>
+            <div>
+              <p class="font-semibold text-foreground">{{ t("workspace.generationFailed") }}</p>
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t("workspace.generationFailedHint") }}
+              </p>
+            </div>
+            <button
+              class="ui-button ui-button-secondary h-8 border-destructive/30 text-destructive"
+              type="button"
+              @click="emit('retry', message)"
+            >
+              <RotateCw class="h-3.5 w-3.5" />
+              {{ t("common.retry") }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </article>

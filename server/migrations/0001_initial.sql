@@ -30,13 +30,15 @@ CREATE TABLE IF NOT EXISTS providers (
   supported_sizes TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS provider_keys (
   id TEXT PRIMARY KEY NOT NULL,
   provider_id TEXT NOT NULL REFERENCES providers(id),
   label TEXT NOT NULL,
+  model TEXT,
   encrypted_key TEXT NOT NULL,
   key_hint TEXT NOT NULL,
   allocated_quota INTEGER,
@@ -44,7 +46,8 @@ CREATE TABLE IF NOT EXISTS provider_keys (
   owner_admin_id TEXT REFERENCES users(id),
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  deleted_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS user_provider_keys (

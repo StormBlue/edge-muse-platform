@@ -14,6 +14,7 @@ import { csrf } from "./middleware/csrf";
 import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
+import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -54,10 +55,14 @@ app.route("/api/sysadmin", sysadminRoutes);
 app.get("/ws/task/:id", handleTaskWebSocket);
 
 export default {
-  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+  fetch: (request, env, ctx) => {
+    scheduleInterruptedTaskRecovery(env, ctx);
+    return app.fetch(request, env, ctx);
+  },
   scheduled: (_controller, env, ctx) => {
     ctx.waitUntil(
       Promise.all([
+        recoverInterruptedGenerateTasks(env, ctx, { throttle: false }),
         cleanupDeletedImages(env),
         sendFailureDigest(env),
         logD1TableSizes(env),

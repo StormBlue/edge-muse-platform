@@ -5,6 +5,7 @@ export type Role = "sysadmin" | "admin" | "user";
 export type User = {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   role: Role;
   status: string;

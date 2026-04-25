@@ -7,7 +7,8 @@ import { tasks } from "../db/schema";
 import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
-import { createGenerateTask, runGenerateTask, type TaskEvent } from "../lib/tasks";
+import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
+import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import type { AppContext, AppEnv } from "../types";
@@ -25,13 +26,14 @@ const allowedSizes = [
 
 const generateSchema = z.object({
   sessionId: z.string().optional(),
+  title: z.string().trim().min(1).max(80).optional(),
   prompt: z.string().min(1).max(4000),
   mode: z.enum(["text2image", "image2image", "chat"]).default("text2image"),
   size: z
     .string()
     .refine((value) => allowedSizes.includes(value) || /^\d+x\d+$/.test(value), "Invalid size")
     .default("1024x1024"),
-  n: z.number().int().min(1).max(4).default(1),
+  n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional(),
   referenceImageIds: z.array(z.string()).max(5).optional()
 });
@@ -44,26 +46,31 @@ generateRoutes.post(
   rateLimit({ prefix: "generate", limit: 60, windowSeconds: 60 }),
   zValidator("json", generateSchema),
   async (c) => {
-    const body = c.req.valid("json");
-    if (
-      body.mode === "image2image" &&
-      (!body.referenceImageIds || body.referenceImageIds.length === 0)
-    ) {
+    const user = c.get("user");
+    const rawBody = c.req.valid("json");
+    const referenceImageIds =
+      rawBody.mode === "image2image" ? (rawBody.referenceImageIds ?? []) : [];
+    if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
+    const body = {
+      ...rawBody,
+      n: resolveImageCountForRole(user.role, rawBody.mode, rawBody.n),
+      referenceImageIds
+    };
     const result = await createGenerateTask(c.env, {
-      userId: c.get("user").id,
+      userId: user.id,
       sessionId: body.sessionId,
       params: body
     });
     await audit(c.env, {
-      actorId: c.get("user").id,
+      actorId: user.id,
       action: "task.create",
       targetType: "task",
       targetId: result.taskId,
       payload: { mode: body.mode, size: body.size, n: body.n }
     });
-    startTask(c, result.taskId);
+    startGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${wsProtocol}//${new URL(c.req.url).host}/ws/task/${result.taskId}`;
     return c.json({ ...result, wsUrl }, 202);
@@ -83,7 +90,7 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
     .update(tasks)
     .set({ status: "cancelled", finishedAt: Date.now() })
     .where(eq(tasks.id, task.id));
-  await broadcastTask(c.env, task.id, {
+  await broadcastTaskEvent(c.env, task.id, {
     type: "task.update",
     task: { id: task.id, status: "cancelled" }
   });
@@ -91,16 +98,21 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
 });
 
 generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
-  const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
+  const user = c.get("user");
+  const task = await assertTaskAccess(c.env, c.req.param("id"), user);
   if (task.status !== "failed")
     throw appError("VALIDATION_ERROR", "Only failed tasks can be retried");
+  const params = generateSchema.parse(JSON.parse(task.params));
   const result = await createGenerateTask(c.env, {
-    userId: c.get("user").id,
+    userId: user.id,
     sessionId: task.sessionId,
-    params: JSON.parse(task.params) as z.infer<typeof generateSchema>,
+    params: {
+      ...params,
+      n: resolveImageCountForRole(user.role, params.mode, params.n)
+    },
     retryOf: task.id
   });
-  startTask(c, result.taskId);
+  startGenerateTask(c.env, c.executionCtx, result.taskId);
   return c.json(result, 202);
 });
 
@@ -114,22 +126,4 @@ export async function handleTaskWebSocket(c: AppContext) {
   const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);
   return stub.fetch(c.req.raw);
-}
-
-function startTask(c: AppContext, taskId: string) {
-  const workflow = c.env.GEN_WORKFLOW;
-  if (workflow && typeof workflow.create === "function") {
-    c.executionCtx.waitUntil(workflow.create({ id: taskId, params: { taskId } }));
-    return;
-  }
-  c.executionCtx.waitUntil(
-    runGenerateTask(c.env, taskId, (event) => broadcastTask(c.env, taskId, event))
-  );
-}
-
-async function broadcastTask(env: Cloudflare.Env, taskId: string, event: TaskEvent): Promise<void> {
-  if (!env.TASK_ROOM) return;
-  const id = env.TASK_ROOM.idFromName(taskId);
-  const stub = env.TASK_ROOM.get(id);
-  await stub.updateStatus(event);
 }

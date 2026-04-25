@@ -8,6 +8,7 @@ export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancel
 export type AuthUser = {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   role: UserRole;
   status: UserStatus;
@@ -31,6 +32,7 @@ export type AppContext = Context<AppEnv>;
 export type ApiErrorCode =
   | "UNAUTHORIZED"
   | "FORBIDDEN"
+  | "CONFLICT"
   | "QUOTA_EXCEEDED"
   | "PROVIDER_ERROR"
   | "PAYLOAD_TOO_LARGE"
@@ -60,6 +62,7 @@ export type ImageAttachment = {
 };
 
 export type GenerateParams = {
+  title?: string;
   prompt: string;
   mode: SessionMode;
   size: string;

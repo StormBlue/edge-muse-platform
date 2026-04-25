@@ -36,19 +36,19 @@ async function submit() {
 </script>
 
 <template>
-  <main class="grid min-h-screen bg-background lg:grid-cols-[1.05fr_0.95fr]">
-    <section class="flex items-center justify-center px-6 py-10">
+  <main class="flex min-h-screen bg-background">
+    <section class="flex flex-1 items-center justify-center px-6 py-10">
       <div class="w-full max-w-sm">
-        <div class="mb-8 flex items-center justify-between gap-3">
-          <div class="flex items-center gap-3">
-            <BrandMark class="size-10" />
-            <div>
+        <div class="mb-8 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-3">
+            <BrandMark class="size-10 shrink-0" />
+            <div class="min-w-0">
               <h1 class="text-xl font-semibold">Edge Muse</h1>
               <p class="text-sm text-muted-foreground">{{ t("auth.platformSubtitle") }}</p>
             </div>
           </div>
           <select
-            class="ui-field h-9 w-24 px-2 text-sm"
+            class="ui-field h-9 !w-28 shrink-0 px-2 text-sm"
             :value="ui.locale"
             @change="ui.setLocale(($event.target as HTMLSelectElement).value)"
           >
@@ -58,8 +58,8 @@ async function submit() {
         </div>
         <form class="panel space-y-4 p-5" @submit.prevent="submit">
           <div>
-            <label class="mb-1 block text-sm font-medium">{{ t("auth.email") }}</label>
-            <input v-model="email" class="ui-field h-11 px-3" type="email" autocomplete="email" />
+            <label class="mb-1 block text-sm font-medium">{{ t("auth.loginIdentifier") }}</label>
+            <input v-model="email" class="ui-field h-11 px-3" type="text" autocomplete="username" />
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium">{{ t("auth.password") }}</label>
@@ -74,34 +74,6 @@ async function submit() {
             {{ loading ? t("common.loginLoading") : t("common.login") }}
           </button>
         </form>
-      </div>
-    </section>
-    <section class="hidden border-l border-border bg-muted p-8 lg:flex lg:items-center">
-      <div class="w-full rounded-[2rem] border border-border bg-card p-8">
-        <div class="mb-8 flex items-center justify-between">
-          <p class="text-sm font-semibold">{{ t("auth.liveTaskRoom") }}</p>
-          <span class="rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
-            {{ t("auth.mockReady") }}
-          </span>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="rounded-xl border border-border bg-background p-4">
-            <p class="text-xs text-muted-foreground">{{ t("auth.queued") }}</p>
-            <p class="mt-2 text-3xl font-semibold">12</p>
-          </div>
-          <div class="rounded-xl border border-border bg-background p-4">
-            <p class="text-xs text-muted-foreground">{{ t("auth.successRate") }}</p>
-            <p class="mt-2 text-3xl font-semibold">98%</p>
-          </div>
-          <div class="col-span-2 rounded-xl border border-border bg-background p-4">
-            <div class="mb-3 h-3 w-2/3 rounded bg-muted"></div>
-            <div class="grid grid-cols-3 gap-3">
-              <div class="aspect-square rounded-lg bg-primary/70"></div>
-              <div class="aspect-square rounded-lg bg-accent/50"></div>
-              <div class="aspect-square rounded-lg bg-muted"></div>
-            </div>
-          </div>
-        </div>
       </div>
     </section>
   </main>

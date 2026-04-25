@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { AppBindings } from "../types";
-import type { TaskEvent } from "../lib/tasks";
+import { runGenerateTask, type TaskEvent } from "../lib/tasks";
 
 export class TaskRoom extends DurableObject<AppBindings> {
   async fetch(request: Request): Promise<Response> {
@@ -35,12 +35,17 @@ export class TaskRoom extends DurableObject<AppBindings> {
 
   async alarm(): Promise<void> {
     const latest = await this.ctx.storage.get<TaskEvent>("latest");
-    if (latest?.type === "task.update" && latest.task.status === "running") {
-      await this.updateStatus({
-        type: "task.failed",
-        task: { id: latest.task.id, status: "failed" },
-        error: { code: "TASK_TIMEOUT", message: "Task timed out" }
-      });
-    }
+    const taskId = runningTaskId(latest);
+    if (!taskId) return;
+    await runGenerateTask(this.env, taskId, async (event) => {
+      await this.updateStatus(event);
+    });
   }
+}
+
+function runningTaskId(event: TaskEvent | undefined): string | null {
+  if (!event) return null;
+  if (event.type === "task.update" && event.task.status === "running") return event.task.id;
+  if (event.type === "task.image" && event.task.status === "running") return event.task.id;
+  return null;
 }

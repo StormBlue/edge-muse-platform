@@ -13,13 +13,36 @@ import {
 import { decryptString } from "./crypto";
 import { base64ToBytes } from "./encoding";
 import { appError } from "./errors";
+import { isSingleActiveGenerationRole, resolveImageCountForRole } from "./generationPolicy";
 import { newId, now } from "./id";
 import { parseJson, stringifyJson } from "./json";
 import { putImage } from "./r2";
 import { refundQuota, tryConsumeQuota } from "./quota";
+import { defaultSessionTitle } from "./sessionTitle";
 import { getProvider } from "../providers/registry";
-import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus } from "../types";
+import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus, UserRole } from "../types";
 import type { GenerateRequest, ProviderImage } from "../providers/types";
+
+const INTERRUPTED_TASK_TIMEOUT_MS = 2 * 60 * 1000;
+const INTERRUPTED_TASK_RECOVERY_LIMIT = 20;
+const TASK_RECOVERY_THROTTLE_KEY = "tasks:interrupted-recovery";
+const TASK_RECOVERY_THROTTLE_SECONDS = 60;
+
+export type ActiveGenerationTask = {
+  taskId: string;
+  sessionId: string;
+  messageId: string;
+  status: "queued" | "running";
+  queuedAt: number;
+  startedAt: number | null;
+  session: {
+    id: string;
+    title: string;
+    mode: "text2image" | "image2image" | "chat";
+    settings: { size: string; n: number; model?: string };
+    lastMessageAt: number;
+  };
+};
 
 export type TaskEvent =
   | { type: "task.update"; task: { id: string; status: TaskStatus; progress?: number } }
@@ -31,12 +54,24 @@ export type TaskEvent =
     }
   | { type: "task.done"; task: { id: string; status: "succeeded" }; images: ImageAttachment[] };
 
+export type TaskRecoveryResult = {
+  scheduled: number;
+  taskIds: string[];
+  throttled: boolean;
+};
+
+type WaitUntilContext = Pick<ExecutionContext, "waitUntil">;
+
 export async function resolveProviderKey(env: AppBindings, userId: string) {
   const db = getDb(env);
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (user?.preferredProviderKeyId) {
     const preferred = await db.query.providerKeys.findFirst({
-      where: and(eq(providerKeys.id, user.preferredProviderKeyId), eq(providerKeys.enabled, true))
+      where: and(
+        eq(providerKeys.id, user.preferredProviderKeyId),
+        eq(providerKeys.enabled, true),
+        isNull(providerKeys.deletedAt)
+      )
     });
     if (preferred) return preferred;
   }
@@ -46,16 +81,149 @@ export async function resolveProviderKey(env: AppBindings, userId: string) {
   const keyId = assigned?.providerKeyId;
   if (keyId) {
     const key = await db.query.providerKeys.findFirst({
-      where: and(eq(providerKeys.id, keyId), eq(providerKeys.enabled, true))
+      where: and(
+        eq(providerKeys.id, keyId),
+        eq(providerKeys.enabled, true),
+        isNull(providerKeys.deletedAt)
+      )
     });
     if (key) return key;
   }
   const fallback = await db.query.providerKeys.findFirst({
-    where: eq(providerKeys.enabled, true),
+    where: and(eq(providerKeys.enabled, true), isNull(providerKeys.deletedAt)),
     orderBy: desc(providerKeys.createdAt)
   });
   if (!fallback) throw appError("PROVIDER_ERROR", "No provider key configured");
   return fallback;
+}
+
+export async function findActiveGenerationTaskForUser(
+  env: AppBindings,
+  userId: string
+): Promise<ActiveGenerationTask | null> {
+  const rows = await getDb(env)
+    .select({
+      taskId: tasks.id,
+      sessionId: tasks.sessionId,
+      messageId: tasks.messageId,
+      status: tasks.status,
+      queuedAt: tasks.queuedAt,
+      startedAt: tasks.startedAt,
+      sessionTitle: sessions.title,
+      sessionMode: sessions.mode,
+      sessionSettings: sessions.settings,
+      sessionLastMessageAt: sessions.lastMessageAt
+    })
+    .from(tasks)
+    .innerJoin(sessions, eq(tasks.sessionId, sessions.id))
+    .where(
+      and(
+        eq(tasks.userId, userId),
+        inArray(tasks.status, ["queued", "running"]),
+        isNull(sessions.deletedAt)
+      )
+    )
+    .orderBy(desc(tasks.queuedAt))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    taskId: row.taskId,
+    sessionId: row.sessionId,
+    messageId: row.messageId,
+    status: row.status as "queued" | "running",
+    queuedAt: row.queuedAt,
+    startedAt: row.startedAt,
+    session: {
+      id: row.sessionId,
+      title: row.sessionTitle,
+      mode: row.sessionMode,
+      settings: parseJson(row.sessionSettings, { size: "1024x1024", n: 1 }),
+      lastMessageAt: row.sessionLastMessageAt
+    }
+  };
+}
+
+export async function assertNoActiveGenerationTask(
+  env: AppBindings,
+  input: { userId: string; role: UserRole }
+): Promise<void> {
+  if (!isSingleActiveGenerationRole(input.role)) return;
+  const activeGeneration = await findActiveGenerationTaskForUser(env, input.userId);
+  if (!activeGeneration) return;
+  throw appError("CONFLICT", "A generation task is already running", { activeGeneration });
+}
+
+export function startGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskId: string): void {
+  const workflow = env.GEN_WORKFLOW;
+  if (workflow && typeof workflow.create === "function") {
+    ctx.waitUntil(
+      startWorkflowGenerateTask(env, taskId).catch((error) => {
+        console.error(
+          JSON.stringify({
+            event: "task.workflow_start_failed",
+            taskId,
+            message: error instanceof Error ? error.message : "Workflow start failed"
+          })
+        );
+        return runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event));
+      })
+    );
+    return;
+  }
+  ctx.waitUntil(runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event)));
+}
+
+export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntilContext): void {
+  ctx.waitUntil(
+    recoverInterruptedGenerateTasks(env, ctx)
+      .then((result) => {
+        if (result.scheduled === 0) return;
+        console.warn(
+          JSON.stringify({
+            event: "task.recovery_scheduled",
+            scheduled: result.scheduled,
+            taskIds: result.taskIds
+          })
+        );
+      })
+      .catch((error) => {
+        console.error(
+          JSON.stringify({
+            event: "task.recovery_failed",
+            message: error instanceof Error ? error.message : "Task recovery failed"
+          })
+        );
+      })
+  );
+}
+
+export async function recoverInterruptedGenerateTasks(
+  env: AppBindings,
+  ctx: WaitUntilContext,
+  options: { staleMs?: number; limit?: number; throttle?: boolean } = {}
+): Promise<TaskRecoveryResult> {
+  const throttled = options.throttle !== false && !(await claimRecoveryWindow(env));
+  if (throttled) return { scheduled: 0, taskIds: [], throttled: true };
+
+  const staleBefore = now() - (options.staleMs ?? INTERRUPTED_TASK_TIMEOUT_MS);
+  const limit = options.limit ?? INTERRUPTED_TASK_RECOVERY_LIMIT;
+  const result = await env.DB.prepare(
+    `SELECT id
+     FROM tasks
+     WHERE status = 'queued'
+        OR (status = 'running' AND (started_at IS NULL OR started_at <= ?1))
+     ORDER BY queued_at ASC
+     LIMIT ?2`
+  )
+    .bind(staleBefore, limit)
+    .all<{ id: string }>();
+  const taskIds = result.results.map((row) => row.id);
+  for (const taskId of taskIds) {
+    startGenerateTask(env, ctx, taskId);
+  }
+  return { scheduled: taskIds.length, taskIds, throttled: false };
 }
 
 export async function createGenerateTask(
@@ -69,14 +237,27 @@ export async function createGenerateTask(
 ) {
   const db = getDb(env);
   const timestamp = now();
+  const user = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
+  if (!user) throw appError("UNAUTHORIZED", "User missing");
+  await assertNoActiveGenerationTask(env, { userId: user.id, role: user.role });
+  const referenceImageIds =
+    input.params.mode === "image2image" ? (input.params.referenceImageIds ?? []) : [];
+  if (input.params.mode === "image2image" && referenceImageIds.length === 0) {
+    throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
+  }
+  const params = {
+    ...input.params,
+    n: resolveImageCountForRole(user.role, input.params.mode, input.params.n),
+    referenceImageIds
+  };
   const key = await resolveProviderKey(env, input.userId);
   const settings = stringifyJson({
-    size: input.params.size,
-    n: input.params.n,
-    model: input.params.model
+    size: params.size,
+    n: params.n,
+    model: params.model
   });
   const sessionId = input.sessionId ?? newId("ses");
-  const title = input.params.prompt.trim().slice(0, 20) || "Untitled";
+  const title = params.title?.trim().slice(0, 80) || defaultSessionTitle(timestamp);
 
   const existingSession = input.sessionId
     ? await db.query.sessions.findFirst({
@@ -89,7 +270,7 @@ export async function createGenerateTask(
       id: sessionId,
       userId: input.userId,
       title,
-      mode: input.params.mode,
+      mode: params.mode,
       providerKeyId: key.id,
       settings,
       createdAt: timestamp,
@@ -108,8 +289,8 @@ export async function createGenerateTask(
       id: userMessageId,
       sessionId,
       role: "user",
-      prompt: input.params.prompt,
-      referenceImageIds: stringifyJson(input.params.referenceImageIds ?? []),
+      prompt: params.prompt,
+      referenceImageIds: stringifyJson(referenceImageIds),
       attachments: stringifyJson([]),
       taskId: null,
       status: "succeeded",
@@ -120,7 +301,7 @@ export async function createGenerateTask(
       id: assistantMessageId,
       sessionId,
       role: "assistant",
-      prompt: input.params.prompt,
+      prompt: params.prompt,
       referenceImageIds: stringifyJson([]),
       attachments: stringifyJson([]),
       taskId,
@@ -136,8 +317,8 @@ export async function createGenerateTask(
     userId: input.userId,
     providerKeyId: key.id,
     status: "queued",
-    mode: input.params.mode,
-    params: stringifyJson(input.params),
+    mode: params.mode,
+    params: stringifyJson(params),
     errorCode: null,
     errorMsg: null,
     providerRequestId: null,
@@ -149,12 +330,23 @@ export async function createGenerateTask(
   });
   await db
     .update(sessions)
-    .set({ updatedAt: timestamp, lastMessageAt: timestamp })
+    .set({
+      mode: params.mode,
+      providerKeyId: key.id,
+      settings,
+      updatedAt: timestamp,
+      lastMessageAt: timestamp
+    })
     .where(eq(sessions.id, sessionId));
 
-  await tryConsumeQuota(env, input.userId, input.params.n, taskId);
+  await tryConsumeQuota(env, input.userId, params.n, taskId);
 
-  return { taskId, sessionId, messageId: assistantMessageId };
+  return {
+    taskId,
+    sessionId,
+    messageId: assistantMessageId,
+    title: existingSession?.title ?? title
+  };
 }
 
 export async function runGenerateTask(
@@ -163,31 +355,33 @@ export async function runGenerateTask(
   notify: (event: TaskEvent) => Promise<void> = async () => undefined
 ): Promise<void> {
   const db = getDb(env);
+  const startedAt = now();
+  const claimed = await claimGenerateTask(env, taskId, startedAt);
+  if (!claimed) return;
   const task = await db.query.tasks.findFirst({ where: eq(tasks.id, taskId) });
-  if (!task || task.status === "cancelled") return;
+  if (!task) return;
   const params = parseJson<GenerateParams>(task.params, {
     prompt: "",
     mode: "text2image",
     size: "1024x1024",
     n: 1
   });
-  const startedAt = now();
-  await db.update(tasks).set({ status: "running", startedAt }).where(eq(tasks.id, taskId));
   await db.update(messages).set({ status: "running" }).where(eq(messages.id, task.messageId));
   await notify({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
 
   try {
     const key = await db.query.providerKeys.findFirst({
-      where: eq(providerKeys.id, task.providerKeyId)
+      where: and(eq(providerKeys.id, task.providerKeyId), isNull(providerKeys.deletedAt))
     });
     if (!key || !key.enabled) throw appError("PROVIDER_ERROR", "Provider key disabled");
     const provider = await db.query.providers.findFirst({
-      where: eq(providers.id, key.providerId)
+      where: and(eq(providers.id, key.providerId), isNull(providers.deletedAt))
     });
     if (!provider || !provider.enabled) throw appError("PROVIDER_ERROR", "Provider disabled");
     const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
     const providerImpl = getProvider(provider.requestFormat);
-    const referenceImages = await loadReferenceImages(env, params.referenceImageIds ?? []);
+    const referenceImageIds = params.mode === "image2image" ? (params.referenceImageIds ?? []) : [];
+    const referenceImages = await loadReferenceImages(env, referenceImageIds);
     const chatMessages =
       params.mode === "chat"
         ? await buildChatMessages(env, task.sessionId, params.prompt)
@@ -196,24 +390,20 @@ export async function runGenerateTask(
     const rawResponses: unknown[] = [];
     const requestIds: string[] = [];
     const textResponses: string[] = [];
-
-    for (let index = 0; index < params.n; index += 1) {
+    let completedGenerations = 0;
+    const generateOne = async (index: number) => {
       const response = await providerImpl.generate({
         prompt: params.prompt,
         mode: params.mode,
         size: params.size,
-        model: params.model ?? provider.defaultModel,
+        model: params.model ?? key.model ?? provider.defaultModel,
         apiKey,
         baseUrl: provider.baseUrl,
         referenceImages,
         messages: chatMessages
       });
-      if (response.requestId) requestIds.push(response.requestId);
-      rawResponses.push(redactProviderResponse(response.raw));
-      if (response.images.length === 0 && response.text) {
-        textResponses.push(response.text);
-        rawResponses.push({ text: response.text });
-      }
+      const generatedImages: ImageAttachment[] = [];
+      const generatedRawResponses = [redactProviderResponse(response.raw)];
       for (const providerImage of response.images) {
         const stored = await persistProviderImage(env, {
           image: providerImage,
@@ -222,17 +412,46 @@ export async function runGenerateTask(
           taskId
         });
         const attachment = { ...stored, prompt: params.prompt };
-        images.push(attachment);
+        generatedImages.push(attachment);
         await notify({
           type: "task.image",
           task: { id: taskId, status: "running" },
           image: attachment
         });
       }
+      if (response.images.length === 0 && response.text) {
+        generatedRawResponses.push({ text: response.text });
+      }
+      completedGenerations += 1;
       await notify({
         type: "task.update",
-        task: { id: taskId, status: "running", progress: 0.1 + ((index + 1) / params.n) * 0.75 }
+        task: {
+          id: taskId,
+          status: "running",
+          progress: 0.1 + (completedGenerations / params.n) * 0.75
+        }
       });
+      return {
+        index,
+        requestId: response.requestId,
+        rawResponses: generatedRawResponses,
+        textResponse: response.images.length === 0 ? response.text : undefined,
+        images: generatedImages
+      };
+    };
+
+    const generationResults =
+      params.n === 1
+        ? [await generateOne(0)]
+        : await collectParallelGenerationResults(
+            Array.from({ length: params.n }, (_, index) => generateOne(index))
+          );
+
+    for (const result of generationResults.sort((left, right) => left.index - right.index)) {
+      if (result.requestId) requestIds.push(result.requestId);
+      rawResponses.push(...result.rawResponses);
+      if (result.textResponse) textResponses.push(result.textResponse);
+      images.push(...result.images);
     }
 
     const finishedAt = now();
@@ -286,6 +505,89 @@ function logSlowTask(taskId: string, startedAt: number, finishedAt: number): voi
   const durationMs = finishedAt - startedAt;
   if (durationMs <= 120_000) return;
   console.warn(JSON.stringify({ event: "task.slow", taskId, durationMs }));
+}
+
+async function claimGenerateTask(
+  env: AppBindings,
+  taskId: string,
+  startedAt: number
+): Promise<boolean> {
+  const staleBefore = startedAt - INTERRUPTED_TASK_TIMEOUT_MS;
+  const result = await env.DB.prepare(
+    `UPDATE tasks
+     SET status = 'running',
+         started_at = ?1,
+         finished_at = NULL,
+         error_code = NULL,
+         error_msg = NULL
+     WHERE id = ?2
+       AND (
+         status = 'queued'
+         OR (status = 'running' AND (started_at IS NULL OR started_at <= ?3))
+       )`
+  )
+    .bind(startedAt, taskId, staleBefore)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+async function claimRecoveryWindow(env: AppBindings): Promise<boolean> {
+  try {
+    const active = await env.KV.get(TASK_RECOVERY_THROTTLE_KEY);
+    if (active) return false;
+    await env.KV.put(TASK_RECOVERY_THROTTLE_KEY, String(now()), {
+      expirationTtl: TASK_RECOVERY_THROTTLE_SECONDS
+    });
+    return true;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        event: "task.recovery_throttle_failed",
+        message: error instanceof Error ? error.message : "Task recovery throttle failed"
+      })
+    );
+    return true;
+  }
+}
+
+export async function broadcastTaskEvent(
+  env: AppBindings,
+  taskId: string,
+  event: TaskEvent
+): Promise<void> {
+  if (!env.TASK_ROOM) return;
+  const id = env.TASK_ROOM.idFromName(taskId);
+  const stub = env.TASK_ROOM.get(id);
+  await stub.updateStatus(event);
+}
+
+async function startWorkflowGenerateTask(env: AppBindings, taskId: string): Promise<void> {
+  const workflow = env.GEN_WORKFLOW;
+  if (!workflow) return;
+  try {
+    await workflow.create({ id: taskId, params: { taskId } });
+    return;
+  } catch {
+    const instance = await workflow.get(taskId);
+    const status = await instance.status();
+    if (status.status === "paused") {
+      await instance.resume();
+      return;
+    }
+    if (["errored", "terminated", "complete", "unknown"].includes(status.status)) {
+      await instance.restart();
+    }
+  }
+}
+
+async function collectParallelGenerationResults<T>(jobs: Array<Promise<T>>): Promise<T[]> {
+  const settled = await Promise.allSettled(jobs);
+  const failed = settled.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  return settled.map((result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  });
 }
 
 async function buildChatMessages(

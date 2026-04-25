@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -23,7 +23,7 @@ import { rateLimit } from "../middleware/rateLimit";
 import type { AppEnv } from "../types";
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(8),
   turnstileToken: z.string().optional()
 });
@@ -41,17 +41,19 @@ authRoutes.post(
       throw appError("FORBIDDEN", "Turnstile verification failed");
     }
     const db = getDb(c.env);
+    const identifier = body.email.trim();
+    if (!identifier) throw appError("VALIDATION_ERROR", "Username/email is required");
     const user = await db.query.users.findFirst({
-      where: eq(users.email, body.email.toLowerCase())
+      where: or(eq(users.email, identifier.toLowerCase()), eq(users.username, identifier))
     });
     if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
       await audit(c.env, {
         action: "auth.login_failed",
         targetType: "user",
-        targetId: body.email,
+        targetId: identifier,
         ip
       });
-      throw appError("UNAUTHORIZED", "Invalid email or password");
+      throw appError("UNAUTHORIZED", "Invalid username/email or password");
     }
     if (user.status !== "active") throw appError("FORBIDDEN", "User disabled");
     const accessToken = await signJwt(
@@ -155,6 +157,7 @@ authRoutes.post(
 function publicUser(user: {
   id: string;
   email: string;
+  username: string;
   nickname: string;
   role: string;
   status: string;
@@ -163,6 +166,7 @@ function publicUser(user: {
   return {
     id: user.id,
     email: user.email,
+    username: user.username,
     nickname: user.nickname,
     role: user.role,
     status: user.status,

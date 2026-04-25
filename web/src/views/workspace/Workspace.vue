@@ -1,7 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
+import {
+  Image as ImageIcon,
+  ImageOff,
+  Loader2,
+  MessageSquare,
+  Plus,
+  RotateCw,
+  Sparkles,
+  Type,
+  Wifi
+} from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ChatInput from "@/components/chat/ChatInput.vue";
 import ChatMessage from "@/components/chat/ChatMessage.vue";
@@ -10,6 +22,7 @@ import { apiFetch } from "@/api/client";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import {
   useSessionStore,
+  type ActiveGeneration,
   type ImageAttachment,
   type Message,
   type SessionMode
@@ -18,13 +31,111 @@ import { useAuthStore } from "@/stores/auth";
 
 const route = useRoute();
 const router = useRouter();
+const { t } = useI18n();
 const sessions = useSessionStore();
 const auth = useAuthStore();
 const selectedImage = ref<ImageAttachment | null>(null);
+const activePreviewImageId = ref<string | null>(null);
+const activeMode = ref<SessionMode>("text2image");
+const draftTitle = ref(defaultSessionTitle());
+const submitting = ref(false);
 const messageList = ref<HTMLElement | null>(null);
 const topSentinel = ref<HTMLElement | null>(null);
 const allImages = computed(() => sessions.messages.flatMap((message) => message.attachments));
+const resultImages = computed(() => {
+  for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
+    const message = sessions.messages[index];
+    if (message?.attachments.length) return message.attachments;
+  }
+  return [];
+});
+const activePreviewImage = computed(
+  () =>
+    resultImages.value.find((image) => image.id === activePreviewImageId.value) ??
+    resultImages.value[0] ??
+    null
+);
+const runningMessages = computed(() => sessions.messages.filter(isGeneratingMessage));
+const activeRunningMessage = computed(() => {
+  const messages = runningMessages.value;
+  return messages[messages.length - 1] ?? null;
+});
+const hasRunningTask = computed(() => runningMessages.value.length > 0);
+const latestResultMessage = computed(() => {
+  for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
+    const message = sessions.messages[index];
+    if (message?.role === "assistant" && (message.taskId || message.attachments.length)) {
+      return message;
+    }
+  }
+  return null;
+});
+const activeFailedMessage = computed(() => {
+  const message = latestResultMessage.value;
+  if (!message || hasRunningTask.value) return null;
+  return message.status === "failed" && message.attachments.length === 0 ? message : null;
+});
+const isConversationMode = computed(() => activeMode.value === "chat");
+const promptRecords = computed(() =>
+  sessions.messages
+    .filter((message) => message.role === "user" && message.prompt)
+    .slice(-6)
+    .reverse()
+);
+const latestPrompt = computed(() => promptRecords.value[0]?.prompt ?? "");
+const generationProgress = computed(() => {
+  const progress = activeRunningMessage.value?.progress;
+  if (typeof progress === "number") return Math.min(99, Math.max(6, Math.round(progress * 100)));
+  return activeRunningMessage.value?.status === "queued" ? 6 : 28;
+});
+const generationStatusLabel = computed(() =>
+  activeRunningMessage.value?.status === "queued"
+    ? t("common.queued")
+    : t("workspace.generationRunning")
+);
+const generationPrompt = computed(() => activeRunningMessage.value?.prompt ?? latestPrompt.value);
+const failedPrompt = computed(() => activeFailedMessage.value?.prompt ?? latestPrompt.value);
+const inputLoading = computed(() => submitting.value || sessions.loading);
+const latestUserMessage = computed(() => {
+  for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
+    const message = sessions.messages[index];
+    if (message?.role === "user" && message.prompt) return message;
+  }
+  return null;
+});
+const oneShotTaskLocked = computed(
+  () =>
+    activeMode.value !== "chat" &&
+    sessions.messages.some((message) => message.role === "assistant" && Boolean(message.taskId))
+);
+const taskInputMode = computed<SessionMode>({
+  get: () => {
+    if (oneShotTaskLocked.value && latestUserMessage.value?.referenceImageIds.length) {
+      return "image2image";
+    }
+    return activeMode.value;
+  },
+  set: (mode) => {
+    activeMode.value = mode;
+  }
+});
+const currentGenerationSettings = computed(() => ({
+  size: sessions.currentSession?.settings?.size ?? "1024x1024",
+  n: sessions.currentSession?.settings?.n ?? 1
+}));
+const latestReferenceCount = computed(() => latestUserMessage.value?.referenceImageIds.length ?? 0);
+const sessionTitle = computed(() => sessions.currentSession?.title ?? draftTitle.value);
+const canEditTitle = computed(() => !sessions.currentSessionId && !hasRunningTask.value);
+const modeSelectionDisabled = computed(
+  () => submitting.value || hasRunningTask.value || oneShotTaskLocked.value
+);
+const modeOptions = computed(() => [
+  { value: "text2image" as const, label: t("workspace.text2image"), icon: Type },
+  { value: "image2image" as const, label: t("workspace.image2image"), icon: ImageIcon },
+  { value: "chat" as const, label: t("workspace.continuousChat"), icon: MessageSquare }
+]);
 let messageObserver: IntersectionObserver | null = null;
+let restoringActiveGeneration = false;
 const { status, connect, disconnect } = useTaskWebSocket((payload) => {
   sessions.applyTaskEvent(payload);
   const eventType =
@@ -38,25 +149,115 @@ const { status, connect, disconnect } = useTaskWebSocket((payload) => {
 
 onMounted(async () => {
   await sessions.loadSessions();
-  const routeSessionId =
-    typeof route.params.sessionId === "string" ? route.params.sessionId : sessions.currentSessionId;
-  if (routeSessionId) await sessions.loadMessages(routeSessionId);
+  const restored = await restoreActiveGenerationIfNeeded();
+  const routeSessionId = currentRouteSessionId();
+  if (!restored && routeSessionId) {
+    await sessions.loadMessages(routeSessionId);
+  } else if (!restored) {
+    resetWorkspaceDraft();
+  }
   await nextTick();
   setupMessageObserver();
 });
 
-onBeforeUnmount(() => messageObserver?.disconnect());
+onBeforeUnmount(() => {
+  messageObserver?.disconnect();
+});
 
 watch(
   () => route.params.sessionId,
   async (id) => {
-    if (typeof id === "string") await sessions.loadMessages(id);
+    if (restoringActiveGeneration) return;
+    const restored = await restoreActiveGenerationIfNeeded();
+    if (restored) return;
+    if (typeof id === "string") {
+      await sessions.loadMessages(id);
+    } else {
+      resetWorkspaceDraft();
+    }
   }
 );
 
+watch(
+  () => sessions.currentSession?.mode,
+  (mode) => {
+    if (mode) activeMode.value = mode;
+  },
+  { immediate: true }
+);
+
+watch(
+  resultImages,
+  (images) => {
+    if (!images.length) {
+      activePreviewImageId.value = null;
+      return;
+    }
+    if (!images.some((image) => image.id === activePreviewImageId.value)) {
+      activePreviewImageId.value = images[0]?.id ?? null;
+    }
+  },
+  { immediate: true }
+);
+
+watch(isConversationMode, async (enabled) => {
+  if (!enabled) return;
+  await nextTick();
+  setupMessageObserver();
+});
+
 async function newSession() {
-  const session = await sessions.createSession();
-  await router.push(`/workspace/s/${session.id}`);
+  if (!auth.isSysadmin && hasRunningTask.value) {
+    await restoreActiveGenerationIfNeeded();
+    return;
+  }
+  disconnect();
+  resetWorkspaceDraft();
+  await router.push("/workspace");
+}
+
+function currentRouteSessionId() {
+  return typeof route.params.sessionId === "string" ? route.params.sessionId : null;
+}
+
+async function restoreActiveGenerationIfNeeded() {
+  if (auth.isSysadmin || restoringActiveGeneration) return false;
+  const active = await sessions.loadActiveGeneration();
+  if (!active) return false;
+  await openActiveGeneration(active);
+  return true;
+}
+
+async function openActiveGeneration(active: ActiveGeneration) {
+  restoringActiveGeneration = true;
+  try {
+    await sessions.loadMessages(active.sessionId);
+    connect(`/ws/task/${active.taskId}`);
+    if (currentRouteSessionId() !== active.sessionId) {
+      await router.replace(`/workspace/s/${active.sessionId}`);
+    }
+  } finally {
+    restoringActiveGeneration = false;
+  }
+}
+
+function resetWorkspaceDraft() {
+  sessions.currentSessionId = null;
+  sessions.messages = [];
+  sessions.nextMessageCursor = null;
+  activePreviewImageId.value = null;
+  selectedImage.value = null;
+  activeMode.value = "text2image";
+  draftTitle.value = defaultSessionTitle();
+}
+
+function setActiveMode(mode: SessionMode) {
+  if (modeSelectionDisabled.value) return;
+  activeMode.value = mode;
+}
+
+function isGeneratingMessage(message: Message) {
+  return message.status === "queued" || message.status === "running";
 }
 
 function setupMessageObserver() {
@@ -83,9 +284,16 @@ async function submit(input: {
   n: number;
   files: File[];
 }) {
+  if (submitting.value || hasRunningTask.value) return;
+  if (input.mode !== "chat" && oneShotTaskLocked.value) return;
+  if (input.mode === "image2image" && input.files.length === 0) {
+    toast.error(t("workspace.referenceRequired"));
+    return;
+  }
+  submitting.value = true;
   try {
     let referenceImageIds: string[] = [];
-    if (input.files.length) {
+    if (input.mode === "image2image" && input.files.length) {
       const form = new FormData();
       input.files.forEach((file) => form.append("files", file));
       const uploaded = await apiFetch<{ images: ImageAttachment[] }>("/uploads", {
@@ -94,115 +302,605 @@ async function submit(input: {
       });
       referenceImageIds = uploaded.images.map((image) => image.id);
     }
-    const task = await sessions.generate({ ...input, referenceImageIds });
+    const task = await sessions.generate({
+      title: draftTitle.value.trim() || defaultSessionTitle(),
+      prompt: input.prompt,
+      mode: input.mode,
+      size: input.size,
+      n: input.n,
+      referenceImageIds
+    });
     connect(task.wsUrl);
+    draftTitle.value = task.title;
     await router.replace(`/workspace/s/${task.sessionId}`);
   } catch (error) {
+    const activeGeneration = activeGenerationFromError(error);
+    if (activeGeneration && !auth.isSysadmin) {
+      await openActiveGeneration(activeGeneration);
+      return;
+    }
     const message =
       error && typeof error === "object" && "error" in error
         ? (error as { error: { message: string } }).error.message
-        : "提交失败";
+        : t("workspace.submitFailed");
     toast.error(message);
+  } finally {
+    submitting.value = false;
   }
 }
 
 async function retry(message: Message) {
   if (!message.taskId) return;
-  const body = await apiFetch<{ taskId: string }>(`/tasks/${message.taskId}/retry`, {
-    method: "POST"
-  });
-  connect(`/ws/task/${body.taskId}`);
+  try {
+    const body = await apiFetch<{ taskId: string; sessionId: string; messageId: string }>(
+      `/tasks/${message.taskId}/retry`,
+      {
+        method: "POST"
+      }
+    );
+    const createdAt = Date.now();
+    sessions.messages.push({
+      id: `local-retry-${createdAt}`,
+      sessionId: body.sessionId,
+      role: "user",
+      prompt: message.prompt,
+      attachments: [],
+      referenceImageIds: findSourceReferenceImageIds(message),
+      status: "succeeded",
+      createdAt
+    });
+    sessions.messages.push({
+      id: body.messageId,
+      sessionId: body.sessionId,
+      role: "assistant",
+      prompt: message.prompt,
+      attachments: [],
+      referenceImageIds: [],
+      taskId: body.taskId,
+      status: "queued",
+      progress: 0,
+      createdAt: createdAt + 1
+    });
+    connect(`/ws/task/${body.taskId}`);
+  } catch (error) {
+    const activeGeneration = activeGenerationFromError(error);
+    if (activeGeneration && !auth.isSysadmin) {
+      await openActiveGeneration(activeGeneration);
+      return;
+    }
+    const errorMessage =
+      error && typeof error === "object" && "error" in error
+        ? (error as { error: { message: string } }).error.message
+        : t("workspace.submitFailed");
+    toast.error(errorMessage);
+  }
+}
+
+function findSourceReferenceImageIds(message: Message) {
+  const messageIndex = sessions.messages.findIndex((item) => item.id === message.id);
+  const endIndex = messageIndex >= 0 ? messageIndex - 1 : sessions.messages.length - 1;
+  for (let index = endIndex; index >= 0; index -= 1) {
+    const candidate = sessions.messages[index];
+    if (candidate?.sessionId === message.sessionId && candidate.role === "user") {
+      return candidate.referenceImageIds;
+    }
+  }
+  return [];
+}
+
+function activeGenerationFromError(error: unknown): ActiveGeneration | null {
+  if (!error || typeof error !== "object" || !("error" in error)) return null;
+  const details = (error as { error?: { details?: unknown } }).error?.details;
+  if (!details || typeof details !== "object") return null;
+  const activeGeneration = (details as { activeGeneration?: ActiveGeneration }).activeGeneration;
+  if (
+    activeGeneration &&
+    typeof activeGeneration.taskId === "string" &&
+    typeof activeGeneration.sessionId === "string"
+  ) {
+    if (activeGeneration.session) sessions.upsertSession(activeGeneration.session);
+    return activeGeneration;
+  }
+  return null;
+}
+
+async function retryFailedResult() {
+  if (!activeFailedMessage.value) return;
+  await retry(activeFailedMessage.value);
 }
 
 function openImage(image: ImageAttachment) {
   selectedImage.value = image;
 }
 
+function openActivePreview() {
+  if (activePreviewImage.value) openImage(activePreviewImage.value);
+}
+
 async function deleteImageMessage(image: ImageAttachment) {
   if (!image.sessionId || !image.messageId) return;
-  if (!window.confirm("删除这条消息及其图片记录?")) return;
+  if (!window.confirm(t("workspace.deleteConfirm"))) return;
   await apiFetch(`/sessions/${image.sessionId}/messages/${image.messageId}`, { method: "DELETE" });
   sessions.messages = sessions.messages.filter((message) => message.id !== image.messageId);
   selectedImage.value = null;
-  toast.success("消息已删除");
+  toast.success(t("workspace.messageDeleted"));
+}
+
+function defaultSessionTitle(date = new Date()) {
+  const year = date.getFullYear();
+  const month = padDatePart(date.getMonth() + 1);
+  const day = padDatePart(date.getDate());
+  const hour = padDatePart(date.getHours());
+  const minute = padDatePart(date.getMinutes());
+  const second = padDatePart(date.getSeconds());
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
 }
 </script>
 
 <template>
   <AppShell>
-    <div class="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside class="panel h-[calc(100vh-7.5rem)] overflow-hidden">
-        <div class="flex items-center justify-between border-b border-border p-3">
-          <h2 class="text-sm font-semibold">会话</h2>
+    <div class="workspace-page">
+      <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div class="min-w-0">
+          <h1 class="text-2xl font-semibold">{{ t("workspace.title") }}</h1>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
           <button
-            class="ui-button ui-button-primary h-8 px-3 text-xs"
+            class="ui-button ui-button-primary h-9 px-3 text-sm"
             type="button"
+            :disabled="(!auth.isSysadmin && hasRunningTask) || submitting"
             @click="newSession"
           >
-            新会话
+            <Plus class="h-4 w-4" />
+            {{ t("workspace.newGeneration") }}
           </button>
-        </div>
-        <div class="thin-scrollbar h-full overflow-y-auto p-2">
-          <RouterLink
-            v-for="session in sessions.sessions"
-            :key="session.id"
-            :to="`/workspace/s/${session.id}`"
-            class="block rounded-lg px-3 py-2 text-sm hover:bg-muted"
-            :class="
-              session.id === sessions.currentSessionId
-                ? 'bg-muted font-semibold'
-                : 'text-muted-foreground'
-            "
+          <div
+            class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"
           >
-            <span class="block truncate">{{ session.title }}</span>
-            <span class="text-xs">{{ new Date(session.lastMessageAt).toLocaleString() }}</span>
-          </RouterLink>
-        </div>
-      </aside>
-
-      <section class="flex h-[calc(100vh-7.5rem)] min-w-0 flex-col">
-        <div class="mb-3 flex items-center justify-between">
-          <div>
-            <h1 class="text-lg font-semibold">{{ sessions.currentSession?.title ?? "工作台" }}</h1>
-            <p class="text-xs text-muted-foreground">WebSocket: {{ status }}</p>
+            <Wifi class="h-3.5 w-3.5" />
+            {{ t("workspace.websocket") }}: {{ status }}
           </div>
-          <div class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+          <div
+            v-if="hasRunningTask"
+            class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-foreground"
+          >
+            <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
+            {{ generationStatusLabel }}
+            <span class="tabular-nums text-muted-foreground">
+              {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+            </span>
+          </div>
+          <div
+            class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"
+          >
+            <Sparkles class="h-3.5 w-3.5" />
             {{
               auth.quota?.remainingQuota === null
-                ? "无限配额"
-                : `剩余 ${auth.quota?.remainingQuota ?? 0}`
+                ? t("workspace.quotaUnlimited")
+                : t("workspace.quotaRemaining", { count: auth.quota?.remainingQuota ?? 0 })
             }}
           </div>
         </div>
-        <div
-          ref="messageList"
-          class="thin-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-border bg-muted/40 p-4"
-        >
-          <div ref="topSentinel" class="h-px"></div>
-          <div
-            v-if="sessions.olderMessagesLoading"
-            class="py-2 text-center text-xs text-muted-foreground"
-          >
-            加载更早消息...
+      </header>
+
+      <section class="panel p-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <h2 class="text-sm font-semibold">{{ t("workspace.generationMode") }}</h2>
           </div>
-          <div
-            v-if="!sessions.messages.length"
-            class="flex h-full items-center justify-center text-sm text-muted-foreground"
-          >
-            输入 Prompt 开始生成图片
+          <div class="grid gap-2 sm:grid-cols-3 lg:w-auto lg:min-w-[30rem]">
+            <button
+              v-for="option in modeOptions"
+              :key="option.value"
+              class="flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition"
+              :class="[
+                activeMode === option.value
+                  ? 'border-primary bg-primary/10 text-foreground'
+                  : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
+                modeSelectionDisabled ? 'cursor-not-allowed opacity-70' : ''
+              ]"
+              type="button"
+              :aria-pressed="activeMode === option.value"
+              :disabled="modeSelectionDisabled"
+              @click="setActiveMode(option.value)"
+            >
+              <component :is="option.icon" class="h-4 w-4" />
+              <span>{{ option.label }}</span>
+            </button>
           </div>
-          <ChatMessage
-            v-for="message in sessions.messages"
-            :key="message.id"
-            :message="message"
-            @open="openImage"
-            @retry="retry"
-          />
-        </div>
-        <div class="mt-3">
-          <ChatInput :loading="sessions.loading" @submit="submit" />
         </div>
       </section>
+
+      <div
+        class="workspace-grid"
+        :class="isConversationMode ? 'workspace-grid--chat' : 'workspace-grid--task'"
+      >
+        <template v-if="isConversationMode">
+          <section
+            class="conversation-panel panel flex min-h-[34rem] min-w-0 flex-col overflow-hidden"
+          >
+            <div class="flex items-center justify-between border-b border-border px-4 py-3">
+              <h2 class="text-sm font-semibold">{{ t("workspace.continuousChat") }}</h2>
+              <span
+                class="inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+              >
+                <Loader2 v-if="hasRunningTask" class="h-3.5 w-3.5 animate-spin text-primary" />
+                <span v-else class="h-1.5 w-1.5 rounded-full bg-muted-foreground/50"></span>
+                <template v-if="hasRunningTask">
+                  {{ generationStatusLabel }}
+                  <span class="tabular-nums">
+                    {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                  </span>
+                </template>
+                <template v-else>{{ status }}</template>
+              </span>
+            </div>
+            <div
+              ref="messageList"
+              class="thin-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/30 p-4"
+            >
+              <div ref="topSentinel" class="h-px"></div>
+              <div
+                v-if="sessions.olderMessagesLoading"
+                class="py-2 text-center text-xs text-muted-foreground"
+              >
+                {{ t("workspace.loadingOlder") }}
+              </div>
+              <div
+                v-if="!sessions.messages.length"
+                class="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
+              >
+                <ImageIcon class="h-8 w-8" />
+                {{ t("workspace.conversationEmpty") }}
+              </div>
+              <ChatMessage
+                v-for="message in sessions.messages"
+                :key="message.id"
+                :message="message"
+                @open="openImage"
+                @retry="retry"
+              />
+            </div>
+          </section>
+
+          <aside class="conversation-side min-h-0">
+            <section class="panel overflow-hidden">
+              <div class="border-b border-border px-4 py-3">
+                <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
+              </div>
+              <div class="p-4">
+                <label v-if="canEditTitle" class="block">
+                  <span class="sr-only">{{ t("workspace.sessionTitle") }}</span>
+                  <input
+                    v-model="draftTitle"
+                    class="ui-field h-10 px-3 text-sm"
+                    maxlength="80"
+                    :placeholder="t('workspace.sessionTitlePlaceholder')"
+                    :disabled="submitting"
+                  />
+                </label>
+                <p v-else class="truncate text-sm leading-6 text-muted-foreground">
+                  {{ sessionTitle }}
+                </p>
+              </div>
+            </section>
+
+            <section class="panel flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div class="flex items-center justify-between border-b border-border px-4 py-3">
+                <h2 class="text-sm font-semibold">{{ t("workspace.latestResult") }}</h2>
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <span
+                    v-if="hasRunningTask"
+                    class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-foreground"
+                  >
+                    <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
+                    {{ generationStatusLabel }}
+                  </span>
+                  <span
+                    v-else-if="activeFailedMessage"
+                    class="inline-flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs font-semibold text-destructive"
+                  >
+                    <ImageOff class="h-3.5 w-3.5" />
+                    {{ t("workspace.generationFailed") }}
+                  </span>
+                  <span
+                    class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+                  >
+                    {{ resultImages.length }}
+                  </span>
+                </div>
+              </div>
+              <div
+                v-if="activeFailedMessage"
+                class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+              >
+                <div
+                  class="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+                >
+                  <ImageOff class="h-8 w-8" />
+                </div>
+                <div class="max-w-sm">
+                  <p class="text-base font-semibold">{{ t("workspace.generationFailed") }}</p>
+                  <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                    {{ failedPrompt || t("workspace.generationFailedHint") }}
+                  </p>
+                </div>
+                <button
+                  class="ui-button ui-button-secondary h-9 border-destructive/30 text-destructive"
+                  type="button"
+                  @click="retryFailedResult"
+                >
+                  <RotateCw class="h-4 w-4" />
+                  {{ t("common.retry") }}
+                </button>
+              </div>
+              <div v-else-if="activePreviewImage" class="flex min-h-0 flex-1 flex-col p-3">
+                <button
+                  class="group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-border bg-background"
+                  type="button"
+                  :title="t('workspace.openPreview')"
+                  @click="openActivePreview"
+                >
+                  <img
+                    class="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.01]"
+                    :src="activePreviewImage.url"
+                    alt=""
+                  />
+                  <div
+                    v-if="hasRunningTask"
+                    class="absolute inset-x-3 bottom-3 rounded-lg border border-primary/25 bg-card/95 p-3 text-left shadow-sm backdrop-blur"
+                  >
+                    <div class="flex items-center gap-2 text-sm font-semibold">
+                      <Loader2 class="h-4 w-4 animate-spin text-primary" />
+                      {{ t("workspace.generatingNewResult") }}
+                      <span class="ml-auto text-xs tabular-nums text-muted-foreground">
+                        {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                      </span>
+                    </div>
+                    <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+                      <div
+                        class="h-full rounded-full bg-primary transition-all duration-500"
+                        :style="{ width: `${generationProgress}%` }"
+                      ></div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+              <div
+                v-else-if="hasRunningTask"
+                class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
+              >
+                <div
+                  class="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary"
+                >
+                  <Loader2 class="h-7 w-7 animate-spin" />
+                </div>
+                <div class="max-w-sm">
+                  <p class="text-base font-semibold">{{ generationStatusLabel }}</p>
+                  <p class="mt-2 text-sm leading-6 text-muted-foreground">
+                    {{ generationPrompt || t("workspace.generationHint") }}
+                  </p>
+                </div>
+                <div class="w-full max-w-xs">
+                  <div class="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{{ t("workspace.generationHint") }}</span>
+                    <span class="tabular-nums">
+                      {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                    </span>
+                  </div>
+                  <div class="mt-2 h-2 overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      class="h-full rounded-full bg-primary transition-all duration-500"
+                      :style="{ width: `${generationProgress}%` }"
+                    ></div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-else
+                class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
+              >
+                <ImageIcon class="h-10 w-10" />
+                {{ t("workspace.noResult") }}
+              </div>
+            </section>
+
+            <ChatInput
+              class="workspace-settings-panel"
+              :mode="activeMode"
+              :generating="hasRunningTask"
+              :loading="inputLoading"
+              :allow-custom-count="auth.isSysadmin"
+              variant="chat"
+              @submit="submit"
+            />
+          </aside>
+        </template>
+
+        <template v-else>
+          <section
+            class="task-result-panel panel flex min-h-[34rem] min-w-0 flex-col overflow-hidden"
+          >
+            <div class="flex items-center justify-between border-b border-border px-4 py-3">
+              <div>
+                <h2 class="text-sm font-semibold">{{ t("workspace.result") }}</h2>
+                <p class="mt-1 text-xs text-muted-foreground">
+                  {{ latestPrompt || t("workspace.oneShotEmpty") }}
+                </p>
+              </div>
+              <div class="flex flex-wrap items-center justify-end gap-2">
+                <span
+                  v-if="hasRunningTask"
+                  class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-foreground"
+                >
+                  <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
+                  {{ generationStatusLabel }}
+                </span>
+                <span
+                  v-else-if="activeFailedMessage"
+                  class="inline-flex items-center gap-2 rounded-full border border-destructive/30 bg-destructive/5 px-2.5 py-1 text-xs font-semibold text-destructive"
+                >
+                  <ImageOff class="h-3.5 w-3.5" />
+                  {{ t("workspace.generationFailed") }}
+                </span>
+                <span
+                  class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground"
+                >
+                  {{ resultImages.length }}
+                </span>
+              </div>
+            </div>
+            <div
+              v-if="activeFailedMessage"
+              class="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-6 text-center"
+            >
+              <div
+                class="flex h-20 w-20 items-center justify-center rounded-full bg-destructive/10 text-destructive"
+              >
+                <ImageOff class="h-10 w-10" />
+              </div>
+              <div class="max-w-xl">
+                <p class="text-xl font-semibold">{{ t("workspace.generationFailed") }}</p>
+                <p class="mt-3 text-sm leading-6 text-muted-foreground">
+                  {{ failedPrompt || t("workspace.generationFailedHint") }}
+                </p>
+              </div>
+              <button
+                class="ui-button ui-button-secondary h-9 border-destructive/30 text-destructive"
+                type="button"
+                @click="retryFailedResult"
+              >
+                <RotateCw class="h-4 w-4" />
+                {{ t("common.retry") }}
+              </button>
+            </div>
+            <div v-else-if="activePreviewImage" class="flex min-h-0 flex-1 flex-col p-4">
+              <button
+                class="group relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border border-border bg-background"
+                type="button"
+                :title="t('workspace.openPreview')"
+                @click="openActivePreview"
+              >
+                <img
+                  class="max-h-full max-w-full object-contain transition duration-200 group-hover:scale-[1.01]"
+                  :src="activePreviewImage.url"
+                  alt=""
+                />
+                <div
+                  v-if="hasRunningTask"
+                  class="absolute inset-x-4 bottom-4 rounded-lg border border-primary/25 bg-card/95 p-3 text-left shadow-sm backdrop-blur"
+                >
+                  <div class="flex items-center gap-2 text-sm font-semibold">
+                    <Loader2 class="h-4 w-4 animate-spin text-primary" />
+                    {{ t("workspace.generatingNewResult") }}
+                    <span class="ml-auto text-xs tabular-nums text-muted-foreground">
+                      {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                    </span>
+                  </div>
+                  <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+                    <div
+                      class="h-full rounded-full bg-primary transition-all duration-500"
+                      :style="{ width: `${generationProgress}%` }"
+                    ></div>
+                  </div>
+                </div>
+              </button>
+              <div
+                v-if="resultImages.length > 1"
+                class="thin-scrollbar mt-3 flex shrink-0 gap-2 overflow-x-auto pb-1"
+              >
+                <button
+                  v-for="image in resultImages"
+                  :key="image.id"
+                  class="h-16 w-20 shrink-0 overflow-hidden rounded-lg border bg-muted transition"
+                  :class="image.id === activePreviewImage.id ? 'border-primary' : 'border-border'"
+                  type="button"
+                  @click="activePreviewImageId = image.id"
+                >
+                  <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
+                </button>
+              </div>
+            </div>
+            <div
+              v-else-if="hasRunningTask"
+              class="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-6 text-center"
+            >
+              <div
+                class="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary"
+              >
+                <Loader2 class="h-9 w-9 animate-spin" />
+              </div>
+              <div class="max-w-xl">
+                <p class="text-xl font-semibold">{{ generationStatusLabel }}</p>
+                <p class="mt-3 text-sm leading-6 text-muted-foreground">
+                  {{ generationPrompt || t("workspace.generationHint") }}
+                </p>
+              </div>
+              <div class="w-full max-w-md">
+                <div class="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{{ t("workspace.generationHint") }}</span>
+                  <span class="tabular-nums">
+                    {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                  </span>
+                </div>
+                <div class="mt-2 h-2.5 overflow-hidden rounded-full bg-primary/15">
+                  <div
+                    class="h-full rounded-full bg-primary transition-all duration-500"
+                    :style="{ width: `${generationProgress}%` }"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div
+              v-else
+              class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground"
+            >
+              <ImageIcon class="h-10 w-10" />
+              {{ t("workspace.noResult") }}
+            </div>
+          </section>
+
+          <aside class="task-side min-h-0">
+            <section class="panel thin-scrollbar max-h-64 overflow-y-auto">
+              <div class="border-b border-border px-4 py-3">
+                <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
+              </div>
+              <div class="p-4">
+                <label v-if="canEditTitle" class="block">
+                  <span class="sr-only">{{ t("workspace.sessionTitle") }}</span>
+                  <input
+                    v-model="draftTitle"
+                    class="ui-field h-10 px-3 text-sm"
+                    maxlength="80"
+                    :placeholder="t('workspace.sessionTitlePlaceholder')"
+                    :disabled="submitting"
+                  />
+                </label>
+                <p v-else class="truncate text-sm leading-6 text-muted-foreground">
+                  {{ sessionTitle }}
+                </p>
+              </div>
+            </section>
+
+            <ChatInput
+              class="workspace-settings-panel"
+              :mode="taskInputMode"
+              :initial-count="currentGenerationSettings.n"
+              :initial-size="currentGenerationSettings.size"
+              :generating="hasRunningTask"
+              :loading="inputLoading"
+              :allow-custom-count="auth.isSysadmin"
+              :read-only="oneShotTaskLocked"
+              :reference-count="latestReferenceCount"
+              @submit="submit"
+            />
+          </aside>
+        </template>
+      </div>
     </div>
     <ImageViewer
       :image="selectedImage"
@@ -213,3 +911,109 @@ async function deleteImageMessage(image: ImageAttachment) {
     />
   </AppShell>
 </template>
+
+<style scoped>
+.workspace-page {
+  display: grid;
+  height: calc(100dvh - 6rem);
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1rem;
+  overflow: hidden;
+}
+
+.workspace-grid,
+.task-side,
+.conversation-side {
+  display: grid;
+  gap: 1rem;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.task-side,
+.conversation-side {
+  align-content: start;
+}
+
+@media (min-width: 1024px) {
+  .workspace-grid--task {
+    grid-template-columns: 22rem minmax(0, 1fr);
+  }
+
+  .workspace-grid--chat {
+    grid-template-columns: 22rem minmax(0, 1fr);
+  }
+
+  .workspace-grid--task .task-side {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .workspace-grid--task .task-result-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .workspace-grid--chat .conversation-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .workspace-grid--chat .conversation-side {
+    grid-column: 1;
+    grid-row: 1;
+  }
+}
+
+@media (min-width: 1280px) {
+  .workspace-grid {
+    height: 100%;
+  }
+
+  .workspace-grid--task {
+    grid-template-columns: 23rem minmax(0, 1fr);
+  }
+
+  .workspace-grid--chat {
+    grid-template-columns: 23rem minmax(0, 1fr);
+  }
+
+  .task-result-panel,
+  .conversation-panel,
+  .task-side,
+  .conversation-side {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .task-side {
+    grid-column: auto;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .conversation-side {
+    grid-column: auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: stretch;
+    overflow: hidden;
+  }
+
+  .workspace-settings-panel {
+    min-height: 0;
+    height: 100%;
+  }
+}
+
+@media (min-width: 1536px) {
+  .workspace-grid--task {
+    grid-template-columns: 24rem minmax(0, 1fr);
+  }
+
+  .workspace-grid--chat {
+    grid-template-columns: 24rem minmax(0, 1fr);
+  }
+}
+</style>

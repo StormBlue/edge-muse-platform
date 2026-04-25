@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   ChevronLeft,
   ChevronRight,
@@ -21,6 +22,7 @@ const emit = defineEmits<{
   delete: [image: ImageAttachment];
 }>();
 
+const { t } = useI18n();
 const scale = ref(1);
 const currentIndex = computed(() =>
   props.image && props.images?.length
@@ -44,9 +46,9 @@ const metadata = computed(() => {
   const size =
     props.image.width && props.image.height
       ? `${props.image.width} x ${props.image.height}`
-      : "size n/a";
+      : t("viewer.sizeUnavailable");
   const bytes = formatBytes(props.image.byteSize);
-  return [size, bytes, props.image.taskId ? `task ${props.image.taskId}` : null]
+  return [size, bytes, props.image.taskId ? `${t("viewer.task")} ${props.image.taskId}` : null]
     .filter(Boolean)
     .join(" / ");
 });
@@ -65,7 +67,7 @@ async function copyPrompt() {
   const prompt = props.image?.prompt;
   if (!prompt) return;
   await navigator.clipboard.writeText(prompt);
-  toast.success("Prompt 已复制");
+  toast.success(t("viewer.promptCopied"));
 }
 
 function move(delta: -1 | 1) {
@@ -104,18 +106,23 @@ function formatBytes(bytes: number) {
         <button
           class="viewer-button"
           type="button"
-          title="Zoom out"
+          :title="t('viewer.zoomOut')"
           @click="scale = Math.max(0.5, scale - 0.25)"
         >
           <ZoomOut class="h-4 w-4" />
         </button>
-        <button class="viewer-button" type="button" title="Reset zoom" @click="scale = 1">
+        <button
+          class="viewer-button"
+          type="button"
+          :title="t('viewer.resetZoom')"
+          @click="scale = 1"
+        >
           <RotateCcw class="h-4 w-4" />
         </button>
         <button
           class="viewer-button"
           type="button"
-          title="Zoom in"
+          :title="t('viewer.zoomIn')"
           @click="scale = Math.min(4, scale + 0.25)"
         >
           <ZoomIn class="h-4 w-4" />
@@ -123,25 +130,35 @@ function formatBytes(bytes: number) {
         <button
           class="viewer-button"
           type="button"
-          title="Copy prompt"
+          :title="t('viewer.copyPrompt')"
           :disabled="!image.prompt"
           @click="copyPrompt"
         >
           <Copy class="h-4 w-4" />
         </button>
-        <a class="viewer-button" :href="image.url" :download="fileName" title="Download">
+        <a
+          class="viewer-button"
+          :href="image.url"
+          :download="fileName"
+          :title="t('viewer.download')"
+        >
           <Download class="h-4 w-4" />
         </a>
         <button
           class="viewer-button"
           type="button"
-          title="Delete message"
+          :title="t('viewer.deleteMessage')"
           :disabled="!image.messageId"
           @click="emit('delete', image)"
         >
           <Trash2 class="h-4 w-4" />
         </button>
-        <button class="viewer-button" type="button" title="Close" @click="emit('close')">
+        <button
+          class="viewer-button"
+          type="button"
+          :title="t('viewer.close')"
+          @click="emit('close')"
+        >
           <X class="h-4 w-4" />
         </button>
       </div>
@@ -152,7 +169,7 @@ function formatBytes(bytes: number) {
         v-if="hasPrevious"
         class="viewer-nav left-4"
         type="button"
-        title="Previous image"
+        :title="t('viewer.previousImage')"
         @click="move(-1)"
       >
         <ChevronLeft class="h-6 w-6" />
@@ -169,7 +186,7 @@ function formatBytes(bytes: number) {
         v-if="hasNext"
         class="viewer-nav right-4"
         type="button"
-        title="Next image"
+        :title="t('viewer.nextImage')"
         @click="move(1)"
       >
         <ChevronRight class="h-6 w-6" />

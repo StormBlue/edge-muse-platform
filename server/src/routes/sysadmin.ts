@@ -1,17 +1,10 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, like, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import {
-  messages,
-  providerKeys,
-  providers,
-  quotas,
-  sessions,
-  userProviderKeys,
-  users
-} from "../db/schema";
+import { messages, providerKeys, providers, quotas, userProviderKeys, users } from "../db/schema";
+import { generatedEmailForUserId, normalizeOptionalEmail } from "../lib/account";
 import { audit } from "../lib/audit";
 import { decryptString, encryptString } from "../lib/crypto";
 import { appError } from "../lib/errors";
@@ -27,6 +20,21 @@ export const sysadminRoutes = new Hono<AppEnv>();
 
 sysadminRoutes.use("*", requireAuth, requireRole("sysadmin"));
 
+type AuditImageAttachment = {
+  id: string;
+  url: string;
+  mime: string;
+  width?: number | null;
+  height?: number | null;
+  byteSize: number;
+  taskId?: string | null;
+  sessionId?: string | null;
+  messageId?: string | null;
+  prompt?: string | null;
+  createdAt?: number | null;
+  generationDurationMs?: number | null;
+};
+
 const providerSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.string().min(1),
@@ -37,7 +45,11 @@ const providerSchema = z.object({
 });
 
 sysadminRoutes.get("/providers", async (c) => {
-  const rows = await getDb(c.env).select().from(providers).orderBy(desc(providers.createdAt));
+  const rows = await getDb(c.env)
+    .select()
+    .from(providers)
+    .where(isNull(providers.deletedAt))
+    .orderBy(desc(providers.createdAt));
   return c.json({
     items: rows.map((row) => ({ ...row, supportedSizes: parseJson(row.supportedSizes, []) }))
   });
@@ -90,13 +102,22 @@ sysadminRoutes.patch("/providers/:id", zValidator("json", providerSchema.partial
 });
 
 sysadminRoutes.delete("/providers/:id", async (c) => {
-  const key = await getDb(c.env).query.providerKeys.findFirst({
-    where: eq(providerKeys.providerId, c.req.param("id"))
-  });
-  if (key) throw appError("VALIDATION_ERROR", "Provider has keys");
+  const providerId = c.req.param("id");
+  const timestamp = now();
   await getDb(c.env)
-    .delete(providers)
-    .where(eq(providers.id, c.req.param("id")));
+    .update(providerKeys)
+    .set({ enabled: false, updatedAt: timestamp, deletedAt: timestamp })
+    .where(eq(providerKeys.providerId, providerId));
+  await getDb(c.env)
+    .update(providers)
+    .set({ enabled: false, updatedAt: timestamp, deletedAt: timestamp })
+    .where(eq(providers.id, providerId));
+  await audit(c.env, {
+    actorId: c.get("user").id,
+    action: "sys.provider_delete",
+    targetType: "provider",
+    targetId: providerId
+  });
   return c.json({ ok: true });
 });
 
@@ -111,14 +132,30 @@ sysadminRoutes.post("/providers/:id/test", async (c) => {
 const keySchema = z.object({
   providerId: z.string(),
   label: z.string().min(1),
+  model: z.string().min(1),
   apiKey: z.string().min(1),
   allocatedQuota: z.number().int().min(0).nullable().optional(),
   ownerAdminId: z.string().nullable().optional(),
   enabled: z.boolean().default(true)
 });
 
+const optionalEmailSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}, z.string().email().optional());
+
+const usernameSchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  return value.trim();
+}, z.string().min(1).max(40));
+
 sysadminRoutes.get("/provider-keys", async (c) => {
-  const rows = await getDb(c.env).select().from(providerKeys).orderBy(desc(providerKeys.createdAt));
+  const rows = await getDb(c.env)
+    .select()
+    .from(providerKeys)
+    .where(isNull(providerKeys.deletedAt))
+    .orderBy(desc(providerKeys.createdAt));
   return c.json({
     items: rows.map(({ encryptedKey: _encryptedKey, ...row }) => row)
   });
@@ -134,6 +171,7 @@ sysadminRoutes.post("/provider-keys", zValidator("json", keySchema), async (c) =
       id,
       providerId: body.providerId,
       label: body.label,
+      model: body.model,
       encryptedKey: await encryptString(body.apiKey, c.env.KEY_ENCRYPTION_KEY),
       keyHint: body.apiKey.slice(-4),
       allocatedQuota: body.allocatedQuota ?? null,
@@ -164,7 +202,10 @@ sysadminRoutes.patch(
   zValidator(
     "json",
     z.object({
+      providerId: z.string().optional(),
       label: z.string().min(1).optional(),
+      model: z.string().min(1).optional(),
+      apiKey: z.string().min(1).optional(),
       allocatedQuota: z.number().int().min(0).nullable().optional(),
       ownerAdminId: z.string().nullable().optional(),
       enabled: z.boolean().optional()
@@ -172,9 +213,20 @@ sysadminRoutes.patch(
   ),
   async (c) => {
     const body = c.req.valid("json");
+    const { apiKey, ...patchBody } = body;
+    const patch = {
+      ...patchBody,
+      ...(apiKey
+        ? {
+            encryptedKey: await encryptString(apiKey, c.env.KEY_ENCRYPTION_KEY),
+            keyHint: apiKey.slice(-4)
+          }
+        : {}),
+      updatedAt: now()
+    };
     await getDb(c.env)
       .update(providerKeys)
-      .set({ ...body, updatedAt: now() })
+      .set(patch)
       .where(eq(providerKeys.id, c.req.param("id")));
     if (body.ownerAdminId) {
       await c.env.DB.prepare(
@@ -185,25 +237,39 @@ sysadminRoutes.patch(
         .bind(body.ownerAdminId, c.req.param("id"), now())
         .run();
     }
+    await audit(c.env, {
+      actorId: c.get("user").id,
+      action: "sys.key_update",
+      targetType: "provider_key",
+      targetId: c.req.param("id"),
+      payload: patchBody
+    });
     return c.json({ ok: true });
   }
 );
 
 sysadminRoutes.delete("/provider-keys/:id", async (c) => {
+  const timestamp = now();
   await getDb(c.env)
     .update(providerKeys)
-    .set({ enabled: false, updatedAt: now() })
+    .set({ enabled: false, updatedAt: timestamp, deletedAt: timestamp })
     .where(eq(providerKeys.id, c.req.param("id")));
+  await audit(c.env, {
+    actorId: c.get("user").id,
+    action: "sys.key_delete",
+    targetType: "provider_key",
+    targetId: c.req.param("id")
+  });
   return c.json({ ok: true });
 });
 
 sysadminRoutes.post("/provider-keys/:id/test", async (c) => {
   const key = await getDb(c.env).query.providerKeys.findFirst({
-    where: eq(providerKeys.id, c.req.param("id"))
+    where: and(eq(providerKeys.id, c.req.param("id")), isNull(providerKeys.deletedAt))
   });
   if (!key) throw appError("NOT_FOUND", "Provider key not found");
   const provider = await getDb(c.env).query.providers.findFirst({
-    where: eq(providers.id, key.providerId)
+    where: and(eq(providers.id, key.providerId), isNull(providers.deletedAt))
   });
   if (!provider) throw appError("NOT_FOUND", "Provider not found");
   if (provider.baseUrl === "mock:") return c.json({ ok: true });
@@ -211,7 +277,7 @@ sysadminRoutes.post("/provider-keys/:id/test", async (c) => {
   const ok = await getProvider(provider.requestFormat).health({
     apiKey,
     baseUrl: provider.baseUrl,
-    model: provider.defaultModel
+    model: key.model ?? provider.defaultModel
   });
   return c.json({ ok });
 });
@@ -221,7 +287,8 @@ sysadminRoutes.post(
   zValidator(
     "json",
     z.object({
-      email: z.string().email(),
+      email: optionalEmailSchema,
+      username: usernameSchema,
       password: z.string().min(8),
       nickname: z.string().min(1),
       providerKeyId: z.string().min(1),
@@ -230,13 +297,31 @@ sysadminRoutes.post(
   ),
   async (c) => {
     const body = c.req.valid("json");
+    const email = normalizeOptionalEmail(body.email);
+    const existing = await getDb(c.env).query.users.findFirst({
+      where: email
+        ? or(eq(users.email, email), eq(users.username, body.username))
+        : eq(users.username, body.username)
+    });
+    if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
+
+    const providerKey = await getDb(c.env).query.providerKeys.findFirst({
+      where: and(
+        eq(providerKeys.id, body.providerKeyId),
+        eq(providerKeys.enabled, true),
+        isNull(providerKeys.deletedAt)
+      )
+    });
+    if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+
     const id = newId("adm");
     const timestamp = now();
     await getDb(c.env)
       .insert(users)
       .values({
         id,
-        email: body.email.toLowerCase(),
+        email: email ?? generatedEmailForUserId(id),
+        username: body.username,
         passwordHash: await hashPassword(body.password),
         nickname: body.nickname,
         role: "admin",
@@ -268,6 +353,7 @@ sysadminRoutes.get("/admins", async (c) => {
     .select({
       id: users.id,
       email: users.email,
+      username: users.username,
       nickname: users.nickname,
       status: users.status,
       preferredProviderKeyId: users.preferredProviderKeyId,
@@ -399,13 +485,277 @@ sysadminRoutes.get("/dashboard/stats", async (c) => {
   return c.json(body);
 });
 
-sysadminRoutes.get("/users/:id/sessions", async (c) => {
+sysadminRoutes.get("/users", async (c) => {
+  const q = c.req.query("q")?.trim();
   const rows = await getDb(c.env)
-    .select()
-    .from(sessions)
-    .where(eq(sessions.userId, c.req.param("id")))
-    .orderBy(desc(sessions.lastMessageAt));
-  return c.json({ items: rows.map((row) => ({ ...row, settings: parseJson(row.settings, {}) })) });
+    .select({
+      id: users.id,
+      email: users.email,
+      username: users.username,
+      nickname: users.nickname,
+      role: users.role,
+      status: users.status
+    })
+    .from(users)
+    .where(
+      q
+        ? or(
+            like(users.email, `%${q}%`),
+            like(users.username, `%${q}%`),
+            like(users.nickname, `%${q}%`)
+          )
+        : undefined
+    )
+    .orderBy(desc(users.createdAt))
+    .limit(200);
+  return c.json({ items: rows });
+});
+
+sysadminRoutes.get("/users/:id/sessions", async (c) => {
+  const requestedUserId = c.req.param("id");
+  const userId = requestedUserId === "me" ? c.get("user").id : requestedUserId;
+  const q = c.req.query("q")?.trim();
+  const requestedPage = Number(c.req.query("page") ?? "1");
+  const requestedPageSize = Number(c.req.query("pageSize") ?? "12");
+  const page = Number.isFinite(requestedPage) ? Math.max(Math.floor(requestedPage), 1) : 1;
+  const pageSize = Number.isFinite(requestedPageSize)
+    ? Math.min(Math.max(Math.floor(requestedPageSize), 1), 50)
+    : 12;
+  const offset = (page - 1) * pageSize;
+  const conditions = ["sessions.deleted_at IS NULL"];
+  const binds: unknown[] = [];
+  if (userId !== "_") {
+    binds.push(userId);
+    conditions.push(`sessions.user_id = ?${binds.length}`);
+  }
+  if (q) {
+    binds.push(`%${q}%`);
+    const searchIndex = binds.length;
+    conditions.push(
+      `(sessions.title LIKE ?${searchIndex} OR EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.session_id = sessions.id AND m.deleted_at IS NULL AND m.prompt LIKE ?${searchIndex}
+      ))`
+    );
+  }
+  const totalStatement = c.env.DB.prepare(
+    `SELECT COUNT(*) AS total
+     FROM sessions
+     WHERE ${conditions.join(" AND ")}`
+  );
+  const totalRows = binds.length
+    ? await totalStatement.bind(...binds).all<{ total: number }>()
+    : await totalStatement.all<{ total: number }>();
+  const rows = await c.env.DB.prepare(
+    `SELECT sessions.id,
+       sessions.user_id,
+       users.email AS user_email,
+       users.username AS user_username,
+       users.nickname AS user_nickname,
+       users.role AS user_role,
+       sessions.title,
+       sessions.mode,
+       sessions.provider_key_id,
+       sessions.settings,
+       sessions.created_at,
+       sessions.updated_at,
+       sessions.last_message_at,
+       sessions.archived,
+       sessions.deleted_at,
+       COUNT(tasks.id) AS task_count
+     FROM sessions
+     LEFT JOIN users ON users.id = sessions.user_id
+     LEFT JOIN tasks ON tasks.session_id = sessions.id
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY sessions.id
+     ORDER BY sessions.last_message_at DESC
+     LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`
+  )
+    .bind(...binds, pageSize, offset)
+    .all<{
+      id: string;
+      user_id: string;
+      user_email: string | null;
+      user_username: string | null;
+      user_nickname: string | null;
+      user_role: "sysadmin" | "admin" | "user" | null;
+      title: string;
+      mode: "text2image" | "image2image" | "chat";
+      provider_key_id: string | null;
+      settings: string;
+      created_at: number;
+      updated_at: number;
+      last_message_at: number;
+      archived: number;
+      deleted_at: number | null;
+      task_count: number;
+    }>();
+  const total = totalRows.results[0]?.total ?? 0;
+  return c.json({
+    items: rows.results.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      user: {
+        id: row.user_id,
+        email: row.user_email,
+        username: row.user_username,
+        nickname: row.user_nickname,
+        role: row.user_role
+      },
+      title: row.title,
+      mode: row.mode,
+      providerKeyId: row.provider_key_id,
+      settings: parseJson(row.settings, {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastMessageAt: row.last_message_at,
+      archived: Boolean(row.archived),
+      deletedAt: row.deleted_at,
+      taskCount: row.task_count
+    })),
+    page,
+    pageSize,
+    total
+  });
+});
+
+sysadminRoutes.get("/sessions/:id/detail", async (c) => {
+  const sessionId = c.req.param("id");
+  const sessionRows = await c.env.DB.prepare(
+    `SELECT id,
+       user_id,
+       title,
+       mode,
+       provider_key_id,
+       settings,
+       created_at,
+       updated_at,
+       last_message_at,
+       archived,
+       deleted_at
+     FROM sessions
+     WHERE id = ?1`
+  )
+    .bind(sessionId)
+    .all<{
+      id: string;
+      user_id: string;
+      title: string;
+      mode: "text2image" | "image2image" | "chat";
+      provider_key_id: string | null;
+      settings: string;
+      created_at: number;
+      updated_at: number;
+      last_message_at: number;
+      archived: number;
+      deleted_at: number | null;
+    }>();
+  const session = sessionRows.results[0];
+  if (!session) throw appError("NOT_FOUND", "Session not found");
+
+  const rows = await c.env.DB.prepare(
+    `SELECT messages.id,
+       messages.session_id,
+       messages.role,
+       messages.prompt,
+       messages.reference_image_ids,
+       messages.attachments,
+       messages.task_id,
+       messages.status,
+       messages.created_at,
+       tasks.mode AS task_mode,
+       tasks.params AS task_params,
+       tasks.status AS task_status,
+       tasks.error_code AS task_error_code,
+       tasks.error_msg AS task_error_msg,
+       tasks.queued_at AS task_queued_at,
+       tasks.started_at AS task_started_at,
+       tasks.finished_at AS task_finished_at
+     FROM messages
+     LEFT JOIN tasks ON tasks.message_id = messages.id
+     WHERE messages.session_id = ?1
+       AND messages.deleted_at IS NULL
+     ORDER BY messages.created_at ASC
+     LIMIT 200`
+  )
+    .bind(session.id)
+    .all<{
+      id: string;
+      session_id: string;
+      role: "user" | "assistant" | "system";
+      prompt: string | null;
+      reference_image_ids: string;
+      attachments: string;
+      task_id: string | null;
+      status: string;
+      created_at: number;
+      task_mode: "text2image" | "image2image" | "chat" | null;
+      task_params: string | null;
+      task_status: string | null;
+      task_error_code: string | null;
+      task_error_msg: string | null;
+      task_queued_at: number | null;
+      task_started_at: number | null;
+      task_finished_at: number | null;
+    }>();
+  const persistedImagesByMessageId = await loadAuditGeneratedImagesByMessageId(c.env, session.id);
+  const taskCount = rows.results.filter((row) => row.task_id).length;
+  return c.json({
+    session: {
+      id: session.id,
+      userId: session.user_id,
+      title: session.title,
+      mode: session.mode,
+      providerKeyId: session.provider_key_id,
+      settings: parseJson(session.settings, {}),
+      createdAt: session.created_at,
+      updatedAt: session.updated_at,
+      lastMessageAt: session.last_message_at,
+      archived: Boolean(session.archived),
+      deletedAt: session.deleted_at,
+      taskCount
+    },
+    messages: rows.results.map((row) => {
+      const attachments = mergeAuditGeneratedImages(
+        parseJson<Array<Partial<AuditImageAttachment> & { id: string }>>(row.attachments, []),
+        persistedImagesByMessageId.get(row.id) ?? [],
+        {
+          taskId: row.task_id,
+          sessionId: row.session_id,
+          messageId: row.id,
+          prompt: row.prompt
+        }
+      );
+      return {
+        id: row.id,
+        sessionId: row.session_id,
+        role: row.role,
+        prompt: row.prompt,
+        referenceImageIds: parseJson(row.reference_image_ids, []),
+        attachments,
+        taskId: row.task_id,
+        status: row.status,
+        createdAt: row.created_at,
+        task: row.task_id
+          ? {
+              id: row.task_id,
+              mode: row.task_mode,
+              params: parseJson(row.task_params, {}),
+              status: row.task_status,
+              errorCode: row.task_error_code,
+              errorMsg: row.task_error_msg,
+              queuedAt: row.task_queued_at,
+              startedAt: row.task_started_at,
+              finishedAt: row.task_finished_at,
+              durationMs:
+                row.task_finished_at && row.task_started_at
+                  ? Math.max(row.task_finished_at - row.task_started_at, 0)
+                  : null
+            }
+          : null
+      };
+    })
+  });
 });
 
 sysadminRoutes.get("/sessions/:id/messages", async (c) => {
@@ -422,6 +772,127 @@ sysadminRoutes.get("/sessions/:id/messages", async (c) => {
     }))
   });
 });
+
+async function loadAuditGeneratedImagesByMessageId(
+  env: AppEnv["Bindings"],
+  sessionId: string
+): Promise<Map<string, AuditImageAttachment[]>> {
+  const rows = await env.DB.prepare(
+    `SELECT image_objects.id,
+       image_objects.mime,
+       image_objects.width,
+       image_objects.height,
+       image_objects.byte_size,
+       image_objects.task_id,
+       image_objects.session_id,
+       image_objects.created_at,
+       tasks.message_id,
+       tasks.started_at AS task_started_at,
+       tasks.queued_at AS task_queued_at
+     FROM image_objects
+     LEFT JOIN tasks ON tasks.id = image_objects.task_id
+     WHERE image_objects.session_id = ?1
+       AND image_objects.deleted_at IS NULL
+       AND image_objects.is_reference = 0
+     ORDER BY image_objects.created_at ASC`
+  )
+    .bind(sessionId)
+    .all<{
+      id: string;
+      mime: string;
+      width: number | null;
+      height: number | null;
+      byte_size: number;
+      task_id: string | null;
+      session_id: string | null;
+      created_at: number;
+      message_id: string | null;
+      task_started_at: number | null;
+      task_queued_at: number | null;
+    }>();
+  const imagesByMessageId = new Map<string, AuditImageAttachment[]>();
+  const durationCheckpointByTask = new Map<string, number>();
+  for (const row of rows.results) {
+    if (!row.message_id) continue;
+    const durationKey = row.task_id ?? row.message_id;
+    const durationStart =
+      durationCheckpointByTask.get(durationKey) ?? row.task_started_at ?? row.task_queued_at;
+    const images = imagesByMessageId.get(row.message_id) ?? [];
+    images.push({
+      id: row.id,
+      url: `/api/i/${row.id}`,
+      mime: row.mime,
+      width: row.width,
+      height: row.height,
+      byteSize: row.byte_size,
+      taskId: row.task_id,
+      sessionId: row.session_id ?? sessionId,
+      messageId: row.message_id,
+      createdAt: row.created_at,
+      generationDurationMs: durationStart ? Math.max(row.created_at - durationStart, 0) : null
+    });
+    durationCheckpointByTask.set(durationKey, row.created_at);
+    imagesByMessageId.set(row.message_id, images);
+  }
+  return imagesByMessageId;
+}
+
+function mergeAuditGeneratedImages(
+  attachments: Array<Partial<AuditImageAttachment> & { id: string }>,
+  persistedImages: AuditImageAttachment[],
+  context: {
+    taskId?: string | null;
+    sessionId: string;
+    messageId: string;
+    prompt?: string | null;
+  }
+): AuditImageAttachment[] {
+  const persistedById = new Map(persistedImages.map((image) => [image.id, image]));
+  const merged = attachments.map((image) => {
+    const persisted = persistedById.get(image.id);
+    return normalizeAuditImageAttachment(
+      {
+        ...persisted,
+        ...image,
+        createdAt: image.createdAt ?? persisted?.createdAt,
+        generationDurationMs: image.generationDurationMs ?? persisted?.generationDurationMs
+      },
+      context
+    );
+  });
+  const seenIds = new Set(merged.map((image) => image.id));
+  for (const image of persistedImages) {
+    if (seenIds.has(image.id)) continue;
+    merged.push(normalizeAuditImageAttachment(image, context));
+    seenIds.add(image.id);
+  }
+  return merged;
+}
+
+function normalizeAuditImageAttachment(
+  image: Partial<AuditImageAttachment> & { id: string },
+  context: {
+    taskId?: string | null;
+    sessionId: string;
+    messageId: string;
+    prompt?: string | null;
+  }
+): AuditImageAttachment {
+  return {
+    id: image.id,
+    url: image.url ?? `/api/i/${image.id}`,
+    mime: image.mime ?? "image/png",
+    width: image.width ?? null,
+    height: image.height ?? null,
+    byteSize: image.byteSize ?? 0,
+    taskId: image.taskId ?? context.taskId ?? null,
+    sessionId: image.sessionId ?? context.sessionId,
+    messageId: image.messageId ?? context.messageId,
+    prompt: image.prompt ?? context.prompt ?? null,
+    createdAt: image.createdAt ?? null,
+    generationDurationMs: image.generationDurationMs ?? null
+  };
+}
 
 sysadminRoutes.patch(
   "/preferences",

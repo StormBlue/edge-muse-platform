@@ -49,9 +49,9 @@ const passwordHash = hashPassword("password123");
 
 const command = `
 INSERT OR IGNORE INTO users (
-  id, email, password_hash, nickname, role, created_by, preferred_provider_key_id, locale, status, created_at, updated_at, last_login_at
+  id, email, username, password_hash, nickname, role, created_by, preferred_provider_key_id, locale, status, created_at, updated_at, last_login_at
 ) VALUES (
-  'usr_sysadmin', 'sysadmin@example.com', '${sql(passwordHash)}', 'System Admin', 'sysadmin', NULL, 'key_mock', 'zh-CN', 'active', ${timestamp}, ${timestamp}, NULL
+  'usr_sysadmin', 'sysadmin@example.com', 'sysadmin', '${sql(passwordHash)}', 'System Admin', 'sysadmin', NULL, 'key_mock', 'zh-CN', 'active', ${timestamp}, ${timestamp}, NULL
 );
 
 INSERT OR IGNORE INTO quotas (user_id, allocated_quota, used_quota, updated_at)
@@ -64,11 +64,11 @@ INSERT OR IGNORE INTO providers (
   '["1024x1024","1024x1536","1536x1024","auto"]', 1, ${timestamp}, ${timestamp}
 );
 
-INSERT OR IGNORE INTO provider_keys (
-  id, provider_id, label, encrypted_key, key_hint, allocated_quota, used_quota, owner_admin_id, enabled, created_at, updated_at
-) VALUES (
-  'key_mock', 'prv_mock', 'Local Mock Key', '${sql(encryptedKey)}', 'mock', NULL, 0, NULL, 1, ${timestamp}, ${timestamp}
-);
+	INSERT OR IGNORE INTO provider_keys (
+	  id, provider_id, label, model, encrypted_key, key_hint, allocated_quota, used_quota, owner_admin_id, enabled, created_at, updated_at
+	) VALUES (
+	  'key_mock', 'prv_mock', 'Local Mock Key', 'gpt-image-2', '${sql(encryptedKey)}', 'mock', NULL, 0, NULL, 1, ${timestamp}, ${timestamp}
+	);
 
 INSERT OR IGNORE INTO user_provider_keys (user_id, provider_key_id, assigned_at)
 VALUES ('usr_sysadmin', 'key_mock', ${timestamp});
@@ -83,4 +83,4 @@ execFileSync(
   }
 );
 
-console.log("Seeded local sysadmin: sysadmin@example.com / password123");
+console.log("Seeded local sysadmin: sysadmin or sysadmin@example.com / password123");

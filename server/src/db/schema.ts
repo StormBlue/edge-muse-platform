@@ -6,6 +6,7 @@ export const users = sqliteTable(
   {
     id: text("id").primaryKey(),
     email: text("email").notNull().unique(),
+    username: text("username").notNull().unique(),
     passwordHash: text("password_hash").notNull(),
     nickname: text("nickname").notNull(),
     role: text("role", { enum: ["sysadmin", "admin", "user"] }).notNull(),
@@ -21,6 +22,7 @@ export const users = sqliteTable(
   },
   (table) => ({
     emailIdx: uniqueIndex("idx_users_email").on(table.email),
+    usernameIdx: uniqueIndex("idx_users_username").on(table.username),
     createdByIdx: index("idx_users_created_by").on(table.createdBy)
   })
 );
@@ -44,7 +46,8 @@ export const providers = sqliteTable("providers", {
   supportedSizes: text("supported_sizes").notNull(),
   enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull()
+  updatedAt: integer("updated_at").notNull(),
+  deletedAt: integer("deleted_at")
 });
 
 export const providerKeys = sqliteTable(
@@ -55,6 +58,7 @@ export const providerKeys = sqliteTable(
       .notNull()
       .references(() => providers.id),
     label: text("label").notNull(),
+    model: text("model"),
     encryptedKey: text("encrypted_key").notNull(),
     keyHint: text("key_hint").notNull(),
     allocatedQuota: integer("allocated_quota"),
@@ -62,7 +66,8 @@ export const providerKeys = sqliteTable(
     ownerAdminId: text("owner_admin_id").references(() => users.id),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull()
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
   },
   (table) => ({
     providerIdx: index("idx_provider_keys_provider").on(table.providerId)
