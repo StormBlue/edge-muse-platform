@@ -159,7 +159,7 @@ authRoutes.post(
         createdAt: now()
       });
       const resetUrl = `${new URL(c.req.url).origin}/reset-password?token=${token}`;
-      await sendMail(c.env, user.email, "password-reset", { resetUrl });
+      await sendMail(c.env, user.email, "password-reset", { resetUrl, locale: user.locale });
     }
     return c.json({ ok: true });
   }

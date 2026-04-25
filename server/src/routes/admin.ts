@@ -1,13 +1,22 @@
-import { and, desc, eq, like, sql } from "drizzle-orm";
+import { and, desc, eq, like, lt, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import { quotaTransactions, quotas, tasks, userProviderKeys, users } from "../db/schema";
+import {
+  passwordResets,
+  quotaTransactions,
+  quotas,
+  tasks,
+  userProviderKeys,
+  users
+} from "../db/schema";
 import { assertManagedUserAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
+import { base64UrlEncode, randomBytes } from "../lib/encoding";
 import { newId, now } from "../lib/id";
+import { sendMail } from "../lib/mailer";
 import { hashPassword } from "../lib/password";
 import { getQuota, grantQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
@@ -149,13 +158,24 @@ adminRoutes.patch(
 
 adminRoutes.get("/users/:id/quota", async (c) => {
   const target = await assertManagedUserAccess(c.env, c.req.param("id"), c.get("user"));
+  const limit = Math.min(Number(c.req.query("limit") ?? "20"), 50);
+  const cursor = Number(c.req.query("cursor") ?? "0");
   const tx = await getDb(c.env)
     .select()
     .from(quotaTransactions)
-    .where(eq(quotaTransactions.userId, target.id))
+    .where(
+      and(
+        eq(quotaTransactions.userId, target.id),
+        cursor ? lt(quotaTransactions.createdAt, cursor) : undefined
+      )
+    )
     .orderBy(desc(quotaTransactions.createdAt))
-    .limit(50);
-  return c.json({ quota: await getQuota(c.env, target.id), transactions: tx });
+    .limit(limit + 1);
+  return c.json({
+    quota: await getQuota(c.env, target.id),
+    transactions: tx.slice(0, limit),
+    nextCursor: tx.length > limit ? tx[limit].createdAt : null
+  });
 });
 
 adminRoutes.post(
@@ -212,4 +232,28 @@ adminRoutes.get("/users/:id/usage", async (c) => {
     .from(tasks)
     .where(eq(tasks.userId, target.id));
   return c.json({ stats: stats.results, trend: trend.results, total: totalRow[0]?.count ?? 0 });
+});
+
+adminRoutes.post("/users/:id/invite", async (c) => {
+  const actor = c.get("user");
+  const target = await assertManagedUserAccess(c.env, c.req.param("id"), actor);
+  const token = base64UrlEncode(randomBytes(32));
+  await getDb(c.env)
+    .insert(passwordResets)
+    .values({
+      token,
+      userId: target.id,
+      expiresAt: now() + 24 * 60 * 60 * 1000,
+      usedAt: null,
+      createdAt: now()
+    });
+  const resetUrl = `${new URL(c.req.url).origin}/reset-password?token=${token}`;
+  await sendMail(c.env, target.email, "password-reset", { resetUrl, locale: target.locale });
+  await audit(c.env, {
+    actorId: actor.id,
+    action: "admin.user_invite",
+    targetType: "user",
+    targetId: target.id
+  });
+  return c.json({ ok: true });
 });
