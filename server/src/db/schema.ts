@@ -181,7 +181,8 @@ export const tasks = sqliteTable(
   },
   (table) => ({
     userQueuedIdx: index("idx_tasks_user_queued").on(table.userId, table.queuedAt),
-    statusIdx: index("idx_tasks_status").on(table.status)
+    statusIdx: index("idx_tasks_status").on(table.status),
+    statusHeartbeatIdx: index("idx_tasks_status_heartbeat").on(table.status, table.heartbeatAt)
   })
 );
 
