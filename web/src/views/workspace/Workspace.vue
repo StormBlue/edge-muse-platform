@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
@@ -21,16 +21,19 @@ const router = useRouter();
 const sessions = useSessionStore();
 const auth = useAuthStore();
 const selectedImage = ref<ImageAttachment | null>(null);
+const messageList = ref<HTMLElement | null>(null);
+const topSentinel = ref<HTMLElement | null>(null);
 const allImages = computed(() => sessions.messages.flatMap((message) => message.attachments));
-const { status, connect } = useTaskWebSocket((payload) => {
+let messageObserver: IntersectionObserver | null = null;
+const { status, connect, disconnect } = useTaskWebSocket((payload) => {
   sessions.applyTaskEvent(payload);
-  if (
-    payload &&
-    typeof payload === "object" &&
-    (payload as { type?: string }).type === "task.done"
-  ) {
+  const eventType =
+    payload && typeof payload === "object" ? (payload as { type?: string }).type : "";
+  if (eventType === "task.done") {
     auth.bootstrap();
+    disconnect();
   }
+  if (eventType === "task.failed") disconnect();
 });
 
 onMounted(async () => {
@@ -38,7 +41,11 @@ onMounted(async () => {
   const routeSessionId =
     typeof route.params.sessionId === "string" ? route.params.sessionId : sessions.currentSessionId;
   if (routeSessionId) await sessions.loadMessages(routeSessionId);
+  await nextTick();
+  setupMessageObserver();
 });
+
+onBeforeUnmount(() => messageObserver?.disconnect());
 
 watch(
   () => route.params.sessionId,
@@ -50,6 +57,23 @@ watch(
 async function newSession() {
   const session = await sessions.createSession();
   await router.push(`/workspace/s/${session.id}`);
+}
+
+function setupMessageObserver() {
+  messageObserver?.disconnect();
+  if (!topSentinel.value || !messageList.value) return;
+  messageObserver = new IntersectionObserver(
+    async ([entry]) => {
+      if (!entry?.isIntersecting || !sessions.nextMessageCursor) return;
+      const list = messageList.value;
+      const previousHeight = list?.scrollHeight ?? 0;
+      await sessions.loadOlderMessages();
+      await nextTick();
+      if (list) list.scrollTop += list.scrollHeight - previousHeight;
+    },
+    { root: messageList.value, rootMargin: "160px 0px 0px 0px" }
+  );
+  messageObserver.observe(topSentinel.value);
 }
 
 async function submit(input: {
@@ -151,8 +175,16 @@ async function deleteImageMessage(image: ImageAttachment) {
           </div>
         </div>
         <div
+          ref="messageList"
           class="thin-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto rounded-xl border border-border bg-muted/40 p-4"
         >
+          <div ref="topSentinel" class="h-px"></div>
+          <div
+            v-if="sessions.olderMessagesLoading"
+            class="py-2 text-center text-xs text-muted-foreground"
+          >
+            加载更早消息...
+          </div>
           <div
             v-if="!sessions.messages.length"
             class="flex h-full items-center justify-center text-sm text-muted-foreground"

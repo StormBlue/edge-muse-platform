@@ -4,6 +4,9 @@ import type { AppEnv } from "../types";
 
 export function rateLimit(options: { prefix: string; limit: number; windowSeconds: number }) {
   return createMiddleware<AppEnv>(async (c, next) => {
+    if (c.env.ENVIRONMENT === "dev") {
+      return next();
+    }
     const ip = c.req.header("CF-Connecting-IP") ?? "local";
     const user = c.get("user");
     const identity = user?.id ?? `${ip}:${c.req.header("User-Agent") ?? "ua"}`;

@@ -4,9 +4,11 @@ export function useTaskWebSocket(onMessage: (payload: unknown) => void) {
   const status = ref<"idle" | "connecting" | "open" | "closed">("idle");
   let socket: WebSocket | null = null;
   let reconnectTimer: number | null = null;
+  let manuallyClosed = false;
 
   function connect(url: string) {
     disconnect();
+    manuallyClosed = false;
     status.value = "connecting";
     const wsUrl = url.startsWith("ws")
       ? url
@@ -24,11 +26,12 @@ export function useTaskWebSocket(onMessage: (payload: unknown) => void) {
     };
     socket.onclose = () => {
       status.value = "closed";
-      reconnectTimer = window.setTimeout(() => connect(wsUrl), 3000);
+      if (!manuallyClosed) reconnectTimer = window.setTimeout(() => connect(wsUrl), 3000);
     };
   }
 
   function disconnect() {
+    manuallyClosed = true;
     if (reconnectTimer) window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
     socket?.close();

@@ -10,7 +10,10 @@ const emit = defineEmits<{ open: [image: ImageAttachment]; retry: [message: Mess
 </script>
 
 <template>
-  <article class="flex" :class="message.role === 'user' ? 'justify-end' : 'justify-start'">
+  <article
+    class="chat-message-row flex"
+    :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
+  >
     <div
       class="max-w-[86%] rounded-2xl px-4 py-3 text-sm shadow-sm"
       :class="
@@ -47,3 +50,10 @@ const emit = defineEmits<{ open: [image: ImageAttachment]; retry: [message: Mess
     </div>
   </article>
 </template>
+
+<style scoped>
+.chat-message-row {
+  content-visibility: auto;
+  contain-intrinsic-size: 9rem;
+}
+</style>

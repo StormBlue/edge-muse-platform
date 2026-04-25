@@ -187,6 +187,7 @@ export async function runGenerateTask(
     const images: ImageAttachment[] = [];
     const rawResponses: unknown[] = [];
     const requestIds: string[] = [];
+    const textResponses: string[] = [];
 
     for (let index = 0; index < params.n; index += 1) {
       const response = await providerImpl.generate({
@@ -202,6 +203,7 @@ export async function runGenerateTask(
       if (response.requestId) requestIds.push(response.requestId);
       rawResponses.push(redactProviderResponse(response.raw));
       if (response.images.length === 0 && response.text) {
+        textResponses.push(response.text);
         rawResponses.push({ text: response.text });
       }
       for (const providerImage of response.images) {
@@ -237,7 +239,11 @@ export async function runGenerateTask(
       .where(eq(tasks.id, taskId));
     await db
       .update(messages)
-      .set({ status: "succeeded", attachments: stringifyJson(images) })
+      .set({
+        status: "succeeded",
+        prompt: textResponses.join("\n\n") || params.prompt,
+        attachments: stringifyJson(images)
+      })
       .where(eq(messages.id, task.messageId));
     await notify({ type: "task.done", task: { id: taskId, status: "succeeded" }, images });
   } catch (error) {

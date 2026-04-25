@@ -9,11 +9,11 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Monitor,
   Moon,
   Settings,
   Shield,
   Sun,
-  SunMoon,
   Users
 } from "lucide-vue-next";
 import BrandMark from "@/components/brand/BrandMark.vue";
@@ -44,7 +44,7 @@ const nav = computed(() => [
 ]);
 
 const themeOptions = computed(() => [
-  { value: "auto" as ThemeMode, label: t("theme.system"), icon: SunMoon },
+  { value: "auto" as ThemeMode, label: t("theme.system"), icon: Monitor },
   { value: "light" as ThemeMode, label: t("theme.light"), icon: Sun },
   { value: "dark" as ThemeMode, label: t("theme.dark"), icon: Moon }
 ]);
@@ -150,7 +150,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu
               @click="themeMenuOpen = !themeMenuOpen"
               @keydown.esc="themeMenuOpen = false"
             >
-              <component :is="currentTheme.icon" class="h-6 w-6" :stroke-width="2.25" />
+              <component :is="currentTheme.icon" class="h-5 w-5" :stroke-width="2.25" />
             </button>
             <div
               v-if="themeMenuOpen"
@@ -167,7 +167,7 @@ onBeforeUnmount(() => document.removeEventListener("pointerdown", closeThemeMenu
                 :aria-checked="option.value === ui.theme"
                 @click="selectTheme(option.value)"
               >
-                <component :is="option.icon" class="h-5 w-5" :stroke-width="2.25" />
+                <component :is="option.icon" class="h-4 w-4" :stroke-width="2.25" />
                 <span>{{ option.label }}</span>
               </button>
             </div>

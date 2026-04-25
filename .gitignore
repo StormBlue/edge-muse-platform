@@ -7,7 +7,29 @@ dist/
 !.env.example
 coverage/
 playwright-report/
+.playwright-cli/
 test-results/
 *.log
 .DS_Store
 server/worker-configuration.d.ts
+
+# Monorepo/package manager
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build/cache artifacts
+*.tsbuildinfo
+.eslintcache
+.cache/
+tmp/
+temp/
+
+# Tooling/editor
+.idea/
+.vscode/
+
+# Local generated uploads and binaries
+uploads/
+

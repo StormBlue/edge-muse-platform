@@ -38,7 +38,9 @@ export const useSessionStore = defineStore("sessions", {
     sessions: [] as Session[],
     currentSessionId: null as string | null,
     messages: [] as Message[],
-    loading: false
+    loading: false,
+    olderMessagesLoading: false,
+    nextMessageCursor: null as number | null
   }),
   getters: {
     currentSession: (state) =>
@@ -58,12 +60,33 @@ export const useSessionStore = defineStore("sessions", {
       this.sessions.unshift(body.session);
       this.currentSessionId = body.session.id;
       this.messages = [];
+      this.nextMessageCursor = null;
       return body.session;
     },
     async loadMessages(sessionId: string) {
-      const body = await apiFetch<{ items: Message[] }>(`/sessions/${sessionId}/messages`);
+      const body = await apiFetch<{ items: Message[]; nextCursor: number | null }>(
+        `/sessions/${sessionId}/messages`
+      );
       this.currentSessionId = sessionId;
       this.messages = body.items.map(normalizeMessageAttachments);
+      this.nextMessageCursor = body.nextCursor;
+    },
+    async loadOlderMessages() {
+      if (!this.currentSessionId || !this.nextMessageCursor || this.olderMessagesLoading) return;
+      this.olderMessagesLoading = true;
+      try {
+        const body = await apiFetch<{ items: Message[]; nextCursor: number | null }>(
+          `/sessions/${this.currentSessionId}/messages?cursor=${this.nextMessageCursor}`
+        );
+        const existingIds = new Set(this.messages.map((message) => message.id));
+        const older = body.items
+          .map(normalizeMessageAttachments)
+          .filter((message) => !existingIds.has(message.id));
+        this.messages = [...older, ...this.messages];
+        this.nextMessageCursor = body.nextCursor;
+      } finally {
+        this.olderMessagesLoading = false;
+      }
     },
     async generate(input: {
       prompt: string;

@@ -12,6 +12,7 @@ import { requestLogger } from "./middleware/logger";
 import { securityHeaders } from "./middleware/security";
 import { csrf } from "./middleware/csrf";
 import { installErrorHandling } from "./middleware/error";
+import { cleanupDeletedImages } from "./lib/cleanup";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -51,4 +52,9 @@ app.route("/api/admin", adminRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
 app.get("/ws/task/:id", handleTaskWebSocket);
 
-export default app;
+export default {
+  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+  scheduled: (_controller, env, ctx) => {
+    ctx.waitUntil(cleanupDeletedImages(env));
+  }
+} satisfies ExportedHandler<Cloudflare.Env>;

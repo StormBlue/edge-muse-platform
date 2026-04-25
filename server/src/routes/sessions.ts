@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, like, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -167,10 +167,26 @@ sessionRoutes.get("/:id/messages", async (c) => {
 
 sessionRoutes.delete("/:sessionId/messages/:messageId", async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("sessionId"), c.get("user"));
-  await getDb(c.env)
+  const db = getDb(c.env);
+  const message = await db.query.messages.findFirst({
+    where: and(eq(messages.id, c.req.param("messageId")), eq(messages.sessionId, session.id))
+  });
+  await db
     .update(messages)
     .set({ deletedAt: now() })
     .where(and(eq(messages.id, c.req.param("messageId")), eq(messages.sessionId, session.id)));
+  const attachments = parseJson<Array<{ id?: string }>>(message?.attachments, []);
+  const imageIds = attachments.map((image) => image.id).filter((id): id is string => Boolean(id));
+  if (imageIds.length > 0) {
+    await c.env.DB.prepare(
+      `UPDATE image_objects
+       SET deleted_at = ?1
+       WHERE id IN (${imageIds.map((_, index) => `?${index + 2}`).join(",")})
+         AND owner_user_id = ?${imageIds.length + 2}`
+    )
+      .bind(now(), ...imageIds, session.userId)
+      .run();
+  }
   await audit(c.env, {
     actorId: c.get("user").id,
     action: "message.delete",
@@ -186,21 +202,66 @@ historyRoutes.get("/", requireAuth, async (c) => {
   const user = c.get("user");
   const q = c.req.query("q");
   const order = c.req.query("order") ?? "recent";
-  const where = and(
-    user.role === "sysadmin" ? undefined : eq(sessions.userId, user.id),
-    isNull(sessions.deletedAt),
-    q
-      ? or(
-          like(sessions.title, `%${q}%`),
-          sql`EXISTS (SELECT 1 FROM messages m WHERE m.session_id = ${sessions.id} AND m.prompt LIKE ${`%${q}%`})`
-        )
-      : undefined
-  );
-  const rows = await getDb(c.env)
-    .select()
-    .from(sessions)
-    .where(where)
-    .orderBy(order === "oldest" ? sessions.createdAt : desc(sessions.lastMessageAt))
-    .limit(100);
-  return c.json({ items: rows.map((row) => ({ ...row, settings: parseJson(row.settings, {}) })) });
+  const conditions = ["sessions.deleted_at IS NULL"];
+  const binds: unknown[] = [];
+  if (user.role !== "sysadmin") {
+    binds.push(user.id);
+    conditions.push(`sessions.user_id = ?${binds.length}`);
+  }
+  if (q) {
+    binds.push(`%${q}%`);
+    const searchIndex = binds.length;
+    conditions.push(
+      `(sessions.title LIKE ?${searchIndex} OR EXISTS (
+        SELECT 1 FROM messages m
+        WHERE m.session_id = sessions.id AND m.prompt LIKE ?${searchIndex}
+      ))`
+    );
+  }
+  const orderSql =
+    order === "oldest"
+      ? "sessions.created_at ASC"
+      : order === "task_count"
+        ? "task_count DESC, sessions.last_message_at DESC"
+        : "sessions.last_message_at DESC";
+  const rows = await c.env.DB.prepare(
+    `SELECT sessions.*, COUNT(tasks.id) AS task_count
+     FROM sessions
+     LEFT JOIN tasks ON tasks.session_id = sessions.id
+     WHERE ${conditions.join(" AND ")}
+     GROUP BY sessions.id
+     ORDER BY ${orderSql}
+     LIMIT 100`
+  )
+    .bind(...binds)
+    .all<{
+      id: string;
+      user_id: string;
+      title: string;
+      mode: "text2image" | "image2image" | "chat";
+      provider_key_id: string | null;
+      settings: string;
+      created_at: number;
+      updated_at: number;
+      last_message_at: number;
+      archived: number;
+      deleted_at: number | null;
+      task_count: number;
+    }>();
+  return c.json({
+    items: rows.results.map((row) => ({
+      id: row.id,
+      userId: row.user_id,
+      title: row.title,
+      mode: row.mode,
+      providerKeyId: row.provider_key_id,
+      settings: parseJson(row.settings, {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      lastMessageAt: row.last_message_at,
+      archived: Boolean(row.archived),
+      deletedAt: row.deleted_at,
+      taskCount: row.task_count
+    }))
+  });
 });
