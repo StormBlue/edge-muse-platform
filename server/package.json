@@ -19,17 +19,17 @@
     "seed:local": "node scripts/seed-dev.mjs"
   },
   "dependencies": {
-    "@hono/zod-validator": "0.7.0",
+    "@hono/zod-validator": "0.7.6",
     "@noble/hashes": "2.2.0",
     "drizzle-orm": "0.45.2",
-    "hono": "4.7.8",
+    "hono": "4.12.15",
     "zod": "4.3.6"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260425.1",
-    "drizzle-kit": "0.31.0",
+    "@cloudflare/workers-types": "4.20260425.1",
+    "drizzle-kit": "0.31.10",
     "typescript": "6.0.3",
     "vitest": "4.1.5",
-    "wrangler": "4.13.2"
+    "wrangler": "4.85.0"
   }
 }
