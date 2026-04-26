@@ -100,7 +100,7 @@ importers:
         specifier: 4.7.1
         version: 4.7.1(pinia@3.0.4(typescript@6.0.3)(vue@3.5.33(typescript@6.0.3)))
       reka-ui:
-        specifier: ^2.9.6
+        specifier: 2.9.6
         version: 2.9.6(vue@3.5.33(typescript@6.0.3))
       tailwindcss:
         specifier: 4.2.4

@@ -19,6 +19,7 @@ import {
   Users
 } from "lucide-vue-next";
 import BrandMark from "@/components/brand/BrandMark.vue";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthStore } from "@/stores/auth";
 import { type ThemeMode, useUiStore } from "@/stores/ui";
 
@@ -150,7 +151,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-background text-foreground lg:flex">
+  <div class="h-dvh overflow-hidden bg-background text-foreground lg:flex">
     <button
       v-if="ui.sidebarOpen"
       class="fixed inset-0 z-20 bg-black/45 lg:hidden"
@@ -222,9 +223,9 @@ onBeforeUnmount(() => {
       </div>
     </aside>
 
-    <div class="min-w-0 flex-1">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
       <header
-        class="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur"
+        class="z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background/90 px-4 backdrop-blur"
       >
         <button
           class="ui-button ui-button-secondary ui-icon-button"
@@ -299,9 +300,11 @@ onBeforeUnmount(() => {
           </button>
         </div>
       </header>
-      <main class="mx-auto w-full max-w-none px-4 py-4 lg:px-5">
-        <slot />
-      </main>
+      <ScrollArea class="min-h-0 flex-1">
+        <main class="mx-auto w-full max-w-none px-4 py-4 lg:px-5">
+          <slot />
+        </main>
+      </ScrollArea>
     </div>
   </div>
 </template>
