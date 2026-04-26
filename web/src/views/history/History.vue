@@ -61,6 +61,7 @@ const detailLoading = ref(false);
 const selectedSession = ref<HistorySession | null>(null);
 const detailMessages = ref<HistoryMessage[]>([]);
 const selectedImage = ref<ImageAttachment | null>(null);
+const activeResultIndex = ref(0);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const resultMessages = computed(() =>
@@ -78,6 +79,10 @@ const displayResultMessages = computed(() =>
     })
     .map(({ message }) => message)
 );
+const activeResultMessages = computed(() => {
+  const message = displayResultMessages.value[activeResultIndex.value];
+  return message ? [message] : [];
+});
 const detailImages = computed(() =>
   detailMessages.value.flatMap((message) => [
     ...message.attachments.map(toViewerImage),
@@ -107,6 +112,14 @@ watch(
 
 watch(page, (value) => {
   pageInput.value = String(value);
+});
+
+watch(displayResultMessages, (messages) => {
+  if (messages.length === 0) {
+    activeResultIndex.value = 0;
+    return;
+  }
+  activeResultIndex.value = Math.min(activeResultIndex.value, messages.length - 1);
 });
 
 async function load(nextPage = page.value) {
@@ -162,6 +175,7 @@ async function loadDetail(sessionId: string) {
     }>(`/history/${sessionId}`);
     selectedSession.value = body.session;
     detailMessages.value = body.messages;
+    activeResultIndex.value = 0;
   } finally {
     detailLoading.value = false;
   }
@@ -234,6 +248,11 @@ function messagePromptText(message: HistoryMessage) {
   return message.prompt || message.task?.params?.prompt || selectedSession.value?.title || "-";
 }
 
+function isLongPrompt(message: HistoryMessage) {
+  const prompt = messagePromptText(message);
+  return prompt.length > 260 || prompt.split("\n").length > 5;
+}
+
 function taskGenerationStats(message: HistoryMessage): GenerationStats {
   const total = requestedImageCount(message);
   const success = message.attachments.length;
@@ -286,6 +305,17 @@ function taskParameters(message: HistoryMessage) {
       message.referenceImageIds.length
   };
 }
+
+function previousResult() {
+  activeResultIndex.value = Math.max(activeResultIndex.value - 1, 0);
+}
+
+function nextResult() {
+  activeResultIndex.value = Math.min(
+    activeResultIndex.value + 1,
+    Math.max(displayResultMessages.value.length - 1, 0)
+  );
+}
 </script>
 
 <template>
@@ -311,6 +341,32 @@ function taskParameters(message: HistoryMessage) {
               {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
             </p>
           </div>
+          <div
+            v-if="displayResultMessages.length > 1"
+            class="flex shrink-0 items-center gap-2 text-sm"
+          >
+            <button
+              class="ui-button ui-button-secondary h-9 px-3"
+              type="button"
+              :disabled="activeResultIndex <= 0"
+              @click="previousResult"
+            >
+              <ChevronLeft class="h-4 w-4" />
+              {{ t("common.previous") }}
+            </button>
+            <span class="min-w-16 text-center text-muted-foreground">
+              {{ activeResultIndex + 1 }} / {{ displayResultMessages.length }}
+            </span>
+            <button
+              class="ui-button ui-button-secondary h-9 px-3"
+              type="button"
+              :disabled="activeResultIndex >= displayResultMessages.length - 1"
+              @click="nextResult"
+            >
+              {{ t("common.next") }}
+              <ChevronRight class="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div
@@ -328,15 +384,15 @@ function taskParameters(message: HistoryMessage) {
           >
             {{ t("history.noResults") }}
           </div>
-          <ScrollArea v-else class="min-h-0 flex-1">
-            <div class="flex min-h-full flex-col gap-4 pr-3">
+          <div v-else class="min-h-0 flex-1">
+            <div class="h-full min-h-0">
               <article
-                v-for="message in displayResultMessages"
+                v-for="message in activeResultMessages"
                 :key="message.id"
-                class="panel min-h-[34rem] overflow-hidden lg:h-[calc(100dvh-12rem)] lg:min-h-0"
+                class="panel h-full min-h-0 overflow-hidden"
               >
                 <div
-                  class="grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]"
+                  class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(14rem,22rem)] lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_24rem]"
                 >
                   <ScrollArea class="h-full min-h-0 bg-muted/15">
                     <div class="p-3 sm:p-4">
@@ -397,128 +453,152 @@ function taskParameters(message: HistoryMessage) {
                   </ScrollArea>
 
                   <aside
-                    class="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden border-t border-border bg-background p-4 lg:border-l lg:border-t-0"
+                    class="h-full min-h-0 min-w-0 overflow-hidden border-t border-border bg-background lg:border-l lg:border-t-0"
                   >
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="text-xs text-muted-foreground">{{ t("history.createdAt") }}</p>
-                        <p class="mt-1 text-sm font-medium">
-                          {{ formatDateTime(message.createdAt) }}
-                        </p>
-                      </div>
-                      <span
-                        :class="[
-                          'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
-                          taskStatusTone(taskStatusValue(message))
-                        ]"
-                      >
-                        {{ taskStatusLabel(taskStatusValue(message)) }}
-                      </span>
-                    </div>
-
-                    <section class="min-w-0">
-                      <h2 class="text-xs font-medium text-muted-foreground">
-                        {{ t("workspace.prompt") }}
-                      </h2>
-                      <ScrollArea class="mt-2 h-48 rounded-lg bg-muted/35">
-                        <div class="whitespace-pre-wrap break-words p-3 text-sm leading-6">
-                          {{ messagePromptText(message) }}
-                        </div>
-                      </ScrollArea>
-                    </section>
-
-                    <dl class="divide-y divide-border rounded-lg border border-border text-sm">
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("history.generationProgress") }}</dt>
-                        <dd class="min-w-0">
-                          <div class="flex items-center gap-2">
-                            <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
-                              <div
-                                class="h-full rounded-full bg-primary"
-                                :style="{ width: `${taskGenerationStats(message).percent}%` }"
-                              ></div>
-                            </div>
-                            <span class="shrink-0 font-medium">
-                              {{ taskGenerationStats(message).percent }}%
-                            </span>
+                    <ScrollArea class="h-full min-h-0">
+                      <div class="flex min-h-full flex-col gap-4 p-4">
+                        <div class="flex shrink-0 items-start justify-between gap-3">
+                          <div class="min-w-0">
+                            <p class="text-xs text-muted-foreground">
+                              {{ t("history.createdAt") }}
+                            </p>
+                            <p class="mt-1 text-sm font-medium">
+                              {{ formatDateTime(message.createdAt) }}
+                            </p>
                           </div>
-                        </dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("history.totalImages") }}</dt>
-                        <dd class="min-w-0 font-medium">
-                          {{ taskGenerationStats(message).total }}
-                        </dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("history.successImages") }}</dt>
-                        <dd class="min-w-0 font-medium">
-                          {{ taskGenerationStats(message).success }}
-                        </dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("history.failedImages") }}</dt>
-                        <dd class="min-w-0 font-medium">
-                          {{ taskGenerationStats(message).failed }}
-                        </dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("workspace.generationMode") }}</dt>
-                        <dd class="min-w-0 font-medium">
-                          {{ modeLabel(taskParameters(message).mode) }}
-                        </dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("workspace.canvasSize") }}</dt>
-                        <dd class="min-w-0 font-medium">{{ taskParameters(message).size }}</dd>
-                      </div>
-                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
-                        <dt class="text-muted-foreground">{{ t("history.references") }}</dt>
-                        <dd class="min-w-0 font-medium">
-                          {{ taskParameters(message).referenceCount }}
-                        </dd>
-                      </div>
-                      <div
-                        v-if="taskParameters(message).model"
-                        class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2"
-                      >
-                        <dt class="text-muted-foreground">{{ t("history.model") }}</dt>
-                        <dd class="min-w-0 break-words font-medium">
-                          {{ taskParameters(message).model }}
-                        </dd>
-                      </div>
-                    </dl>
+                          <span
+                            :class="[
+                              'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
+                              taskStatusTone(taskStatusValue(message))
+                            ]"
+                          >
+                            {{ taskStatusLabel(taskStatusValue(message)) }}
+                          </span>
+                        </div>
 
-                    <div
-                      v-if="message.referenceImages?.length"
-                      class="grid gap-2 rounded-lg border border-border bg-muted/20 p-2"
-                    >
-                      <p class="text-xs font-medium text-muted-foreground">
-                        {{ t("history.references") }}
-                      </p>
-                      <div class="flex flex-wrap gap-2">
-                        <button
-                          v-for="image in message.referenceImages"
-                          :key="image.id"
-                          class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
-                          type="button"
-                          :title="t('workspace.openPreview')"
-                          @click="openImage(image)"
+                        <dl
+                          class="shrink-0 divide-y divide-border rounded-lg border border-border text-sm"
                         >
-                          <img
-                            class="h-full w-full object-cover"
-                            :src="image.url"
-                            alt=""
-                            loading="lazy"
-                          />
-                        </button>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">
+                              {{ t("history.generationProgress") }}
+                            </dt>
+                            <dd class="min-w-0">
+                              <div class="flex items-center gap-2">
+                                <div
+                                  class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted"
+                                >
+                                  <div
+                                    class="h-full rounded-full bg-primary"
+                                    :style="{ width: `${taskGenerationStats(message).percent}%` }"
+                                  ></div>
+                                </div>
+                                <span class="shrink-0 font-medium">
+                                  {{ taskGenerationStats(message).percent }}%
+                                </span>
+                              </div>
+                            </dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">{{ t("history.totalImages") }}</dt>
+                            <dd class="min-w-0 font-medium">
+                              {{ taskGenerationStats(message).total }}
+                            </dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">{{ t("history.successImages") }}</dt>
+                            <dd class="min-w-0 font-medium">
+                              {{ taskGenerationStats(message).success }}
+                            </dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">{{ t("history.failedImages") }}</dt>
+                            <dd class="min-w-0 font-medium">
+                              {{ taskGenerationStats(message).failed }}
+                            </dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">
+                              {{ t("workspace.generationMode") }}
+                            </dt>
+                            <dd class="min-w-0 font-medium">
+                              {{ modeLabel(taskParameters(message).mode) }}
+                            </dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">{{ t("workspace.canvasSize") }}</dt>
+                            <dd class="min-w-0 font-medium">{{ taskParameters(message).size }}</dd>
+                          </div>
+                          <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                            <dt class="text-muted-foreground">{{ t("history.references") }}</dt>
+                            <dd class="min-w-0 font-medium">
+                              {{ taskParameters(message).referenceCount }}
+                            </dd>
+                          </div>
+                          <div
+                            v-if="taskParameters(message).model"
+                            class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2"
+                          >
+                            <dt class="text-muted-foreground">{{ t("history.model") }}</dt>
+                            <dd class="min-w-0 break-words font-medium">
+                              {{ taskParameters(message).model }}
+                            </dd>
+                          </div>
+                        </dl>
+
+                        <div
+                          v-if="message.referenceImages?.length"
+                          class="grid shrink-0 gap-2 rounded-lg border border-border bg-muted/20 p-2"
+                        >
+                          <p class="text-xs font-medium text-muted-foreground">
+                            {{ t("history.references") }}
+                          </p>
+                          <div class="flex flex-wrap gap-2">
+                            <button
+                              v-for="image in message.referenceImages"
+                              :key="image.id"
+                              class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
+                              type="button"
+                              :title="t('workspace.openPreview')"
+                              @click="openImage(image)"
+                            >
+                              <img
+                                class="h-full w-full object-cover"
+                                :src="image.url"
+                                alt=""
+                                loading="lazy"
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        <section
+                          :class="[
+                            'min-w-0',
+                            isLongPrompt(message) ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'
+                          ]"
+                        >
+                          <h2 class="text-xs font-medium text-muted-foreground">
+                            {{ t("workspace.prompt") }}
+                          </h2>
+                          <ScrollArea
+                            :class="[
+                              'mt-2 rounded-lg bg-muted/35',
+                              isLongPrompt(message) ? 'min-h-0 flex-1' : 'max-h-48'
+                            ]"
+                          >
+                            <div class="whitespace-pre-wrap break-words p-3 text-sm leading-6">
+                              {{ messagePromptText(message) }}
+                            </div>
+                          </ScrollArea>
+                        </section>
                       </div>
-                    </div>
+                    </ScrollArea>
                   </aside>
                 </div>
               </article>
             </div>
-          </ScrollArea>
+          </div>
         </template>
       </div>
     </template>
