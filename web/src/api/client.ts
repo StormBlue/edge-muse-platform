@@ -6,7 +6,11 @@ export type ApiError = {
   };
 };
 
-export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: RequestInit = {},
+  retryAuth = true
+): Promise<T> {
   const headers = new Headers(options.headers);
   const method = options.method ?? "GET";
   if (!(options.body instanceof FormData) && options.body && !headers.has("Content-Type")) {
@@ -22,13 +26,13 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
     headers,
     credentials: "include"
   });
-  if (response.status === 401 && path !== "/auth/refresh") {
+  if (response.status === 401 && shouldAttemptAuthRefresh(path, csrf, retryAuth)) {
     const refreshed = await fetch("/api/auth/refresh", {
       method: "POST",
       credentials: "include"
     });
     if (refreshed.ok) {
-      return apiFetch<T>(path, options);
+      return apiFetch<T>(path, options, false);
     }
   }
   if (!response.ok) {
@@ -41,7 +45,13 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
   return (await response.json()) as T;
 }
 
-function getCookie(name: string): string | null {
+export function getCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
   return match ? decodeURIComponent(match[1]) : null;
+}
+
+function shouldAttemptAuthRefresh(path: string, csrf: string | null, retryAuth: boolean): boolean {
+  if (!retryAuth || !csrf) return false;
+  const pathname = path.split("?")[0];
+  return pathname !== "/auth/login" && pathname !== "/auth/logout" && pathname !== "/auth/refresh";
 }

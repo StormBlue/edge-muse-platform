@@ -207,7 +207,8 @@ export const imageObjects = sqliteTable(
   },
   (table) => ({
     r2KeyIdx: index("idx_image_objects_r2_key").on(table.r2Key),
-    ownerCreatedIdx: index("idx_image_objects_owner").on(table.ownerUserId, table.createdAt)
+    ownerCreatedIdx: index("idx_image_objects_owner").on(table.ownerUserId, table.createdAt),
+    shaDeletedIdx: index("idx_image_objects_sha256_deleted").on(table.sha256, table.deletedAt)
   })
 );
 

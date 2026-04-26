@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { getCookie } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 
 const router = createRouter({
@@ -59,7 +60,13 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  if (!auth.loaded) await auth.bootstrap();
+  if (!auth.loaded) {
+    if (!to.meta.public || auth.isAuthenticated || getCookie("em_csrf")) {
+      await auth.bootstrap();
+    } else {
+      auth.loaded = true;
+    }
+  }
   if (!to.meta.public && !auth.isAuthenticated)
     return `/login?redirect=${encodeURIComponent(to.fullPath)}`;
   if (to.path === "/login" && auth.isAuthenticated) return "/workspace";

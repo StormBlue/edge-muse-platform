@@ -3,7 +3,8 @@ import { logError, logInfo } from "../lib/log";
 import type { AppEnv } from "../types";
 
 export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
-  const traceId = crypto.randomUUID();
+  const cfRay = c.req.header("CF-Ray") ?? null;
+  const traceId = cfRay ?? crypto.randomUUID();
   c.set("traceId", traceId);
   const startedAt = Date.now();
   const url = new URL(c.req.url);
@@ -12,10 +13,9 @@ export const requestLogger = createMiddleware<AppEnv>(async (c, next) => {
     method: c.req.method,
     path: url.pathname,
     queryPresent: url.search.length > 0,
-    cfRay: c.req.header("CF-Ray") ?? null,
+    cfRay,
     userAgent: c.req.header("User-Agent") ?? null
   };
-  logInfo("http.request.started", requestFields);
   try {
     await next();
   } catch (error) {

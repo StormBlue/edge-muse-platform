@@ -157,5 +157,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_status_heartbeat ON tasks(status, heartbeat_at);
 CREATE INDEX IF NOT EXISTS idx_image_objects_r2_key ON image_objects(r2_key);
 CREATE INDEX IF NOT EXISTS idx_image_objects_owner ON image_objects(owner_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_image_objects_sha256_deleted ON image_objects(sha256, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_provider_keys_provider ON provider_keys(provider_id);
 CREATE INDEX IF NOT EXISTS idx_quota_transactions_user_created ON quota_transactions(user_id, created_at DESC);
