@@ -15,6 +15,7 @@ import { appError } from "../lib/errors";
 import { randomBytes, base64UrlEncode } from "../lib/encoding";
 import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
+import { logWarn } from "../lib/log";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
@@ -28,7 +29,7 @@ const loginSchema = z.object({
   turnstileToken: z.string().optional()
 });
 
-const loginRateLimit = { prefix: "login", limit: 5, windowSeconds: 15 * 60 };
+const loginRateLimit = { prefix: "login", limit: 20, windowSeconds: 15 * 60 };
 
 export const authRoutes = new Hono<AppEnv>();
 
@@ -36,6 +37,12 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
   const body = c.req.valid("json");
   const ip = c.req.header("CF-Connecting-IP") ?? undefined;
   if (!(await verifyTurnstile(c.env, body.turnstileToken, ip))) {
+    logWarn("auth.login_turnstile_failed", {
+      traceId: c.get("traceId"),
+      identifierLength: body.email.trim().length,
+      ip,
+      hasTurnstileToken: Boolean(body.turnstileToken)
+    });
     throw appError("FORBIDDEN", "Turnstile verification failed");
   }
   const db = getDb(c.env);
@@ -44,15 +51,9 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
   const user = await db.query.users.findFirst({
     where: or(eq(users.email, identifier.toLowerCase()), eq(users.username, identifier))
   });
-  let passwordMatches: boolean;
-  if (!user || user.role !== "sysadmin") {
+  const passwordMatches = user ? await verifyPassword(body.password, user.passwordHash) : false;
+  if (!user || !passwordMatches || user.status !== "active") {
     await consumeRateLimit(c, loginRateLimit);
-    passwordMatches = user ? await verifyPassword(body.password, user.passwordHash) : false;
-  } else {
-    passwordMatches = await verifyPassword(body.password, user.passwordHash);
-    if (!passwordMatches || user.status !== "active") {
-      await consumeRateLimit(c, loginRateLimit);
-    }
   }
   if (!user || !passwordMatches) {
     await audit(c.env, {

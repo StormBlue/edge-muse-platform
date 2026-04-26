@@ -34,7 +34,7 @@ async function encryptString(plainText, secret) {
 
 async function hashPassword(password) {
   const salt = randomBytes(16);
-  const params = { iterations: 120_000, dkLen: 32 };
+  const params = { iterations: 100_000, dkLen: 32 };
   const key = await webcrypto.subtle.importKey("raw", utf8(password), "PBKDF2", false, [
     "deriveBits"
   ]);

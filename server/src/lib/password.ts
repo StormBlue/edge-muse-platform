@@ -2,11 +2,11 @@ import { base64ToBytes, bytesToBase64, randomBytes, toArrayBuffer, utf8ToBytes }
 
 const PASSWORD_ALGORITHM = "pbkdf2-sha256";
 const PBKDF2_PARAMS = {
-  iterations: 120_000,
+  iterations: 100_000,
   saltLength: 16,
   dkLen: 32
 };
-const MAX_PBKDF2_ITERATIONS = 250_000;
+const MAX_PBKDF2_ITERATIONS = 100_000;
 const MAX_PBKDF2_DK_LEN = 64;
 
 export async function hashPassword(password: string): Promise<string> {
