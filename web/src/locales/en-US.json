@@ -48,6 +48,8 @@
     "password": "Password",
     "nickname": "Nickname",
     "username": "Username",
+    "usernameForLogin": "Username (for login)",
+    "nicknameForDisplay": "Nickname (display name)",
     "loginIdentifier": "Username or email",
     "loginFailed": "Login failed",
     "platformSubtitle": "Cloudflare image generation platform"

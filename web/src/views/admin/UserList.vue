@@ -7,6 +7,14 @@ import StatBarChart from "@/components/stats/StatBarChart.vue";
 import StatKPICard from "@/components/stats/StatKPICard.vue";
 import StatLineChart from "@/components/stats/StatLineChart.vue";
 import StatPieChart from "@/components/stats/StatPieChart.vue";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 
@@ -410,56 +418,60 @@ onMounted(() => {
       </aside>
     </div>
 
-    <div
-      v-if="createOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="createOpen = false"
-    >
-      <form class="panel flex w-full max-w-md flex-col gap-3 p-5" @submit.prevent="createUser">
-        <h2 class="font-semibold">{{ t("adminUsers.createUser") }}</h2>
-        <input
-          v-model="form.username"
-          class="ui-field h-10 px-3"
-          :placeholder="t('auth.username')"
-          required
-        />
-        <input
-          v-model="form.nickname"
-          class="ui-field h-10 px-3"
-          :placeholder="t('auth.nickname')"
-          required
-        />
-        <input
-          v-model="form.password"
-          class="ui-field h-10 px-3"
-          :placeholder="t('auth.password')"
-          minlength="8"
-          required
-          type="password"
-        />
-        <input
-          v-model="form.email"
-          class="ui-field h-10 px-3"
-          :placeholder="t('auth.emailOptional')"
-          type="email"
-        />
-        <select v-model="form.providerKeyId" class="ui-field h-10 px-3" required>
-          <option value="">{{ t("sysadmin.selectKey") }}</option>
-          <option v-for="key in keys" :key="key.id" :value="key.id">
-            {{ key.label }} ({{ key.keyHint }})
-          </option>
-        </select>
-        <input
-          v-model.number="form.quota"
-          class="ui-field h-10 px-3"
-          :placeholder="t('adminUsers.quotaAmount')"
-          type="number"
-        />
-        <button class="ui-button ui-button-primary w-full" type="submit">
-          {{ t("common.create") }}
-        </button>
-      </form>
-    </div>
+    <Dialog v-model:open="createOpen">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("adminUsers.createUser") }}</DialogTitle>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="createUser">
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.usernameForLogin") }}</span>
+            <input v-model="form.username" class="ui-field mt-1.5 h-10 px-3" required />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.nicknameForDisplay") }}</span>
+            <input v-model="form.nickname" class="ui-field mt-1.5 h-10 px-3" required />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.password") }}</span>
+            <input
+              v-model="form.password"
+              class="ui-field mt-1.5 h-10 px-3"
+              minlength="8"
+              required
+              type="password"
+            />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.emailOptional") }}</span>
+            <input v-model="form.email" class="ui-field mt-1.5 h-10 px-3" type="email" />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.providerKey") }}</span>
+            <select v-model="form.providerKeyId" class="ui-field mt-1.5 h-10 px-3" required>
+              <option value="">{{ t("sysadmin.selectKey") }}</option>
+              <option v-for="key in keys" :key="key.id" :value="key.id">
+                {{ key.label }} ({{ key.keyHint }})
+              </option>
+            </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.initialQuota") }}</span>
+            <input v-model.number="form.quota" class="ui-field mt-1.5 h-10 px-3" type="number" />
+          </label>
+          <DialogFooter class="mt-1">
+            <DialogClose as-child>
+              <button class="ui-button ui-button-secondary" type="button">
+                {{ t("common.cancel") }}
+              </button>
+            </DialogClose>
+            <button class="ui-button ui-button-primary" type="submit">
+              {{ t("common.create") }}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
 
     <div
       v-if="quotaOpen && selectedUser"

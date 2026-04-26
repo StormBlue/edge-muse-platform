@@ -48,6 +48,8 @@
     "password": "密码",
     "nickname": "昵称",
     "username": "用户名",
+    "usernameForLogin": "用户名（用于登录）",
+    "nicknameForDisplay": "昵称（用于显示）",
     "loginIdentifier": "用户名或邮箱",
     "loginFailed": "登录失败",
     "platformSubtitle": "Cloudflare 图像生成平台"
