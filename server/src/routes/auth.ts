@@ -19,7 +19,7 @@ import { hashPassword, verifyPassword } from "../lib/password";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
 import { requireAuth } from "../middleware/auth";
-import { rateLimit } from "../middleware/rateLimit";
+import { consumeRateLimit } from "../middleware/rateLimit";
 import type { AppEnv } from "../types";
 
 const loginSchema = z.object({
@@ -28,64 +28,68 @@ const loginSchema = z.object({
   turnstileToken: z.string().optional()
 });
 
+const loginRateLimit = { prefix: "login", limit: 5, windowSeconds: 15 * 60 };
+
 export const authRoutes = new Hono<AppEnv>();
 
-authRoutes.post(
-  "/login",
-  rateLimit({ prefix: "login", limit: 5, windowSeconds: 15 * 60 }),
-  zValidator("json", loginSchema),
-  async (c) => {
-    const body = c.req.valid("json");
-    const ip = c.req.header("CF-Connecting-IP") ?? undefined;
-    if (!(await verifyTurnstile(c.env, body.turnstileToken, ip))) {
-      throw appError("FORBIDDEN", "Turnstile verification failed");
+authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
+  const body = c.req.valid("json");
+  const ip = c.req.header("CF-Connecting-IP") ?? undefined;
+  if (!(await verifyTurnstile(c.env, body.turnstileToken, ip))) {
+    throw appError("FORBIDDEN", "Turnstile verification failed");
+  }
+  const db = getDb(c.env);
+  const identifier = body.email.trim();
+  if (!identifier) throw appError("VALIDATION_ERROR", "Username/email is required");
+  const user = await db.query.users.findFirst({
+    where: or(eq(users.email, identifier.toLowerCase()), eq(users.username, identifier))
+  });
+  let passwordMatches: boolean;
+  if (!user || user.role !== "sysadmin") {
+    await consumeRateLimit(c, loginRateLimit);
+    passwordMatches = user ? await verifyPassword(body.password, user.passwordHash) : false;
+  } else {
+    passwordMatches = await verifyPassword(body.password, user.passwordHash);
+    if (!passwordMatches || user.status !== "active") {
+      await consumeRateLimit(c, loginRateLimit);
     }
-    const db = getDb(c.env);
-    const identifier = body.email.trim();
-    if (!identifier) throw appError("VALIDATION_ERROR", "Username/email is required");
-    const user = await db.query.users.findFirst({
-      where: or(eq(users.email, identifier.toLowerCase()), eq(users.username, identifier))
-    });
-    if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
-      await audit(c.env, {
-        action: "auth.login_failed",
-        targetType: "user",
-        targetId: identifier,
-        ip
-      });
-      throw appError("UNAUTHORIZED", "Invalid username/email or password");
-    }
-    if (user.status !== "active") throw appError("FORBIDDEN", "User disabled");
-    const accessToken = await signJwt(
-      c.env.JWT_SECRET,
-      { sub: user.id, email: user.email, role: user.role, type: "access" },
-      15 * 60
-    );
-    const refreshToken = await signJwt(
-      c.env.JWT_SECRET,
-      { sub: user.id, email: user.email, role: user.role, type: "refresh" },
-      7 * 24 * 60 * 60
-    );
-    const csrf = base64UrlEncode(randomBytes(16));
-    setAuthCookies(c, accessToken, refreshToken, csrf);
-    await db
-      .update(users)
-      .set({ lastLoginAt: now(), updatedAt: now() })
-      .where(eq(users.id, user.id));
+  }
+  if (!user || !passwordMatches) {
     await audit(c.env, {
-      actorId: user.id,
-      action: "auth.login",
+      action: "auth.login_failed",
       targetType: "user",
-      targetId: user.id,
+      targetId: identifier,
       ip
     });
-    return c.json({
-      user: publicUser(user),
-      csrfToken: csrf,
-      quota: await getQuota(c.env, user.id)
-    });
+    throw appError("UNAUTHORIZED", "Invalid username/email or password");
   }
-);
+  if (user.status !== "active") throw appError("FORBIDDEN", "User disabled");
+  const accessToken = await signJwt(
+    c.env.JWT_SECRET,
+    { sub: user.id, email: user.email, role: user.role, type: "access" },
+    15 * 60
+  );
+  const refreshToken = await signJwt(
+    c.env.JWT_SECRET,
+    { sub: user.id, email: user.email, role: user.role, type: "refresh" },
+    7 * 24 * 60 * 60
+  );
+  const csrf = base64UrlEncode(randomBytes(16));
+  setAuthCookies(c, accessToken, refreshToken, csrf);
+  await db.update(users).set({ lastLoginAt: now(), updatedAt: now() }).where(eq(users.id, user.id));
+  await audit(c.env, {
+    actorId: user.id,
+    action: "auth.login",
+    targetType: "user",
+    targetId: user.id,
+    ip
+  });
+  return c.json({
+    user: publicUser(user),
+    csrfToken: csrf,
+    quota: await getQuota(c.env, user.id)
+  });
+});
 
 authRoutes.post("/logout", requireAuth, async (c) => {
   const token = readAccessToken(c);
