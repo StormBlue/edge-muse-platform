@@ -9,15 +9,14 @@ export async function assertSessionAccess(env: AppBindings, sessionId: string, u
     where: and(eq(sessions.id, sessionId), isNull(sessions.deletedAt))
   });
   if (!session) throw appError("NOT_FOUND", "Session not found");
-  if (user.role !== "sysadmin" && session.userId !== user.id)
-    throw appError("FORBIDDEN", "No access");
+  if (session.userId !== user.id) throw appError("FORBIDDEN", "No access");
   return session;
 }
 
 export async function assertTaskAccess(env: AppBindings, taskId: string, user: AuthUser) {
   const task = await getDb(env).query.tasks.findFirst({ where: eq(tasks.id, taskId) });
   if (!task) throw appError("NOT_FOUND", "Task not found");
-  if (user.role !== "sysadmin" && task.userId !== user.id) throw appError("FORBIDDEN", "No access");
+  if (task.userId !== user.id) throw appError("FORBIDDEN", "No access");
   return task;
 }
 

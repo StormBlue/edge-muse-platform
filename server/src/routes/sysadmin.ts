@@ -1,9 +1,17 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import { messages, providerKeys, providers, quotas, userProviderKeys, users } from "../db/schema";
+import {
+  imageObjects,
+  messages,
+  providerKeys,
+  providers,
+  quotas,
+  userProviderKeys,
+  users
+} from "../db/schema";
 import { generatedEmailForUserId, normalizeOptionalEmail } from "../lib/account";
 import { audit } from "../lib/audit";
 import { decryptString, encryptString } from "../lib/crypto";
@@ -35,6 +43,7 @@ type AuditImageAttachment = {
   generationDurationMs?: number | null;
   generationIndex?: number | null;
 };
+type AuditReferenceImage = AuditImageAttachment;
 
 type AuditGenerationFailure = {
   index: number;
@@ -743,6 +752,10 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
       task_finished_at: number | null;
     }>();
   const persistedImagesByMessageId = await loadAuditGeneratedImagesByMessageId(c.env, session.id);
+  const referenceImagesById = await loadAuditReferenceImagesById(
+    c.env,
+    uniqueAuditReferenceImageIds(rows.results)
+  );
   const taskCount = rows.results.filter((row) => row.task_id).length;
   return c.json({
     session: {
@@ -760,6 +773,10 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
       taskCount
     },
     messages: rows.results.map((row) => {
+      const taskParams = parseJson<TaskParamsWithReferences>(row.task_params, {});
+      const referenceImageIds = parseJson<string[]>(row.reference_image_ids, []);
+      const effectiveReferenceImageIds =
+        referenceImageIds.length > 0 ? referenceImageIds : (taskParams.referenceImageIds ?? []);
       const attachments = mergeAuditGeneratedImages(
         parseJson<Array<Partial<AuditImageAttachment> & { id: string }>>(row.attachments, []),
         persistedImagesByMessageId.get(row.id) ?? [],
@@ -775,7 +792,17 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
         sessionId: row.session_id,
         role: row.role,
         prompt: row.prompt,
-        referenceImageIds: parseJson(row.reference_image_ids, []),
+        referenceImageIds,
+        referenceImages: auditReferenceImagesForIds(
+          referenceImagesById,
+          effectiveReferenceImageIds,
+          {
+            taskId: row.task_id,
+            sessionId: row.session_id,
+            messageId: row.id,
+            prompt: row.prompt
+          }
+        ),
         attachments,
         taskId: row.task_id,
         status: row.status,
@@ -784,7 +811,7 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
           ? {
               id: row.task_id,
               mode: row.task_mode,
-              params: parseJson(row.task_params, {}),
+              params: taskParams,
               status: row.task_status,
               errorCode: row.task_error_code,
               errorMsg: row.task_error_msg,
@@ -821,6 +848,84 @@ sysadminRoutes.get("/sessions/:id/messages", async (c) => {
     }))
   });
 });
+
+type TaskParamsWithReferences = {
+  referenceImageIds?: string[];
+  [key: string]: unknown;
+};
+
+function uniqueAuditReferenceImageIds(
+  rows: Array<{ reference_image_ids: string; task_params: string | null }>
+): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    for (const id of parseJson<string[]>(row.reference_image_ids, [])) ids.add(id);
+    const taskReferenceImageIds =
+      parseJson<TaskParamsWithReferences>(row.task_params, {}).referenceImageIds ?? [];
+    for (const id of taskReferenceImageIds) ids.add(id);
+  }
+  return [...ids];
+}
+
+async function loadAuditReferenceImagesById(
+  env: AppEnv["Bindings"],
+  imageIds: string[]
+): Promise<Map<string, AuditReferenceImage>> {
+  if (imageIds.length === 0) return new Map();
+  const rows = await getDb(env)
+    .select({
+      id: imageObjects.id,
+      mime: imageObjects.mime,
+      width: imageObjects.width,
+      height: imageObjects.height,
+      byteSize: imageObjects.byteSize,
+      taskId: imageObjects.taskId,
+      sessionId: imageObjects.sessionId,
+      createdAt: imageObjects.createdAt
+    })
+    .from(imageObjects)
+    .where(and(inArray(imageObjects.id, imageIds), isNull(imageObjects.deletedAt)));
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        url: `/api/i/${row.id}`,
+        mime: row.mime,
+        width: row.width,
+        height: row.height,
+        byteSize: row.byteSize,
+        taskId: row.taskId,
+        sessionId: row.sessionId,
+        createdAt: row.createdAt,
+        generationDurationMs: null,
+        generationIndex: null
+      }
+    ])
+  );
+}
+
+function auditReferenceImagesForIds(
+  imagesById: Map<string, AuditReferenceImage>,
+  imageIds: string[],
+  context: {
+    taskId?: string | null;
+    sessionId: string;
+    messageId: string;
+    prompt?: string | null;
+  }
+): AuditReferenceImage[] {
+  return imageIds
+    .map((id) => imagesById.get(id))
+    .filter((image): image is AuditReferenceImage => Boolean(image))
+    .map((image) => ({
+      ...image,
+      taskId: image.taskId ?? context.taskId ?? null,
+      sessionId: image.sessionId ?? context.sessionId,
+      messageId: context.messageId,
+      prompt: context.prompt ?? null
+    }));
+}
 
 async function loadAuditGeneratedImagesByMessageId(
   env: AppEnv["Bindings"],

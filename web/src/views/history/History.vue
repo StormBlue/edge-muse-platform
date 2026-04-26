@@ -30,11 +30,13 @@ type HistoryTask = {
   mode: SessionMode | null;
   params: TaskParams;
   status: string | null;
+  errorCode?: string | null;
+  errorMsg?: string | null;
   queuedAt?: number | null;
   startedAt?: number | null;
   finishedAt?: number | null;
 };
-type HistoryMessage = Message & { task?: HistoryTask | null };
+type HistoryMessage = Message & { referenceImages?: ImageAttachment[]; task?: HistoryTask | null };
 type GenerationStats = {
   total: number;
   success: number;
@@ -66,7 +68,10 @@ const resultMessages = computed(() =>
   )
 );
 const detailImages = computed(() =>
-  detailMessages.value.flatMap((message) => message.attachments.map(toViewerImage))
+  detailMessages.value.flatMap((message) => [
+    ...(message.referenceImages ?? []).map(toViewerImage),
+    ...message.attachments.map(toViewerImage)
+  ])
 );
 const detailGenerationStats = computed(() => summarizeGenerationStats(resultMessages.value));
 const taskStatusItems = computed(() => {
@@ -238,6 +243,10 @@ function taskStatusTone(status?: string | null) {
   return "border-border bg-muted/35 text-muted-foreground";
 }
 
+function taskFailureMessage(message: HistoryMessage) {
+  return message.task?.errorMsg || message.error?.message || "";
+}
+
 function taskStatusSortIndex(status: string) {
   const order = ["running", "queued", "failed", "cancelled", "succeeded"];
   const index = order.indexOf(status);
@@ -309,7 +318,10 @@ function taskParameters(message: HistoryMessage) {
     size: params.size ?? selectedSession.value?.settings?.size ?? "-",
     count: requestedImageCount(message),
     model: params.model ?? selectedSession.value?.settings?.model ?? "",
-    referenceCount: params.referenceImageIds?.length ?? message.referenceImageIds.length
+    referenceCount:
+      message.referenceImages?.length ??
+      params.referenceImageIds?.length ??
+      message.referenceImageIds.length
   };
 }
 </script>
@@ -471,6 +483,48 @@ function taskParameters(message: HistoryMessage) {
                 >
                   <span class="text-muted-foreground">{{ t("history.model") }}</span>
                   <span class="ml-2 font-medium">{{ taskParameters(message).model }}</span>
+                </div>
+              </div>
+
+              <div
+                v-if="taskFailureMessage(message)"
+                class="rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+              >
+                <p class="font-semibold">
+                  {{
+                    message.task?.errorCode?.startsWith("PROVIDER")
+                      ? t("workspace.providerGenerationFailed")
+                      : t("workspace.generationFailed")
+                  }}
+                </p>
+                <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">
+                  {{ taskFailureMessage(message) }}
+                </p>
+              </div>
+
+              <div
+                v-if="message.referenceImages?.length"
+                class="grid gap-2 rounded-lg border border-border bg-muted/20 p-2"
+              >
+                <p class="text-xs font-medium text-muted-foreground">
+                  {{ t("history.references") }}
+                </p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="image in message.referenceImages"
+                    :key="image.id"
+                    class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
+                    type="button"
+                    :title="t('workspace.openPreview')"
+                    @click="openImage(image)"
+                  >
+                    <img
+                      class="h-full w-full object-cover"
+                      :src="image.url"
+                      alt=""
+                      loading="lazy"
+                    />
+                  </button>
                 </div>
               </div>
 

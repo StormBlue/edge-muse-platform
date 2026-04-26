@@ -39,26 +39,28 @@ export async function putImage(
     sha256: sha
   };
   logInfo("image.put.started", baseFields);
-  const duplicate = await db.query.imageObjects.findFirst({
-    where: and(eq(imageObjects.sha256, sha), isNull(imageObjects.deletedAt))
-  });
-  if (duplicate && duplicate.ownerUserId === input.ownerUserId) {
-    logInfo("image.put.deduplicated", {
-      ...baseFields,
-      imageId: duplicate.id,
-      duplicateTaskId: duplicate.taskId ?? null,
-      duplicateSessionId: duplicate.sessionId ?? null
+  if (!input.isReference && !input.taskId && !input.sessionId) {
+    const duplicate = await db.query.imageObjects.findFirst({
+      where: and(eq(imageObjects.sha256, sha), isNull(imageObjects.deletedAt))
     });
-    return {
-      id: duplicate.id,
-      url: `/api/i/${duplicate.id}`,
-      mime: duplicate.mime,
-      width: duplicate.width,
-      height: duplicate.height,
-      byteSize: duplicate.byteSize,
-      taskId: input.taskId ?? duplicate.taskId,
-      sessionId: input.sessionId ?? duplicate.sessionId
-    };
+    if (duplicate && duplicate.ownerUserId === input.ownerUserId) {
+      logInfo("image.put.deduplicated", {
+        ...baseFields,
+        imageId: duplicate.id,
+        duplicateTaskId: duplicate.taskId ?? null,
+        duplicateSessionId: duplicate.sessionId ?? null
+      });
+      return {
+        id: duplicate.id,
+        url: `/api/i/${duplicate.id}`,
+        mime: duplicate.mime,
+        width: duplicate.width,
+        height: duplicate.height,
+        byteSize: duplicate.byteSize,
+        taskId: input.taskId ?? duplicate.taskId,
+        sessionId: input.sessionId ?? duplicate.sessionId
+      };
+    }
   }
 
   const imageId = newId("img");

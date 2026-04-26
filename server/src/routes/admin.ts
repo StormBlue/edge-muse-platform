@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
@@ -47,7 +47,13 @@ adminRoutes.get("/users", async (c) => {
   const actor = c.get("user");
   const q = c.req.query("q");
   const status = c.req.query("status");
-  const role = c.req.query("role") ?? "user";
+  const requestedRole = c.req.query("role");
+  const role =
+    actor.role === "sysadmin" && (requestedRole === "admin" || requestedRole === "user")
+      ? requestedRole
+      : actor.role === "sysadmin"
+        ? null
+        : "user";
   const rows = await getDb(c.env)
     .select({
       id: users.id,
@@ -56,16 +62,25 @@ adminRoutes.get("/users", async (c) => {
       nickname: users.nickname,
       role: users.role,
       status: users.status,
+      preferredProviderKeyId: users.preferredProviderKeyId,
       createdAt: users.createdAt,
+      updatedAt: users.updatedAt,
+      lastLoginAt: users.lastLoginAt,
       allocatedQuota: quotas.allocatedQuota,
-      usedQuota: quotas.usedQuota
+      usedQuota: quotas.usedQuota,
+      providerKeyId: userProviderKeys.providerKeyId,
+      generationCount: sql<number>`count(${tasks.id})`,
+      lastGenerationAt: sql<number | null>`max(${tasks.queuedAt})`
     })
     .from(users)
     .leftJoin(quotas, eq(quotas.userId, users.id))
+    .leftJoin(userProviderKeys, eq(userProviderKeys.userId, users.id))
+    .leftJoin(tasks, eq(tasks.userId, users.id))
     .where(
       and(
         actor.role === "sysadmin" ? undefined : eq(users.createdBy, actor.id),
-        role ? eq(users.role, role as "sysadmin" | "admin" | "user") : undefined,
+        actor.role === "sysadmin" && !role ? inArray(users.role, ["admin", "user"]) : undefined,
+        role ? eq(users.role, role as "admin" | "user") : undefined,
         status ? eq(users.status, status as "active" | "disabled") : undefined,
         q
           ? or(
@@ -76,6 +91,7 @@ adminRoutes.get("/users", async (c) => {
           : undefined
       )
     )
+    .groupBy(users.id)
     .orderBy(desc(users.createdAt))
     .limit(100);
   return c.json({ items: rows });
@@ -124,13 +140,17 @@ adminRoutes.post(
       username: usernameSchema,
       password: z.string().min(8),
       nickname: z.string().min(1).max(40),
+      role: z.enum(["admin", "user"]).default("user"),
       providerKeyId: optionalProviderKeySchema,
-      quota: z.number().int().min(0).default(0)
+      quota: z.number().int().min(0).nullable().default(0)
     })
   ),
   async (c) => {
     const actor = c.get("user");
     const body = c.req.valid("json");
+    if (actor.role !== "sysadmin" && body.role !== "user") {
+      throw appError("FORBIDDEN", "Only system administrators can create admins");
+    }
     const email = normalizeOptionalEmail(body.email);
     const existing = await getDb(c.env).query.users.findFirst({
       where: email
@@ -148,6 +168,9 @@ adminRoutes.post(
       throw appError("FORBIDDEN", "No access to provider key");
     }
     providerKeyId = providerKeyId ?? actorKey?.providerKeyId;
+    if (body.role === "admin" && !providerKeyId) {
+      throw appError("VALIDATION_ERROR", "Provider key is required for admins");
+    }
 
     if (providerKeyId) {
       const providerKey = await getDb(c.env).query.providerKeys.findFirst({
@@ -161,12 +184,16 @@ adminRoutes.post(
     }
 
     if (actor.role !== "sysadmin") {
+      if (body.quota === null) {
+        throw appError("FORBIDDEN", "Only system administrators can grant unlimited quota");
+      }
       const actorQuota = await getQuota(c.env, actor.id);
-      if (actorQuota.remainingQuota !== null && body.quota > actorQuota.remainingQuota) {
+      const quotaToGrant = body.quota ?? 0;
+      if (actorQuota.remainingQuota !== null && quotaToGrant > actorQuota.remainingQuota) {
         throw appError("QUOTA_EXCEEDED", "Cannot grant more quota than remaining");
       }
     }
-    const id = newId("usr");
+    const id = newId(body.role === "admin" ? "adm" : "usr");
     const timestamp = now();
     await getDb(c.env)
       .insert(users)
@@ -176,7 +203,7 @@ adminRoutes.post(
         username: body.username,
         passwordHash: await hashPassword(body.password),
         nickname: body.nickname,
-        role: "user",
+        role: body.role,
         createdBy: actor.id,
         preferredProviderKeyId: providerKeyId ?? null,
         locale: "zh-CN",
@@ -198,18 +225,19 @@ adminRoutes.post(
         assignedAt: timestamp
       });
     }
-    if (actor.role !== "sysadmin" && body.quota > 0) {
+    if (actor.role !== "sysadmin" && (body.quota ?? 0) > 0) {
       await c.env.DB.prepare(
         "UPDATE quotas SET allocated_quota = allocated_quota - ?1, updated_at = ?2 WHERE user_id = ?3"
       )
-        .bind(body.quota, timestamp, actor.id)
+        .bind(body.quota ?? 0, timestamp, actor.id)
         .run();
     }
     await audit(c.env, {
       actorId: actor.id,
-      action: "admin.user_create",
+      action: body.role === "admin" ? "sys.admin_create" : "admin.user_create",
       targetType: "user",
-      targetId: id
+      targetId: id,
+      payload: { role: body.role }
     });
     return c.json({ id }, 201);
   }
@@ -221,22 +249,90 @@ adminRoutes.patch(
     "json",
     z.object({
       nickname: z.string().min(1).max(40).optional(),
-      status: z.enum(["active", "disabled"]).optional()
+      status: z.enum(["active", "disabled"]).optional(),
+      providerKeyId: optionalProviderKeySchema,
+      quota: z.number().int().min(0).nullable().optional(),
+      password: z.string().min(8).optional()
     })
   ),
   async (c) => {
-    const target = await assertManagedUserAccess(c.env, c.req.param("id"), c.get("user"));
+    const actor = c.get("user");
+    const target = await assertManagedUserAccess(c.env, c.req.param("id"), actor);
     const body = c.req.valid("json");
-    await getDb(c.env)
-      .update(users)
-      .set({ ...body, updatedAt: now() })
-      .where(eq(users.id, target.id));
+    if (target.role === "sysadmin")
+      throw appError("FORBIDDEN", "System admins cannot be edited here");
+    if (
+      actor.role !== "sysadmin" &&
+      ("providerKeyId" in body || "quota" in body || body.password)
+    ) {
+      throw appError("FORBIDDEN", "Insufficient role");
+    }
+    const timestamp = now();
+    let changedProviderKeyId: string | null = null;
+    if (body.providerKeyId !== undefined && body.providerKeyId !== target.preferredProviderKeyId) {
+      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
+        where: and(
+          eq(providerKeys.id, body.providerKeyId),
+          eq(providerKeys.enabled, true),
+          isNull(providerKeys.deletedAt)
+        )
+      });
+      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+      changedProviderKeyId = body.providerKeyId;
+    }
+    const userUpdate: {
+      nickname?: string;
+      status?: "active" | "disabled";
+      preferredProviderKeyId?: string;
+      passwordHash?: string;
+      updatedAt: number;
+    } = { updatedAt: timestamp };
+    if (body.nickname !== undefined) userUpdate.nickname = body.nickname;
+    if (body.status !== undefined) userUpdate.status = body.status;
+    if (changedProviderKeyId) userUpdate.preferredProviderKeyId = changedProviderKeyId;
+    if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
+    if (Object.keys(userUpdate).length > 1) {
+      await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, target.id));
+    }
+    if ("quota" in body) {
+      await c.env.DB.prepare(
+        `INSERT INTO quotas (user_id, allocated_quota, used_quota, updated_at)
+         VALUES (?1, ?2, 0, ?3)
+         ON CONFLICT(user_id) DO UPDATE SET allocated_quota = ?2, updated_at = ?3`
+      )
+        .bind(target.id, body.quota ?? null, timestamp)
+        .run();
+    }
+    if (changedProviderKeyId) {
+      const managed =
+        target.role === "admin"
+          ? await getDb(c.env)
+              .select({ id: users.id })
+              .from(users)
+              .where(sql`${users.id} = ${target.id} OR ${users.createdBy} = ${target.id}`)
+          : [{ id: target.id }];
+      for (const row of managed) {
+        await c.env.DB.prepare(
+          `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)
+           VALUES (?1, ?2, ?3)
+           ON CONFLICT(user_id) DO UPDATE SET provider_key_id = ?2, assigned_at = ?3`
+        )
+          .bind(row.id, changedProviderKeyId, timestamp)
+          .run();
+      }
+      if (target.role === "admin") {
+        await getDb(c.env)
+          .update(providerKeys)
+          .set({ ownerAdminId: target.id, updatedAt: timestamp })
+          .where(eq(providerKeys.id, changedProviderKeyId));
+      }
+    }
     await audit(c.env, {
-      actorId: c.get("user").id,
+      actorId: actor.id,
       action: "admin.user_update",
       targetType: "user",
       targetId: target.id,
-      payload: body
+      payload: { ...body, password: undefined, passwordReset: Boolean(body.password) }
     });
     return c.json({ ok: true });
   }
@@ -326,8 +422,8 @@ adminRoutes.post(
   async (c) => {
     const actor = c.get("user");
     const target = await assertManagedUserAccess(c.env, c.req.param("id"), actor);
-    if (target.role !== "user")
-      throw appError("FORBIDDEN", "Only user passwords can be reset here");
+    if (target.role === "sysadmin")
+      throw appError("FORBIDDEN", "System admin passwords cannot be reset here");
     await getDb(c.env)
       .update(users)
       .set({ passwordHash: await hashPassword(c.req.valid("json").password), updatedAt: now() })

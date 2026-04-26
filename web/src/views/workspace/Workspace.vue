@@ -95,6 +95,17 @@ const generationStatusLabel = computed(() =>
 );
 const generationPrompt = computed(() => activeRunningMessage.value?.prompt ?? latestPrompt.value);
 const failedPrompt = computed(() => activeFailedMessage.value?.prompt ?? latestPrompt.value);
+const failedTitle = computed(() =>
+  activeFailedMessage.value?.error?.code?.startsWith("PROVIDER")
+    ? t("workspace.providerGenerationFailed")
+    : t("workspace.generationFailed")
+);
+const failedMessage = computed(
+  () =>
+    activeFailedMessage.value?.error?.message ||
+    failedPrompt.value ||
+    t("workspace.generationFailedHint")
+);
 const inputLoading = computed(() => submitting.value || sessions.loading);
 const latestUserMessage = computed(() => {
   for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
@@ -144,7 +155,14 @@ const { status, connect, disconnect } = useTaskWebSocket((payload) => {
     auth.bootstrap();
     disconnect();
   }
-  if (eventType === "task.failed") disconnect();
+  if (eventType === "task.failed") {
+    const error =
+      payload && typeof payload === "object"
+        ? (payload as { error?: { message?: string } }).error
+        : null;
+    toast.error(error?.message || t("workspace.generationFailedHint"));
+    disconnect();
+  }
 });
 
 onMounted(async () => {
@@ -624,9 +642,9 @@ function padDatePart(value: number) {
                   <ImageOff class="h-8 w-8" />
                 </div>
                 <div class="max-w-sm">
-                  <p class="text-base font-semibold">{{ t("workspace.generationFailed") }}</p>
+                  <p class="text-base font-semibold">{{ failedTitle }}</p>
                   <p class="mt-2 text-sm leading-6 text-muted-foreground">
-                    {{ failedPrompt || t("workspace.generationFailedHint") }}
+                    {{ failedMessage }}
                   </p>
                 </div>
                 <button
@@ -743,9 +761,9 @@ function padDatePart(value: number) {
                 <ImageOff class="h-10 w-10" />
               </div>
               <div class="max-w-xl">
-                <p class="text-xl font-semibold">{{ t("workspace.generationFailed") }}</p>
+                <p class="text-xl font-semibold">{{ failedTitle }}</p>
                 <p class="mt-3 text-sm leading-6 text-muted-foreground">
-                  {{ failedPrompt || t("workspace.generationFailedHint") }}
+                  {{ failedMessage }}
                 </p>
               </div>
               <button

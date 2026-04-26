@@ -36,7 +36,7 @@ const router = createRouter({
     },
     {
       path: "/sysadmin/admins",
-      component: () => import("@/views/sysadmin/Admins.vue"),
+      redirect: { path: "/admin/users", query: { role: "admin" } },
       meta: { role: "sysadmin" }
     },
     {

@@ -447,10 +447,14 @@ export async function createGenerateTask(
   if (!user) throw appError("UNAUTHORIZED", "User missing");
   await assertNoActiveGenerationTask(env, { userId: user.id, role: user.role });
   const referenceImageIds =
-    input.params.mode === "image2image" ? (input.params.referenceImageIds ?? []) : [];
+    input.params.mode === "image2image" ? [...new Set(input.params.referenceImageIds ?? [])] : [];
   if (input.params.mode === "image2image" && referenceImageIds.length === 0) {
     throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
   }
+  await assertReferenceImagesAccessible(env, {
+    ownerUserId: input.userId,
+    referenceImageIds
+  });
   const params = {
     ...input.params,
     n: resolveImageCountForRole(user.role, input.params.mode, input.params.n),
@@ -547,6 +551,12 @@ export async function createGenerateTask(
     heartbeatAt: null,
     finishedAt: null,
     retryOf: input.retryOf ?? null
+  });
+  await attachReferenceImagesToTask(env, {
+    ownerUserId: input.userId,
+    sessionId,
+    taskId,
+    referenceImageIds
   });
   logInfo("task.create.task_inserted", {
     userId: input.userId,
@@ -688,7 +698,10 @@ export async function runGenerateTask(
       baseUrl: urlSummary(provider.baseUrl)
     });
     const referenceImageIds = params.mode === "image2image" ? (params.referenceImageIds ?? []) : [];
-    const referenceImages = await loadReferenceImages(env, referenceImageIds);
+    const referenceImages = await loadReferenceImages(env, referenceImageIds, task.userId);
+    if (params.mode === "image2image" && referenceImages.length !== referenceImageIds.length) {
+      throw appError("VALIDATION_ERROR", "Reference image not found or inaccessible");
+    }
     const referenceImageBytes = referenceImages.reduce((sum, image) => sum + image.bytes.length, 0);
     const referenceLog = referenceImages.length === referenceImageIds.length ? logInfo : logWarn;
     referenceLog("task.reference_images.loaded", {
@@ -1245,6 +1258,7 @@ async function cleanupTaskGeneratedImagesExcept(
      SET deleted_at = COALESCE(deleted_at, ?1)
      WHERE task_id = ?2
        AND deleted_at IS NULL
+       AND is_reference = 0
        AND id NOT IN (${keepImageIds.map((_, index) => `?${index + 3}`).join(",")})`
   )
     .bind(now(), taskId, ...keepImageIds)
@@ -1477,7 +1491,7 @@ async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Pro
   const result = await env.DB.prepare(
     `UPDATE image_objects
      SET deleted_at = COALESCE(deleted_at, ?1)
-     WHERE task_id = ?2 AND deleted_at IS NULL`
+     WHERE task_id = ?2 AND deleted_at IS NULL AND is_reference = 0`
   )
     .bind(now(), taskId)
     .run();
@@ -1848,16 +1862,79 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function loadReferenceImages(env: AppBindings, imageIds: string[]) {
+async function attachReferenceImagesToTask(
+  env: AppBindings,
+  input: {
+    ownerUserId: string;
+    sessionId: string;
+    taskId: string;
+    referenceImageIds: string[];
+  }
+): Promise<void> {
+  if (input.referenceImageIds.length === 0) return;
+  const result = await env.DB.prepare(
+    `UPDATE image_objects
+     SET session_id = COALESCE(session_id, ?1),
+         task_id = COALESCE(task_id, ?2)
+     WHERE id IN (${input.referenceImageIds.map((_, index) => `?${index + 3}`).join(",")})
+       AND owner_user_id = ?${input.referenceImageIds.length + 3}
+       AND is_reference = 1
+       AND deleted_at IS NULL`
+  )
+    .bind(input.sessionId, input.taskId, ...input.referenceImageIds, input.ownerUserId)
+    .run();
+  logInfo("task.reference_images.attached", {
+    taskId: input.taskId,
+    sessionId: input.sessionId,
+    ownerUserId: input.ownerUserId,
+    requestedReferenceImageCount: input.referenceImageIds.length,
+    attachedReferenceImageCount: result.meta.changes ?? 0,
+    referenceImageIds: input.referenceImageIds
+  });
+}
+
+async function assertReferenceImagesAccessible(
+  env: AppBindings,
+  input: { ownerUserId: string; referenceImageIds: string[] }
+): Promise<void> {
+  if (input.referenceImageIds.length === 0) return;
+  const rows = await getDb(env)
+    .select({ id: imageObjects.id })
+    .from(imageObjects)
+    .where(
+      and(
+        inArray(imageObjects.id, input.referenceImageIds),
+        eq(imageObjects.ownerUserId, input.ownerUserId),
+        eq(imageObjects.isReference, true),
+        isNull(imageObjects.deletedAt)
+      )
+    );
+  if (rows.length === input.referenceImageIds.length) return;
+  logWarn("task.reference_images.inaccessible", {
+    ownerUserId: input.ownerUserId,
+    requestedReferenceImageIds: input.referenceImageIds,
+    accessibleReferenceImageIds: rows.map((row) => row.id)
+  });
+  throw appError("VALIDATION_ERROR", "Reference image not found or inaccessible");
+}
+
+async function loadReferenceImages(env: AppBindings, imageIds: string[], ownerUserId: string) {
   if (imageIds.length === 0) return [];
   logInfo("task.reference_images.load_started", {
     imageIds,
+    ownerUserId,
     requestedReferenceImageCount: imageIds.length
   });
   const rows = await getDb(env)
     .select()
     .from(imageObjects)
-    .where(and(inArray(imageObjects.id, imageIds), isNull(imageObjects.deletedAt)));
+    .where(
+      and(
+        inArray(imageObjects.id, imageIds),
+        eq(imageObjects.ownerUserId, ownerUserId),
+        isNull(imageObjects.deletedAt)
+      )
+    );
   const images: Array<{ bytes: Uint8Array; mime: string }> = [];
   for (const row of rows) {
     const object = await env.R2.get(row.r2Key);

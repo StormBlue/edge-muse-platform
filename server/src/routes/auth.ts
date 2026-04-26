@@ -130,6 +130,10 @@ authRoutes.post("/refresh", async (c) => {
   );
   const csrf = base64UrlEncode(randomBytes(16));
   setAuthCookies(c, accessToken, refreshToken, csrf);
+  await getDb(c.env)
+    .update(users)
+    .set({ lastLoginAt: now(), updatedAt: now() })
+    .where(eq(users.id, user.id));
   return c.json({ user: publicUser(user), csrfToken: csrf, quota: await getQuota(c.env, user.id) });
 });
 

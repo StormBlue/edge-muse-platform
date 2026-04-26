@@ -52,7 +52,6 @@ const nav = computed(() => [
   },
   { to: "/sysadmin/providers", label: t("nav.providers"), icon: Shield, show: auth.isSysadmin },
   { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
-  { to: "/sysadmin/admins", label: t("nav.admins"), icon: Users, show: auth.isSysadmin },
   {
     to: "/sysadmin/users/_/sessions",
     label: t("nav.sessionAudit"),

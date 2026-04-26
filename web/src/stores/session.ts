@@ -24,6 +24,7 @@ export type Message = {
   taskId?: string | null;
   status: string;
   progress?: number | null;
+  error?: { code: string; message: string } | null;
   createdAt: number;
 };
 export type Session = {
@@ -213,7 +214,7 @@ export const useSessionStore = defineStore("sessions", {
         task?: { id: string; status: string; progress?: number };
         image?: ImageAttachment;
         images?: ImageAttachment[];
-        error?: { message: string };
+        error?: { code?: string; message: string };
       };
       const message = this.messages.find((item) => item.taskId === payload.task?.id);
       if (payload.type === "task.update" && message && payload.task) {
@@ -249,6 +250,12 @@ export const useSessionStore = defineStore("sessions", {
         if (target) {
           target.status = "failed";
           target.progress = null;
+          target.error = payload.error
+            ? {
+                code: payload.error.code ?? "PROVIDER_ERROR",
+                message: payload.error.message
+              }
+            : null;
         }
       }
     }

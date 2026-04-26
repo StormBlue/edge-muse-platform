@@ -1,9 +1,9 @@
-import { and, desc, eq, isNull, like, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, like, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
-import { messages, sessions, tasks } from "../db/schema";
+import { imageObjects, messages, sessions, tasks } from "../db/schema";
 import { assertSessionAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
@@ -32,6 +32,7 @@ type HistoryImageAttachment = {
   messageId?: string | null;
   prompt?: string | null;
 };
+type MessageReferenceImage = HistoryImageAttachment;
 const settingsSchema = z.object({
   size: z.string().default("1024x1024"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
@@ -93,7 +94,7 @@ sessionRoutes.get("/", async (c) => {
   const cursor = Number(c.req.query("cursor") ?? "0");
   const q = c.req.query("q");
   const where = and(
-    user.role === "sysadmin" ? undefined : eq(sessions.userId, user.id),
+    eq(sessions.userId, user.id),
     isNull(sessions.deletedAt),
     q ? like(sessions.title, `%${q}%`) : undefined,
     cursor ? lt(sessions.lastMessageAt, cursor) : undefined
@@ -181,8 +182,22 @@ sessionRoutes.get("/:id/messages", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? "20"), 50);
   const cursor = Number(c.req.query("cursor") ?? "0");
   const rows = await getDb(c.env)
-    .select()
+    .select({
+      id: messages.id,
+      sessionId: messages.sessionId,
+      role: messages.role,
+      prompt: messages.prompt,
+      referenceImageIds: messages.referenceImageIds,
+      attachments: messages.attachments,
+      taskId: messages.taskId,
+      status: messages.status,
+      createdAt: messages.createdAt,
+      deletedAt: messages.deletedAt,
+      taskErrorCode: tasks.errorCode,
+      taskErrorMsg: tasks.errorMsg
+    })
     .from(messages)
+    .leftJoin(tasks, eq(tasks.messageId, messages.id))
     .where(
       and(
         eq(messages.sessionId, session.id),
@@ -199,7 +214,13 @@ sessionRoutes.get("/:id/messages", async (c) => {
       .map((row) => ({
         ...row,
         referenceImageIds: parseJson(row.referenceImageIds, []),
-        attachments: parseJson(row.attachments, [])
+        attachments: parseJson(row.attachments, []),
+        error: row.taskErrorMsg
+          ? {
+              code: row.taskErrorCode ?? "PROVIDER_ERROR",
+              message: row.taskErrorMsg
+            }
+          : null
       })),
     nextCursor: rows.length > limit ? rows[limit].createdAt : null
   });
@@ -250,11 +271,8 @@ historyRoutes.get("/", requireAuth, async (c) => {
     : 12;
   const offset = (page - 1) * pageSize;
   const conditions = ["sessions.deleted_at IS NULL"];
-  const binds: unknown[] = [];
-  if (user.role !== "sysadmin") {
-    binds.push(user.id);
-    conditions.push(`sessions.user_id = ?${binds.length}`);
-  }
+  const binds: unknown[] = [user.id];
+  conditions.push(`sessions.user_id = ?${binds.length}`);
   if (q) {
     binds.push(`%${q}%`);
     const searchIndex = binds.length;
@@ -421,6 +439,8 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
        tasks.mode AS task_mode,
        tasks.params AS task_params,
        tasks.status AS task_status,
+       tasks.error_code AS task_error_code,
+       tasks.error_msg AS task_error_msg,
        tasks.queued_at AS task_queued_at,
        tasks.started_at AS task_started_at,
        tasks.finished_at AS task_finished_at
@@ -445,6 +465,8 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
       task_mode: "text2image" | "image2image" | "chat" | null;
       task_params: string | null;
       task_status: string | null;
+      task_error_code: string | null;
+      task_error_msg: string | null;
       task_queued_at: number | null;
       task_started_at: number | null;
       task_finished_at: number | null;
@@ -452,6 +474,11 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
   const persistedImagesByMessageId = await loadPersistedGeneratedImagesByMessageId(
     c.env,
     session.id
+  );
+  const referenceImagesById = await loadReferenceImagesById(
+    c.env,
+    uniqueReferenceImageIds(rows.results),
+    session.userId
   );
   const taskCount = rows.results.filter((row) => row.task_id).length;
   return c.json({
@@ -461,6 +488,10 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
       taskCount
     },
     messages: rows.results.map((row) => {
+      const taskParams = parseJson<TaskParamsWithReferences>(row.task_params, {});
+      const referenceImageIds = parseJson<string[]>(row.reference_image_ids, []);
+      const effectiveReferenceImageIds =
+        referenceImageIds.length > 0 ? referenceImageIds : (taskParams.referenceImageIds ?? []);
       const attachments = mergePersistedGeneratedImages(
         parseJson<Array<Partial<HistoryImageAttachment> & { id: string }>>(row.attachments, []),
         persistedImagesByMessageId.get(row.id) ?? [],
@@ -476,7 +507,13 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
         sessionId: row.session_id,
         role: row.role,
         prompt: row.prompt,
-        referenceImageIds: parseJson(row.reference_image_ids, []),
+        referenceImageIds,
+        referenceImages: referenceImagesForIds(referenceImagesById, effectiveReferenceImageIds, {
+          taskId: row.task_id,
+          sessionId: row.session_id,
+          messageId: row.id,
+          prompt: row.prompt
+        }),
         attachments,
         taskId: row.task_id,
         status: row.status,
@@ -485,8 +522,10 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
           ? {
               id: row.task_id,
               mode: row.task_mode,
-              params: parseJson(row.task_params, {}),
+              params: taskParams,
               status: row.task_status,
+              errorCode: row.task_error_code,
+              errorMsg: row.task_error_msg,
               queuedAt: row.task_queued_at,
               startedAt: row.task_started_at,
               finishedAt: row.task_finished_at
@@ -496,6 +535,89 @@ historyRoutes.get("/:id", requireAuth, async (c) => {
     })
   });
 });
+
+type TaskParamsWithReferences = {
+  referenceImageIds?: string[];
+  [key: string]: unknown;
+};
+
+function uniqueReferenceImageIds(
+  rows: Array<{ reference_image_ids: string; task_params: string | null }>
+): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    for (const id of parseJson<string[]>(row.reference_image_ids, [])) ids.add(id);
+    const taskReferenceImageIds =
+      parseJson<TaskParamsWithReferences>(row.task_params, {}).referenceImageIds ?? [];
+    for (const id of taskReferenceImageIds) {
+      ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
+async function loadReferenceImagesById(
+  env: AppEnv["Bindings"],
+  imageIds: string[],
+  ownerUserId: string
+): Promise<Map<string, MessageReferenceImage>> {
+  if (imageIds.length === 0) return new Map();
+  const rows = await getDb(env)
+    .select({
+      id: imageObjects.id,
+      mime: imageObjects.mime,
+      width: imageObjects.width,
+      height: imageObjects.height,
+      byteSize: imageObjects.byteSize,
+      taskId: imageObjects.taskId,
+      sessionId: imageObjects.sessionId
+    })
+    .from(imageObjects)
+    .where(
+      and(
+        inArray(imageObjects.id, imageIds),
+        eq(imageObjects.ownerUserId, ownerUserId),
+        isNull(imageObjects.deletedAt)
+      )
+    );
+  return new Map(
+    rows.map((row) => [
+      row.id,
+      {
+        id: row.id,
+        url: `/api/i/${row.id}`,
+        mime: row.mime,
+        width: row.width,
+        height: row.height,
+        byteSize: row.byteSize,
+        taskId: row.taskId,
+        sessionId: row.sessionId
+      }
+    ])
+  );
+}
+
+function referenceImagesForIds(
+  imagesById: Map<string, MessageReferenceImage>,
+  imageIds: string[],
+  context: {
+    taskId?: string | null;
+    sessionId: string;
+    messageId: string;
+    prompt?: string | null;
+  }
+): MessageReferenceImage[] {
+  return imageIds
+    .map((id) => imagesById.get(id))
+    .filter((image): image is MessageReferenceImage => Boolean(image))
+    .map((image) => ({
+      ...image,
+      taskId: image.taskId ?? context.taskId ?? null,
+      sessionId: image.sessionId ?? context.sessionId,
+      messageId: context.messageId,
+      prompt: context.prompt ?? null
+    }));
+}
 
 async function loadPersistedGeneratedImagesByMessageId(
   env: AppEnv["Bindings"],

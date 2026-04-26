@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
@@ -23,11 +24,17 @@ type AdminUser = {
   email: string;
   username: string;
   nickname: string;
-  role: string;
+  role: "admin" | "user";
   status: "active" | "disabled";
+  preferredProviderKeyId?: string | null;
+  providerKeyId?: string | null;
   allocatedQuota: number | null;
   usedQuota: number | null;
   createdAt?: number;
+  updatedAt?: number;
+  lastLoginAt?: number | null;
+  lastGenerationAt?: number | null;
+  generationCount?: number;
 };
 
 type QuotaSnapshot = {
@@ -58,15 +65,21 @@ type ProviderKeyRow = {
 };
 
 const auth = useAuthStore();
+const route = useRoute();
 const { locale, t } = useI18n();
 const users = ref<AdminUser[]>([]);
 const keys = ref<ProviderKeyRow[]>([]);
 const q = ref("");
 const status = ref("");
+const routeRole =
+  route.query.role === "admin" || route.query.role === "user" ? route.query.role : "";
+const role = ref<"" | "admin" | "user">(routeRole);
 const createOpen = ref(false);
+const editOpen = ref(false);
 const quotaOpen = ref(false);
 const passwordOpen = ref(false);
 const selectedUser = ref<AdminUser | null>(null);
+const editingUser = ref<AdminUser | null>(null);
 const passwordUser = ref<AdminUser | null>(null);
 const quota = ref<QuotaSnapshot | null>(null);
 const transactions = ref<QuotaTransaction[]>([]);
@@ -74,6 +87,7 @@ const transactionsNextCursor = ref<number | null>(null);
 const usage = ref<UsageResponse | null>(null);
 const quotaAmount = ref(10);
 const form = ref(defaultCreateForm());
+const editForm = ref(defaultEditForm());
 const passwordForm = ref({ password: "", confirmPassword: "" });
 
 const actorRemaining = computed(() => auth.quota?.remainingQuota ?? null);
@@ -95,6 +109,7 @@ async function load() {
   const params = new URLSearchParams();
   if (q.value) params.set("q", q.value);
   if (status.value) params.set("status", status.value);
+  if (auth.isSysadmin && role.value) params.set("role", role.value);
   const body = await apiFetch<{ items: AdminUser[] }>(
     `/admin/users${params.size ? `?${params.toString()}` : ""}`
   );
@@ -111,12 +126,23 @@ async function loadKeys() {
 
 function defaultCreateForm() {
   return {
+    role: "user" as "admin" | "user",
     username: "",
     nickname: "",
     password: "",
     email: "",
     providerKeyId: keys.value[0]?.id ?? "",
     quota: 10
+  };
+}
+
+function defaultEditForm() {
+  return {
+    nickname: "",
+    status: "active" as "active" | "disabled",
+    providerKeyId: "",
+    quota: 0 as number | null,
+    password: ""
   };
 }
 
@@ -128,9 +154,60 @@ function openCreateDialog() {
 
 async function createUser() {
   await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
-  toast.success(t("adminUsers.userCreated"));
+  toast.success(
+    form.value.role === "admin" ? t("adminUsers.adminCreated") : t("adminUsers.userCreated")
+  );
   createOpen.value = false;
   form.value = defaultCreateForm();
+  await load();
+}
+
+function openEditDialog(user: AdminUser) {
+  editingUser.value = user;
+  editForm.value = {
+    nickname: user.nickname,
+    status: user.status,
+    providerKeyId: user.providerKeyId ?? user.preferredProviderKeyId ?? "",
+    quota: user.allocatedQuota,
+    password: ""
+  };
+  editOpen.value = true;
+  if (!keys.value.length) void loadKeys();
+}
+
+async function saveEdit() {
+  if (!editingUser.value) return;
+  const payload: {
+    nickname?: string;
+    status?: "active" | "disabled";
+    providerKeyId?: string;
+    quota?: number | null;
+    password?: string;
+  } = {};
+  if (editForm.value.nickname !== editingUser.value.nickname) {
+    payload.nickname = editForm.value.nickname;
+  }
+  if (editForm.value.status !== editingUser.value.status) payload.status = editForm.value.status;
+  const currentProviderKeyId =
+    editingUser.value.providerKeyId ?? editingUser.value.preferredProviderKeyId ?? "";
+  if (editForm.value.providerKeyId && editForm.value.providerKeyId !== currentProviderKeyId) {
+    payload.providerKeyId = editForm.value.providerKeyId;
+  }
+  if (editForm.value.quota !== editingUser.value.allocatedQuota) {
+    payload.quota = editForm.value.quota;
+  }
+  if (editForm.value.password) payload.password = editForm.value.password;
+  if (!Object.keys(payload).length) {
+    editOpen.value = false;
+    return;
+  }
+  await apiFetch(`/admin/users/${editingUser.value.id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+  toast.success(t("adminUsers.userUpdated"));
+  editOpen.value = false;
+  editingUser.value = null;
   await load();
 }
 
@@ -213,10 +290,11 @@ async function resetPassword() {
 }
 
 function openQuotaDialog(user: AdminUser) {
+  const previousUserId = selectedUser.value?.id;
   selectedUser.value = user;
   quotaAmount.value = 10;
   quotaOpen.value = true;
-  if (!quota.value || selectedUser.value.id !== user.id) openDetails(user);
+  if (!quota.value || previousUserId !== user.id) openDetails(user);
 }
 
 function aggregateUsage(key: "status" | "mode") {
@@ -236,6 +314,29 @@ function statusLabel(status: string) {
   if (status === "running") return t("common.running");
   if (status === "queued") return t("common.queued");
   return status;
+}
+
+function roleLabel(value: string) {
+  if (value === "admin") return t("adminUsers.roleAdmin");
+  if (value === "user") return t("adminUsers.roleUser");
+  return value;
+}
+
+function formatDateTime(value?: number | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat(locale.value, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(value);
+}
+
+function keyLabel(id?: string | null) {
+  if (!id) return t("sysadmin.unassigned");
+  const key = keys.value.find((item) => item.id === id);
+  return key ? `${key.label} (${key.keyHint})` : id;
 }
 
 function modeLabel(mode: string) {
@@ -264,6 +365,16 @@ onMounted(() => {
           <option value="active">{{ t("common.enabled") }}</option>
           <option value="disabled">{{ t("common.disabled") }}</option>
         </select>
+        <select
+          v-if="auth.isSysadmin"
+          v-model="role"
+          class="ui-field h-10 !w-full px-3 text-sm sm:!w-40"
+          @change="load"
+        >
+          <option value="">{{ t("adminUsers.allRoles") }}</option>
+          <option value="user">{{ t("adminUsers.roleUser") }}</option>
+          <option value="admin">{{ t("adminUsers.roleAdmin") }}</option>
+        </select>
         <input
           v-model="q"
           class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-72"
@@ -284,19 +395,21 @@ onMounted(() => {
     >
       <div class="panel overflow-hidden">
         <div class="thin-scrollbar max-h-[calc(100vh-10rem)] overflow-auto">
-          <table class="w-full min-w-[56rem] border-collapse text-sm">
+          <table class="w-full min-w-[78rem] border-collapse text-sm">
             <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
               <tr>
                 <th class="p-3">{{ t("adminUsers.user") }}</th>
                 <th class="p-3">{{ t("adminUsers.role") }}</th>
                 <th class="p-3">{{ t("common.quota") }}</th>
+                <th class="p-3">{{ t("adminUsers.lastLoginAt") }}</th>
+                <th class="p-3">{{ t("adminUsers.lastGenerationAt") }}</th>
                 <th class="p-3">{{ t("adminUsers.status") }}</th>
                 <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!users.length" class="border-t border-border">
-                <td class="p-6 text-center text-muted-foreground" colspan="5">
+                <td class="p-6 text-center text-muted-foreground" colspan="7">
                   {{ t("adminUsers.noUsers") }}
                 </td>
               </tr>
@@ -307,10 +420,20 @@ onMounted(() => {
                     <p class="truncate text-xs text-muted-foreground">
                       {{ user.username }} · {{ user.email }}
                     </p>
+                    <p class="truncate text-xs text-muted-foreground">
+                      {{ t("history.createdAt") }} {{ formatDateTime(user.createdAt) }}
+                    </p>
                   </button>
                 </td>
-                <td class="p-3">{{ user.role }}</td>
+                <td class="p-3">{{ roleLabel(user.role) }}</td>
                 <td class="p-3">{{ user.usedQuota ?? 0 }} / {{ user.allocatedQuota ?? "∞" }}</td>
+                <td class="p-3 text-muted-foreground">{{ formatDateTime(user.lastLoginAt) }}</td>
+                <td class="p-3">
+                  <p class="text-muted-foreground">{{ formatDateTime(user.lastGenerationAt) }}</p>
+                  <p class="font-mono text-xs text-muted-foreground">
+                    {{ t("adminUsers.generationCount", { count: user.generationCount ?? 0 }) }}
+                  </p>
+                </td>
                 <td class="p-3">
                   <span
                     class="rounded-full px-2 py-1 text-xs"
@@ -325,6 +448,14 @@ onMounted(() => {
                 </td>
                 <td class="p-3">
                   <div class="flex flex-wrap justify-end gap-2">
+                    <button
+                      v-if="auth.isSysadmin"
+                      class="ui-button ui-button-secondary h-8 text-xs"
+                      type="button"
+                      @click="openEditDialog(user)"
+                    >
+                      {{ t("sysadmin.edit") }}
+                    </button>
                     <button
                       class="ui-button ui-button-secondary h-8 text-xs"
                       type="button"
@@ -364,6 +495,18 @@ onMounted(() => {
           <p class="truncate text-sm text-muted-foreground">
             {{ selectedUser.username }} · {{ selectedUser.email }}
           </p>
+          <div class="mt-3 grid gap-2 text-xs text-muted-foreground">
+            <p>{{ t("adminUsers.role") }}: {{ roleLabel(selectedUser.role) }}</p>
+            <p>{{ t("adminUsers.lastLoginAt") }}: {{ formatDateTime(selectedUser.lastLoginAt) }}</p>
+            <p>
+              {{ t("adminUsers.lastGenerationAt") }}:
+              {{ formatDateTime(selectedUser.lastGenerationAt) }}
+            </p>
+            <p v-if="auth.isSysadmin">
+              {{ t("sysadmin.providerKey") }}:
+              {{ keyLabel(selectedUser.providerKeyId ?? selectedUser.preferredProviderKeyId) }}
+            </p>
+          </div>
         </div>
         <div>
           <div class="flex items-center justify-between text-xs">
@@ -424,6 +567,13 @@ onMounted(() => {
           <DialogTitle>{{ t("adminUsers.createUser") }}</DialogTitle>
         </DialogHeader>
         <form class="flex flex-col gap-3" @submit.prevent="createUser">
+          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
+            <span>{{ t("adminUsers.role") }}</span>
+            <select v-model="form.role" class="ui-field mt-1.5 h-10 px-3">
+              <option value="user">{{ t("adminUsers.roleUser") }}</option>
+              <option value="admin">{{ t("adminUsers.roleAdmin") }}</option>
+            </select>
+          </label>
           <label class="block text-sm font-medium">
             <span>{{ t("auth.usernameForLogin") }}</span>
             <input v-model="form.username" class="ui-field mt-1.5 h-10 px-3" required />
@@ -448,7 +598,11 @@ onMounted(() => {
           </label>
           <label class="block text-sm font-medium">
             <span>{{ t("sysadmin.providerKey") }}</span>
-            <select v-model="form.providerKeyId" class="ui-field mt-1.5 h-10 px-3" required>
+            <select
+              v-model="form.providerKeyId"
+              class="ui-field mt-1.5 h-10 px-3"
+              :required="form.role === 'admin'"
+            >
               <option value="">{{ t("sysadmin.selectKey") }}</option>
               <option v-for="key in keys" :key="key.id" :value="key.id">
                 {{ key.label }} ({{ key.keyHint }})
@@ -467,6 +621,67 @@ onMounted(() => {
             </DialogClose>
             <button class="ui-button ui-button-primary" type="submit">
               {{ t("common.create") }}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog v-model:open="editOpen">
+      <DialogContent v-if="editingUser" class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("adminUsers.editUser") }}</DialogTitle>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="saveEdit">
+          <p class="text-sm text-muted-foreground">
+            {{ editingUser.username }} · {{ roleLabel(editingUser.role) }}
+          </p>
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.nicknameForDisplay") }}</span>
+            <input v-model="editForm.nickname" class="ui-field mt-1.5 h-10 px-3" required />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.status") }}</span>
+            <select v-model="editForm.status" class="ui-field mt-1.5 h-10 px-3">
+              <option value="active">{{ t("common.enabled") }}</option>
+              <option value="disabled">{{ t("common.disabled") }}</option>
+            </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.providerKey") }}</span>
+            <select v-model="editForm.providerKeyId" class="ui-field mt-1.5 h-10 px-3">
+              <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
+              <option v-for="key in keys" :key="key.id" :value="key.id">
+                {{ key.label }} ({{ key.keyHint }})
+              </option>
+            </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.totalQuota") }}</span>
+            <input
+              v-model.number="editForm.quota"
+              class="ui-field mt-1.5 h-10 px-3"
+              min="0"
+              type="number"
+            />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.passwordOptional") }}</span>
+            <input
+              v-model="editForm.password"
+              class="ui-field mt-1.5 h-10 px-3"
+              minlength="8"
+              type="password"
+            />
+          </label>
+          <DialogFooter class="mt-1">
+            <DialogClose as-child>
+              <button class="ui-button ui-button-secondary" type="button">
+                {{ t("common.cancel") }}
+              </button>
+            </DialogClose>
+            <button class="ui-button ui-button-primary" type="submit">
+              {{ t("common.save") }}
             </button>
           </DialogFooter>
         </form>

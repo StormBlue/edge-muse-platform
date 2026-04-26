@@ -63,7 +63,7 @@ generateRoutes.post(
       ...promptSummary(rawBody.prompt)
     });
     const referenceImageIds =
-      rawBody.mode === "image2image" ? (rawBody.referenceImageIds ?? []) : [];
+      rawBody.mode === "image2image" ? [...new Set(rawBody.referenceImageIds ?? [])] : [];
     if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
       logWarn("generate.request.rejected", {
         traceId,

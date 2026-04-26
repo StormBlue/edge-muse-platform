@@ -24,6 +24,14 @@ const generationStatus = computed(() =>
   props.message.status === "queued" ? t("common.queued") : t("workspace.generationRunning")
 );
 const isFailed = computed(() => props.message.status === "failed");
+const failureTitle = computed(() =>
+  props.message.error?.code?.startsWith("PROVIDER")
+    ? t("workspace.providerGenerationFailed")
+    : t("workspace.generationFailed")
+);
+const failureMessage = computed(
+  () => props.message.error?.message || t("workspace.generationFailedHint")
+);
 </script>
 
 <template>
@@ -87,9 +95,9 @@ const isFailed = computed(() => props.message.status === "failed");
               <ImageOff class="h-6 w-6" />
             </span>
             <div>
-              <p class="font-semibold text-foreground">{{ t("workspace.generationFailed") }}</p>
+              <p class="font-semibold text-foreground">{{ failureTitle }}</p>
               <p class="mt-1 text-xs leading-5 text-muted-foreground">
-                {{ t("workspace.generationFailedHint") }}
+                {{ failureMessage }}
               </p>
             </div>
             <button
