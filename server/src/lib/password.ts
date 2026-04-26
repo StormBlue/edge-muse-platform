@@ -37,10 +37,6 @@ export async function verifyPassword(password: string, storedHash: string): Prom
   }
 }
 
-export function isLegacyPasswordHash(storedHash: string): boolean {
-  return storedHash.startsWith("argon2id$");
-}
-
 async function derivePbkdf2(
   password: string,
   salt: Uint8Array,

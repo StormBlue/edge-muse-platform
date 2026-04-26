@@ -54,11 +54,20 @@ const encryptedKey = await encryptString("mock-local-key", keySecret);
 const passwordHash = await hashPassword("password123");
 
 const command = `
-INSERT OR IGNORE INTO users (
+INSERT INTO users (
   id, email, username, password_hash, nickname, role, created_by, preferred_provider_key_id, locale, status, created_at, updated_at, last_login_at
 ) VALUES (
   'usr_sysadmin', 'sysadmin@example.com', 'sysadmin', '${sql(passwordHash)}', 'System Admin', 'sysadmin', NULL, 'key_mock', 'zh-CN', 'active', ${timestamp}, ${timestamp}, NULL
-);
+)
+ON CONFLICT(id) DO UPDATE SET
+  email = excluded.email,
+  username = excluded.username,
+  password_hash = excluded.password_hash,
+  nickname = excluded.nickname,
+  role = 'sysadmin',
+  preferred_provider_key_id = excluded.preferred_provider_key_id,
+  status = 'active',
+  updated_at = excluded.updated_at;
 
 INSERT OR IGNORE INTO quotas (user_id, allocated_quota, used_quota, updated_at)
 VALUES ('usr_sysadmin', NULL, 0, ${timestamp});
