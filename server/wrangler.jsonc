@@ -9,6 +9,10 @@
     {
       "pattern": "pinkteck.com",
       "custom_domain": true
+    },
+    {
+      "pattern": "www.pinkteck.com",
+      "custom_domain": true
     }
   ],
   "compatibility_date": "2026-04-25",
