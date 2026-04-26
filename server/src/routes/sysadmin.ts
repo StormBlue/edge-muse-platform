@@ -385,7 +385,7 @@ sysadminRoutes.patch(
     z.object({
       nickname: z.string().min(1).optional(),
       status: z.enum(["active", "disabled"]).optional(),
-      providerKeyId: z.string().optional(),
+      providerKeyId: z.string().min(1).optional(),
       quota: z.number().int().min(0).nullable().optional(),
       password: z.string().min(8).optional()
     })
@@ -396,6 +396,18 @@ sysadminRoutes.patch(
     const timestamp = now();
     const admin = await getDb(c.env).query.users.findFirst({ where: eq(users.id, adminId) });
     if (!admin || admin.role !== "admin") throw appError("NOT_FOUND", "Admin not found");
+    let changedProviderKeyId: string | null = null;
+    if (body.providerKeyId !== undefined && body.providerKeyId !== admin.preferredProviderKeyId) {
+      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
+        where: and(
+          eq(providerKeys.id, body.providerKeyId),
+          eq(providerKeys.enabled, true),
+          isNull(providerKeys.deletedAt)
+        )
+      });
+      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+      changedProviderKeyId = body.providerKeyId;
+    }
     const userUpdate: {
       nickname?: string;
       status?: "active" | "disabled";
@@ -405,7 +417,7 @@ sysadminRoutes.patch(
     } = { updatedAt: timestamp };
     if (body.nickname !== undefined) userUpdate.nickname = body.nickname;
     if (body.status !== undefined) userUpdate.status = body.status;
-    if (body.providerKeyId !== undefined) userUpdate.preferredProviderKeyId = body.providerKeyId;
+    if (changedProviderKeyId) userUpdate.preferredProviderKeyId = changedProviderKeyId;
     if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
     if (Object.keys(userUpdate).length > 1) {
       await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, adminId));
@@ -419,7 +431,7 @@ sysadminRoutes.patch(
         .bind(adminId, body.quota ?? null, timestamp)
         .run();
     }
-    if (body.providerKeyId) {
+    if (changedProviderKeyId) {
       const managed = await getDb(c.env)
         .select({ id: users.id })
         .from(users)
@@ -430,13 +442,13 @@ sysadminRoutes.patch(
            VALUES (?1, ?2, ?3)
            ON CONFLICT(user_id) DO UPDATE SET provider_key_id = ?2, assigned_at = ?3`
         )
-          .bind(row.id, body.providerKeyId, timestamp)
+          .bind(row.id, changedProviderKeyId, timestamp)
           .run();
       }
       await getDb(c.env)
         .update(providerKeys)
         .set({ ownerAdminId: adminId, updatedAt: timestamp })
-        .where(eq(providerKeys.id, body.providerKeyId));
+        .where(eq(providerKeys.id, changedProviderKeyId));
     }
     await audit(c.env, {
       actorId: c.get("user").id,

@@ -30,6 +30,13 @@ type ProviderKeyRow = {
   keyHint: string;
   enabled: boolean;
 };
+type AdminUpdatePayload = {
+  nickname?: string;
+  status?: "active" | "disabled";
+  providerKeyId?: string;
+  quota?: number | null;
+  password?: string;
+};
 
 const admins = ref<AdminRow[]>([]);
 const keys = ref<ProviderKeyRow[]>([]);
@@ -91,15 +98,25 @@ function openEdit(admin: AdminRow) {
 
 async function saveEdit() {
   if (!editing.value) return;
+  const payload: AdminUpdatePayload = {};
+  if (editForm.value.nickname !== editing.value.nickname)
+    payload.nickname = editForm.value.nickname;
+  if (editForm.value.status !== editing.value.status) payload.status = editForm.value.status;
+  if (
+    editForm.value.providerKeyId &&
+    editForm.value.providerKeyId !== editing.value.providerKeyId
+  ) {
+    payload.providerKeyId = editForm.value.providerKeyId;
+  }
+  if (editForm.value.quota !== editing.value.allocatedQuota) payload.quota = editForm.value.quota;
+  if (editForm.value.password) payload.password = editForm.value.password;
+  if (Object.keys(payload).length === 0) {
+    editOpen.value = false;
+    return;
+  }
   await apiFetch(`/sysadmin/admins/${editing.value.id}`, {
     method: "PATCH",
-    body: JSON.stringify({
-      nickname: editForm.value.nickname,
-      status: editForm.value.status,
-      providerKeyId: editForm.value.providerKeyId || undefined,
-      quota: editForm.value.quota,
-      password: editForm.value.password || undefined
-    })
+    body: JSON.stringify(payload)
   });
   toast.success(t("sysadmin.adminUpdated"));
   editOpen.value = false;
