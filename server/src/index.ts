@@ -62,7 +62,9 @@ app.get("/ws/task/:id", handleTaskWebSocket);
 
 export default {
   fetch: (request, env, ctx) => {
-    scheduleInterruptedTaskRecovery(env, ctx);
+    if (shouldScheduleInterruptedTaskRecovery(request)) {
+      scheduleInterruptedTaskRecovery(env, ctx);
+    }
     return app.fetch(request, env, ctx);
   },
   scheduled: (_controller, env, ctx) => {
@@ -77,3 +79,13 @@ export default {
     );
   }
 } satisfies ExportedHandler<Cloudflare.Env>;
+
+function shouldScheduleInterruptedTaskRecovery(request: Request): boolean {
+  const path = new URL(request.url).pathname;
+  return (
+    path === "/api/generate" ||
+    path.startsWith("/api/tasks/") ||
+    path === "/api/sessions/active-generation" ||
+    path.startsWith("/ws/task/")
+  );
+}

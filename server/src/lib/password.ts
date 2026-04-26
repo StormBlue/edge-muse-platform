@@ -1,36 +1,92 @@
-import { argon2id } from "@noble/hashes/argon2.js";
-import { base64ToBytes, bytesToBase64, randomBytes, utf8ToBytes } from "./encoding";
+import { base64ToBytes, bytesToBase64, randomBytes, toArrayBuffer, utf8ToBytes } from "./encoding";
 
-const ARGON_PARAMS = {
-  t: 3,
-  m: 16384,
-  p: 1,
+const PASSWORD_ALGORITHM = "pbkdf2-sha256";
+const PBKDF2_PARAMS = {
+  iterations: 120_000,
+  saltLength: 16,
   dkLen: 32
 };
+const MAX_PBKDF2_ITERATIONS = 250_000;
+const MAX_PBKDF2_DK_LEN = 64;
 
 export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16);
-  const hash = argon2id(utf8ToBytes(password), salt, ARGON_PARAMS);
-  return `argon2id$v=1$t=${ARGON_PARAMS.t},m=${ARGON_PARAMS.m},p=${ARGON_PARAMS.p}$${bytesToBase64(
+  const salt = randomBytes(PBKDF2_PARAMS.saltLength);
+  const hash = await derivePbkdf2(password, salt, PBKDF2_PARAMS.iterations, PBKDF2_PARAMS.dkLen);
+  return `${PASSWORD_ALGORITHM}$v=1$i=${PBKDF2_PARAMS.iterations},l=${PBKDF2_PARAMS.dkLen}$${bytesToBase64(
     salt
   )}$${bytesToBase64(hash)}`;
 }
 
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   const parts = storedHash.split("$");
-  if (parts.length !== 5 || parts[0] !== "argon2id") return false;
+  if (parts.length !== 5 || parts[0] !== PASSWORD_ALGORITHM || parts[1] !== "v=1") {
+    return false;
+  }
   const [, , paramsRaw, saltRaw, expectedRaw] = parts;
-  const params = Object.fromEntries(
-    paramsRaw.split(",").map((part) => {
+  const params = parseParams(paramsRaw);
+  const iterations = params.i;
+  const dkLen = params.l;
+  if (!isSafePbkdf2Params(iterations, dkLen)) return false;
+  try {
+    const expected = base64ToBytes(expectedRaw);
+    if (expected.length !== dkLen) return false;
+    const actual = await derivePbkdf2(password, base64ToBytes(saltRaw), iterations, dkLen);
+    return timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+export function isLegacyPasswordHash(storedHash: string): boolean {
+  return storedHash.startsWith("argon2id$");
+}
+
+async function derivePbkdf2(
+  password: string,
+  salt: Uint8Array,
+  iterations: number,
+  dkLen: number
+): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    toArrayBuffer(utf8ToBytes(password)),
+    "PBKDF2",
+    false,
+    ["deriveBits"]
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      hash: "SHA-256",
+      salt: toArrayBuffer(salt),
+      iterations
+    },
+    key,
+    dkLen * 8
+  );
+  return new Uint8Array(bits);
+}
+
+function parseParams(raw: string): Record<string, number> {
+  return Object.fromEntries(
+    raw.split(",").map((part) => {
       const [key, value] = part.split("=");
       return [key, Number(value)];
     })
-  ) as { t: number; m: number; p: number };
-  const actual = argon2id(utf8ToBytes(password), base64ToBytes(saltRaw), {
-    ...params,
-    dkLen: base64ToBytes(expectedRaw).length
-  });
-  return timingSafeEqual(actual, base64ToBytes(expectedRaw));
+  );
+}
+
+function isSafePbkdf2Params(iterations?: number, dkLen?: number): boolean {
+  return (
+    Number.isInteger(iterations) &&
+    Number.isInteger(dkLen) &&
+    typeof iterations === "number" &&
+    typeof dkLen === "number" &&
+    iterations > 0 &&
+    iterations <= MAX_PBKDF2_ITERATIONS &&
+    dkLen > 0 &&
+    dkLen <= MAX_PBKDF2_DK_LEN
+  );
 }
 
 export function timingSafeEqual(left: Uint8Array, right: Uint8Array): boolean {

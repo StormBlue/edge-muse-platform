@@ -214,45 +214,61 @@ onMounted(load);
       </DialogContent>
     </Dialog>
 
-    <div
-      v-if="editOpen && editing"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="editOpen = false"
-    >
-      <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="saveEdit">
-        <h2 class="font-semibold">{{ t("sysadmin.editAdmin") }}</h2>
-        <input
-          v-model="editForm.nickname"
-          class="ui-field h-10 px-3"
-          :placeholder="t('auth.nickname')"
-        />
-        <select v-model="editForm.status" class="ui-field h-10 px-3">
-          <option value="active">{{ t("common.enabled") }}</option>
-          <option value="disabled">{{ t("common.disabled") }}</option>
-        </select>
-        <select v-model="editForm.providerKeyId" class="ui-field h-10 px-3">
-          <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
-          <option v-for="key in keys" :key="key.id" :value="key.id">
-            {{ key.label }} ({{ key.keyHint }})
-          </option>
-        </select>
-        <input
-          v-model.number="editForm.quota"
-          class="ui-field h-10 px-3"
-          type="number"
-          :placeholder="t('sysadmin.totalQuota')"
-        />
-        <input
-          v-model="editForm.password"
-          class="ui-field h-10 px-3"
-          minlength="8"
-          type="password"
-          :placeholder="t('sysadmin.passwordOptional')"
-        />
-        <button class="ui-button ui-button-primary w-full" type="submit">
-          {{ t("common.save") }}
-        </button>
-      </form>
-    </div>
+    <Dialog v-model:open="editOpen">
+      <DialogContent v-if="editing" class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("sysadmin.editAdmin") }}</DialogTitle>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="saveEdit">
+          <label class="block text-sm font-medium">
+            <span>{{ t("auth.nicknameForDisplay") }}</span>
+            <input v-model="editForm.nickname" class="ui-field mt-1.5 h-10 px-3" />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.status") }}</span>
+            <select v-model="editForm.status" class="ui-field mt-1.5 h-10 px-3">
+              <option value="active">{{ t("common.enabled") }}</option>
+              <option value="disabled">{{ t("common.disabled") }}</option>
+            </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.providerKey") }}</span>
+            <select v-model="editForm.providerKeyId" class="ui-field mt-1.5 h-10 px-3">
+              <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
+              <option v-for="key in keys" :key="key.id" :value="key.id">
+                {{ key.label }} ({{ key.keyHint }})
+              </option>
+            </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.totalQuota") }}</span>
+            <input
+              v-model.number="editForm.quota"
+              class="ui-field mt-1.5 h-10 px-3"
+              type="number"
+            />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("sysadmin.passwordOptional") }}</span>
+            <input
+              v-model="editForm.password"
+              class="ui-field mt-1.5 h-10 px-3"
+              minlength="8"
+              type="password"
+            />
+          </label>
+          <DialogFooter class="mt-1">
+            <DialogClose as-child>
+              <button class="ui-button ui-button-secondary" type="button">
+                {{ t("common.cancel") }}
+              </button>
+            </DialogClose>
+            <button class="ui-button ui-button-primary" type="submit">
+              {{ t("common.save") }}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </AppShell>
 </template>

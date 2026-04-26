@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { webcrypto } from "node:crypto";
-import { argon2id } from "@noble/hashes/argon2.js";
 
 const encoder = new TextEncoder();
 
@@ -33,11 +32,18 @@ async function encryptString(plainText, secret) {
   return `${bytesToBase64(iv)}.${bytesToBase64(new Uint8Array(cipher))}`;
 }
 
-function hashPassword(password) {
+async function hashPassword(password) {
   const salt = randomBytes(16);
-  const params = { t: 3, m: 16384, p: 1, dkLen: 32 };
-  const hash = argon2id(utf8(password), salt, params);
-  return `argon2id$v=1$t=${params.t},m=${params.m},p=${params.p}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+  const params = { iterations: 120_000, dkLen: 32 };
+  const key = await webcrypto.subtle.importKey("raw", utf8(password), "PBKDF2", false, [
+    "deriveBits"
+  ]);
+  const hash = await webcrypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: params.iterations },
+    key,
+    params.dkLen * 8
+  );
+  return `pbkdf2-sha256$v=1$i=${params.iterations},l=${params.dkLen}$${bytesToBase64(salt)}$${bytesToBase64(new Uint8Array(hash))}`;
 }
 
 function sql(value) {
@@ -45,7 +51,7 @@ function sql(value) {
 }
 
 const encryptedKey = await encryptString("mock-local-key", keySecret);
-const passwordHash = hashPassword("password123");
+const passwordHash = await hashPassword("password123");
 
 const command = `
 INSERT OR IGNORE INTO users (

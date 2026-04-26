@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { webcrypto } from "node:crypto";
 import { stdin, stdout } from "node:process";
-import { argon2id } from "@noble/hashes/argon2.js";
 
 const encoder = new TextEncoder();
 const timestamp = Date.now();
@@ -24,11 +23,18 @@ function randomBytes(length) {
   return bytes;
 }
 
-function hashPassword(value) {
+async function hashPassword(value) {
   const salt = randomBytes(16);
-  const params = { t: 3, m: 16384, p: 1, dkLen: 32 };
-  const hash = argon2id(encoder.encode(value), salt, params);
-  return `argon2id$v=1$t=${params.t},m=${params.m},p=${params.p}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+  const params = { iterations: 120_000, dkLen: 32 };
+  const key = await webcrypto.subtle.importKey("raw", encoder.encode(value), "PBKDF2", false, [
+    "deriveBits"
+  ]);
+  const hash = await webcrypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations: params.iterations },
+    key,
+    params.dkLen * 8
+  );
+  return `pbkdf2-sha256$v=1$i=${params.iterations},l=${params.dkLen}$${bytesToBase64(salt)}$${bytesToBase64(new Uint8Array(hash))}`;
 }
 
 function sql(value) {
@@ -70,13 +76,21 @@ async function promptHidden(prompt) {
   });
 }
 
-const passwordHash = hashPassword(password);
+const passwordHash = await hashPassword(password);
 const command = `
-INSERT OR IGNORE INTO users (
+INSERT INTO users (
   id, email, username, password_hash, nickname, role, created_by, preferred_provider_key_id, locale, status, created_at, updated_at, last_login_at
 ) VALUES (
   'usr_sysadmin', '${sql(email)}', '${sql(username)}', '${sql(passwordHash)}', '${sql(nickname)}', 'sysadmin', NULL, NULL, 'zh-CN', 'active', ${timestamp}, ${timestamp}, NULL
-);
+)
+ON CONFLICT(id) DO UPDATE SET
+  email = excluded.email,
+  username = excluded.username,
+  password_hash = excluded.password_hash,
+  nickname = excluded.nickname,
+  role = 'sysadmin',
+  status = 'active',
+  updated_at = excluded.updated_at;
 
 INSERT OR IGNORE INTO quotas (user_id, allocated_quota, used_quota, updated_at)
 VALUES ('usr_sysadmin', NULL, 0, ${timestamp});

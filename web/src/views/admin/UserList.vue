@@ -473,57 +473,83 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
-    <div
-      v-if="quotaOpen && selectedUser"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="quotaOpen = false"
-    >
-      <form class="panel flex w-full max-w-sm flex-col gap-3 p-5" @submit.prevent="grantQuota">
-        <h2 class="font-semibold">{{ t("adminUsers.adjustQuota") }}</h2>
-        <p class="text-sm text-muted-foreground">
-          {{
-            t("adminUsers.ownRemaining", {
-              value: actorRemaining === null ? t("common.unlimited") : actorRemaining
-            })
-          }}
-        </p>
-        <input v-model.number="quotaAmount" class="ui-field h-10 px-3" min="1" type="number" />
-        <button class="ui-button ui-button-primary w-full" type="submit">
-          {{ t("adminUsers.confirm") }}
-        </button>
-      </form>
-    </div>
+    <Dialog v-model:open="quotaOpen">
+      <DialogContent v-if="selectedUser" class="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t("adminUsers.adjustQuota") }}</DialogTitle>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="grantQuota">
+          <p class="text-sm text-muted-foreground">
+            {{
+              t("adminUsers.ownRemaining", {
+                value: actorRemaining === null ? t("common.unlimited") : actorRemaining
+              })
+            }}
+          </p>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.quotaAmount") }}</span>
+            <input
+              v-model.number="quotaAmount"
+              class="ui-field mt-1.5 h-10 px-3"
+              min="1"
+              type="number"
+            />
+          </label>
+          <DialogFooter class="mt-1">
+            <DialogClose as-child>
+              <button class="ui-button ui-button-secondary" type="button">
+                {{ t("common.cancel") }}
+              </button>
+            </DialogClose>
+            <button class="ui-button ui-button-primary" type="submit">
+              {{ t("adminUsers.confirm") }}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
 
-    <div
-      v-if="passwordOpen && passwordUser"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="passwordOpen = false"
-    >
-      <form class="panel flex w-full max-w-sm flex-col gap-3 p-5" @submit.prevent="resetPassword">
-        <h2 class="font-semibold">{{ t("adminUsers.resetPassword") }}</h2>
-        <p class="text-sm text-muted-foreground">
-          {{ passwordUser.nickname }} · {{ passwordUser.username }}
-        </p>
-        <input
-          v-model="passwordForm.password"
-          class="ui-field h-10 px-3"
-          minlength="8"
-          :placeholder="t('settings.newPassword')"
-          required
-          type="password"
-        />
-        <input
-          v-model="passwordForm.confirmPassword"
-          class="ui-field h-10 px-3"
-          minlength="8"
-          :placeholder="t('adminUsers.confirmNewPassword')"
-          required
-          type="password"
-        />
-        <button class="ui-button ui-button-primary w-full" type="submit">
-          {{ t("common.save") }}
-        </button>
-      </form>
-    </div>
+    <Dialog v-model:open="passwordOpen">
+      <DialogContent v-if="passwordUser" class="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{{ t("adminUsers.resetPassword") }}</DialogTitle>
+        </DialogHeader>
+        <form class="flex flex-col gap-3" @submit.prevent="resetPassword">
+          <p class="text-sm text-muted-foreground">
+            {{ passwordUser.nickname }} · {{ passwordUser.username }}
+          </p>
+          <label class="block text-sm font-medium">
+            <span>{{ t("settings.newPassword") }}</span>
+            <input
+              v-model="passwordForm.password"
+              class="ui-field mt-1.5 h-10 px-3"
+              minlength="8"
+              required
+              type="password"
+            />
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.confirmNewPassword") }}</span>
+            <input
+              v-model="passwordForm.confirmPassword"
+              class="ui-field mt-1.5 h-10 px-3"
+              minlength="8"
+              required
+              type="password"
+            />
+          </label>
+          <DialogFooter class="mt-1">
+            <DialogClose as-child>
+              <button class="ui-button ui-button-secondary" type="button">
+                {{ t("common.cancel") }}
+              </button>
+            </DialogClose>
+            <button class="ui-button ui-button-primary" type="submit">
+              {{ t("common.save") }}
+            </button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   </AppShell>
 </template>
