@@ -5,6 +5,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiFetch } from "@/api/client";
 import type { ImageAttachment, Message, Session, SessionMode } from "@/stores/session";
 
@@ -67,40 +68,22 @@ const resultMessages = computed(() =>
     (message) => message.role === "assistant" && (message.task || message.attachments.length)
   )
 );
+const displayResultMessages = computed(() =>
+  resultMessages.value
+    .map((message, index) => ({ message, index }))
+    .sort((left, right) => {
+      const imagePriority =
+        Number(right.message.attachments.length > 0) - Number(left.message.attachments.length > 0);
+      return imagePriority || left.index - right.index;
+    })
+    .map(({ message }) => message)
+);
 const detailImages = computed(() =>
   detailMessages.value.flatMap((message) => [
-    ...(message.referenceImages ?? []).map(toViewerImage),
-    ...message.attachments.map(toViewerImage)
+    ...message.attachments.map(toViewerImage),
+    ...(message.referenceImages ?? []).map(toViewerImage)
   ])
 );
-const detailGenerationStats = computed(() => summarizeGenerationStats(resultMessages.value));
-const taskStatusItems = computed(() => {
-  const counts = new Map<string, number>();
-  for (const message of resultMessages.value) {
-    const status = taskStatusValue(message);
-    if (!status) continue;
-    counts.set(status, (counts.get(status) ?? 0) + 1);
-  }
-  return [...counts.entries()]
-    .sort(([left], [right]) => taskStatusSortIndex(left) - taskStatusSortIndex(right))
-    .map(([status, count]) => ({ status, count }));
-});
-const latestTaskStatus = computed(() => {
-  const statuses = resultMessages.value
-    .map((message) => taskStatusValue(message))
-    .filter((status): status is string => Boolean(status));
-  return (
-    statuses.find((status) => status === "running") ??
-    statuses.find((status) => status === "queued") ??
-    statuses[statuses.length - 1] ??
-    null
-  );
-});
-const taskStatusSummary = computed(() => {
-  return taskStatusItems.value
-    .map((item) => `${taskStatusLabel(item.status)} ${item.count}`)
-    .join(" / ");
-});
 
 onMounted(async () => {
   await load(1);
@@ -247,10 +230,8 @@ function taskFailureMessage(message: HistoryMessage) {
   return message.task?.errorMsg || message.error?.message || "";
 }
 
-function taskStatusSortIndex(status: string) {
-  const order = ["running", "queued", "failed", "cancelled", "succeeded"];
-  const index = order.indexOf(status);
-  return index >= 0 ? index : order.length;
+function messagePromptText(message: HistoryMessage) {
+  return message.prompt || message.task?.params?.prompt || selectedSession.value?.title || "-";
 }
 
 function taskGenerationStats(message: HistoryMessage): GenerationStats {
@@ -265,24 +246,6 @@ function taskGenerationStats(message: HistoryMessage): GenerationStats {
     failed,
     completed,
     percent: total > 0 ? Math.round((completed / total) * 100) : 0
-  };
-}
-
-function summarizeGenerationStats(messages: HistoryMessage[]): GenerationStats {
-  const stats = messages.reduce(
-    (summary, message) => {
-      const item = taskGenerationStats(message);
-      summary.total += item.total;
-      summary.success += item.success;
-      summary.failed += item.failed;
-      summary.completed += item.completed;
-      return summary;
-    },
-    { total: 0, success: 0, failed: 0, completed: 0 }
-  );
-  return {
-    ...stats,
-    percent: stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0
   };
 }
 
@@ -316,7 +279,6 @@ function taskParameters(message: HistoryMessage) {
   return {
     mode: message.task?.mode ?? params.mode ?? selectedSession.value?.mode ?? null,
     size: params.size ?? selectedSession.value?.settings?.size ?? "-",
-    count: requestedImageCount(message),
     model: params.model ?? selectedSession.value?.settings?.model ?? "",
     referenceCount:
       message.referenceImages?.length ??
@@ -329,228 +291,236 @@ function taskParameters(message: HistoryMessage) {
 <template>
   <AppShell>
     <template v-if="selectedSession || detailLoading">
-      <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div class="min-w-0">
-          <button
-            class="ui-button ui-button-secondary mb-3 h-9 px-3 text-sm"
-            type="button"
-            @click="backToGrid"
-          >
-            <ArrowLeft class="h-4 w-4" />
-            {{ t("history.backToGrid") }}
-          </button>
-          <h1 class="truncate text-xl font-semibold leading-8">
-            {{ selectedSession?.title ?? t("history.detail") }}
-          </h1>
-          <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
-            {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
-          </p>
-        </div>
-      </div>
-
-      <div
-        v-if="detailLoading"
-        class="panel flex min-h-80 items-center justify-center gap-2 text-sm text-muted-foreground"
-      >
-        <Loader2 class="h-4 w-4 animate-spin" />
-        {{ t("common.loading") }}
-      </div>
-
-      <template v-else-if="selectedSession">
-        <section class="panel mb-4 p-4">
-          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("workspace.generationMode") }}</p>
-              <p class="mt-1 font-semibold">{{ modeLabel(selectedSession.mode) }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("workspace.canvasSize") }}</p>
-              <p class="mt-1 font-semibold">{{ selectedSession.settings?.size ?? "-" }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <div class="flex items-center justify-between gap-3">
-                <p class="text-xs text-muted-foreground">{{ t("history.generationProgress") }}</p>
-                <p class="text-sm font-semibold">{{ detailGenerationStats.percent }}%</p>
-              </div>
-              <div class="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                <div
-                  class="h-full rounded-full bg-primary"
-                  :style="{ width: `${detailGenerationStats.percent}%` }"
-                ></div>
-              </div>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.totalImages") }}</p>
-              <p class="mt-1 font-semibold">{{ detailGenerationStats.total }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.successImages") }}</p>
-              <p class="mt-1 font-semibold">{{ detailGenerationStats.success }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.failedImages") }}</p>
-              <p class="mt-1 font-semibold">{{ detailGenerationStats.failed }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.taskStatus") }}</p>
-              <div class="mt-1 flex flex-wrap items-center gap-2">
-                <span
-                  :class="[
-                    'rounded-full border px-2.5 py-1 text-xs font-medium',
-                    taskStatusTone(latestTaskStatus)
-                  ]"
-                >
-                  {{ taskStatusLabel(latestTaskStatus) }}
-                </span>
-              </div>
-              <p
-                v-if="taskStatusItems.length > 1"
-                class="mt-2 text-xs leading-5 text-muted-foreground"
-              >
-                {{ taskStatusSummary }}
-              </p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.createdAt") }}</p>
-              <p class="mt-1 font-semibold">{{ formatDateTime(selectedSession.createdAt) }}</p>
-            </div>
+      <div class="flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden">
+        <div
+          class="mb-4 flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between"
+        >
+          <div class="min-w-0">
+            <button
+              class="ui-button ui-button-secondary mb-3 h-9 px-3 text-sm"
+              type="button"
+              @click="backToGrid"
+            >
+              <ArrowLeft class="h-4 w-4" />
+              {{ t("history.backToGrid") }}
+            </button>
+            <h1 class="truncate text-xl font-semibold leading-8">
+              {{ selectedSession?.title ?? t("history.detail") }}
+            </h1>
+            <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
+              {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
+            </p>
           </div>
-        </section>
+        </div>
 
         <div
-          v-if="!resultMessages.length"
-          class="panel p-8 text-center text-sm text-muted-foreground"
+          v-if="detailLoading"
+          class="panel flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
         >
-          {{ t("history.noResults") }}
+          <Loader2 class="h-4 w-4 animate-spin" />
+          {{ t("common.loading") }}
         </div>
-        <div v-else class="grid gap-4 xl:grid-cols-2">
-          <article
-            v-for="message in resultMessages"
-            :key="message.id"
-            class="panel overflow-hidden"
+
+        <template v-else-if="selectedSession">
+          <div
+            v-if="!resultMessages.length"
+            class="panel flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground"
           >
-            <div class="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-              <div class="min-w-0">
-                <h2 class="line-clamp-2 font-semibold leading-6">
-                  {{ message.prompt || selectedSession.title }}
-                </h2>
-                <p class="mt-1 text-xs text-muted-foreground">
-                  {{ formatDateTime(message.createdAt) }}
-                </p>
-              </div>
-              <span
-                :class="[
-                  'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
-                  taskStatusTone(taskStatusValue(message))
-                ]"
+            {{ t("history.noResults") }}
+          </div>
+          <ScrollArea v-else class="min-h-0 flex-1">
+            <div class="flex min-h-full flex-col gap-4 pr-3">
+              <article
+                v-for="message in displayResultMessages"
+                :key="message.id"
+                class="panel min-h-[34rem] overflow-hidden lg:h-[calc(100dvh-12rem)] lg:min-h-0"
               >
-                {{ taskStatusLabel(taskStatusValue(message)) }}
-              </span>
-            </div>
-
-            <div class="space-y-4 p-4">
-              <div class="grid gap-2 sm:grid-cols-2">
-                <div class="rounded-lg bg-muted/35 px-3 py-2 text-sm">
-                  <span class="text-muted-foreground">{{ t("history.taskStatus") }}</span>
-                  <span class="ml-2 font-medium">{{
-                    taskStatusLabel(taskStatusValue(message))
-                  }}</span>
-                </div>
-                <div class="rounded-lg bg-muted/35 px-3 py-2 text-sm">
-                  <span class="text-muted-foreground">{{ t("workspace.generationMode") }}</span>
-                  <span class="ml-2 font-medium">{{
-                    modeLabel(taskParameters(message).mode)
-                  }}</span>
-                </div>
-                <div class="rounded-lg bg-muted/35 px-3 py-2 text-sm">
-                  <span class="text-muted-foreground">{{ t("workspace.canvasSize") }}</span>
-                  <span class="ml-2 font-medium">{{ taskParameters(message).size }}</span>
-                </div>
-                <div class="rounded-lg bg-muted/35 px-3 py-2 text-sm">
-                  <span class="text-muted-foreground">{{ t("workspace.imageCount") }}</span>
-                  <span class="ml-2 font-medium">
-                    {{ taskGenerationStats(message).success }} /
-                    {{ taskGenerationStats(message).total }}
-                  </span>
-                </div>
-                <div class="rounded-lg bg-muted/35 px-3 py-2 text-sm">
-                  <span class="text-muted-foreground">{{ t("history.references") }}</span>
-                  <span class="ml-2 font-medium">{{ taskParameters(message).referenceCount }}</span>
-                </div>
                 <div
-                  v-if="taskParameters(message).model"
-                  class="rounded-lg bg-muted/35 px-3 py-2 text-sm sm:col-span-2"
+                  class="grid h-full min-h-0 lg:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]"
                 >
-                  <span class="text-muted-foreground">{{ t("history.model") }}</span>
-                  <span class="ml-2 font-medium">{{ taskParameters(message).model }}</span>
-                </div>
-              </div>
+                  <ScrollArea class="h-full min-h-0 bg-muted/15">
+                    <div class="p-3 sm:p-4">
+                      <div
+                        v-if="message.attachments.length"
+                        :class="[
+                          'grid gap-3',
+                          message.attachments.length === 1
+                            ? 'min-h-[24rem] grid-cols-1'
+                            : 'grid-cols-2 2xl:grid-cols-3'
+                        ]"
+                      >
+                        <button
+                          v-for="image in message.attachments"
+                          :key="image.id"
+                          :class="[
+                            'overflow-hidden rounded-lg border border-border bg-muted',
+                            message.attachments.length === 1 ? 'min-h-[24rem]' : 'aspect-square'
+                          ]"
+                          type="button"
+                          :title="t('workspace.openPreview')"
+                          @click="openImage(image)"
+                        >
+                          <img
+                            class="h-full w-full object-contain"
+                            :src="image.url"
+                            alt=""
+                            loading="lazy"
+                          />
+                        </button>
+                      </div>
+                      <div
+                        v-else
+                        class="flex min-h-[24rem] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+                      >
+                        <ImageIcon class="h-6 w-6" />
+                        {{ t("history.noResults") }}
+                      </div>
 
-              <div
-                v-if="taskFailureMessage(message)"
-                class="rounded-lg border border-destructive/25 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-              >
-                <p class="font-semibold">
-                  {{
-                    message.task?.errorCode?.startsWith("PROVIDER")
-                      ? t("workspace.providerGenerationFailed")
-                      : t("workspace.generationFailed")
-                  }}
-                </p>
-                <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">
-                  {{ taskFailureMessage(message) }}
-                </p>
-              </div>
+                      <ScrollArea
+                        v-if="taskFailureMessage(message)"
+                        class="mt-3 h-40 rounded-lg border border-destructive/25 bg-destructive/5"
+                      >
+                        <div class="px-3 py-2 text-sm text-destructive">
+                          <p class="font-semibold">
+                            {{
+                              message.task?.errorCode?.startsWith("PROVIDER")
+                                ? t("workspace.providerGenerationFailed")
+                                : t("workspace.generationFailed")
+                            }}
+                          </p>
+                          <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">
+                            {{ taskFailureMessage(message) }}
+                          </p>
+                        </div>
+                      </ScrollArea>
+                    </div>
+                  </ScrollArea>
 
-              <div
-                v-if="message.referenceImages?.length"
-                class="grid gap-2 rounded-lg border border-border bg-muted/20 p-2"
-              >
-                <p class="text-xs font-medium text-muted-foreground">
-                  {{ t("history.references") }}
-                </p>
-                <div class="flex flex-wrap gap-2">
-                  <button
-                    v-for="image in message.referenceImages"
-                    :key="image.id"
-                    class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
-                    type="button"
-                    :title="t('workspace.openPreview')"
-                    @click="openImage(image)"
+                  <aside
+                    class="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden border-t border-border bg-background p-4 lg:border-l lg:border-t-0"
                   >
-                    <img
-                      class="h-full w-full object-cover"
-                      :src="image.url"
-                      alt=""
-                      loading="lazy"
-                    />
-                  </button>
-                </div>
-              </div>
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="text-xs text-muted-foreground">{{ t("history.createdAt") }}</p>
+                        <p class="mt-1 text-sm font-medium">
+                          {{ formatDateTime(message.createdAt) }}
+                        </p>
+                      </div>
+                      <span
+                        :class="[
+                          'shrink-0 rounded-full border px-2.5 py-1 text-xs font-medium',
+                          taskStatusTone(taskStatusValue(message))
+                        ]"
+                      >
+                        {{ taskStatusLabel(taskStatusValue(message)) }}
+                      </span>
+                    </div>
 
-              <div v-if="message.attachments.length" class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                <button
-                  v-for="image in message.attachments"
-                  :key="image.id"
-                  class="aspect-square overflow-hidden rounded-lg border border-border bg-muted"
-                  type="button"
-                  :title="t('workspace.openPreview')"
-                  @click="openImage(image)"
-                >
-                  <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
-                </button>
-              </div>
-              <div
-                v-else
-                class="flex min-h-36 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground"
-              >
-                <ImageIcon class="h-6 w-6" />
-                {{ t("history.noResults") }}
-              </div>
+                    <section class="min-w-0">
+                      <h2 class="text-xs font-medium text-muted-foreground">
+                        {{ t("workspace.prompt") }}
+                      </h2>
+                      <ScrollArea class="mt-2 h-48 rounded-lg bg-muted/35">
+                        <div class="whitespace-pre-wrap break-words p-3 text-sm leading-6">
+                          {{ messagePromptText(message) }}
+                        </div>
+                      </ScrollArea>
+                    </section>
+
+                    <dl class="divide-y divide-border rounded-lg border border-border text-sm">
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("history.generationProgress") }}</dt>
+                        <dd class="min-w-0">
+                          <div class="flex items-center gap-2">
+                            <div class="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
+                              <div
+                                class="h-full rounded-full bg-primary"
+                                :style="{ width: `${taskGenerationStats(message).percent}%` }"
+                              ></div>
+                            </div>
+                            <span class="shrink-0 font-medium">
+                              {{ taskGenerationStats(message).percent }}%
+                            </span>
+                          </div>
+                        </dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("history.totalImages") }}</dt>
+                        <dd class="min-w-0 font-medium">
+                          {{ taskGenerationStats(message).total }}
+                        </dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("history.successImages") }}</dt>
+                        <dd class="min-w-0 font-medium">
+                          {{ taskGenerationStats(message).success }}
+                        </dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("history.failedImages") }}</dt>
+                        <dd class="min-w-0 font-medium">
+                          {{ taskGenerationStats(message).failed }}
+                        </dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("workspace.generationMode") }}</dt>
+                        <dd class="min-w-0 font-medium">
+                          {{ modeLabel(taskParameters(message).mode) }}
+                        </dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("workspace.canvasSize") }}</dt>
+                        <dd class="min-w-0 font-medium">{{ taskParameters(message).size }}</dd>
+                      </div>
+                      <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                        <dt class="text-muted-foreground">{{ t("history.references") }}</dt>
+                        <dd class="min-w-0 font-medium">
+                          {{ taskParameters(message).referenceCount }}
+                        </dd>
+                      </div>
+                      <div
+                        v-if="taskParameters(message).model"
+                        class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2"
+                      >
+                        <dt class="text-muted-foreground">{{ t("history.model") }}</dt>
+                        <dd class="min-w-0 break-words font-medium">
+                          {{ taskParameters(message).model }}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    <div
+                      v-if="message.referenceImages?.length"
+                      class="grid gap-2 rounded-lg border border-border bg-muted/20 p-2"
+                    >
+                      <p class="text-xs font-medium text-muted-foreground">
+                        {{ t("history.references") }}
+                      </p>
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          v-for="image in message.referenceImages"
+                          :key="image.id"
+                          class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
+                          type="button"
+                          :title="t('workspace.openPreview')"
+                          @click="openImage(image)"
+                        >
+                          <img
+                            class="h-full w-full object-cover"
+                            :src="image.url"
+                            alt=""
+                            loading="lazy"
+                          />
+                        </button>
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+              </article>
             </div>
-          </article>
-        </div>
-      </template>
+          </ScrollArea>
+        </template>
+      </div>
     </template>
 
     <template v-else>
