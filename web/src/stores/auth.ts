@@ -41,10 +41,10 @@ export const useAuthStore = defineStore("auth", {
         this.loaded = true;
       }
     },
-    async login(email: string, password: string) {
+    async login(email: string, password: string, turnstileToken?: string) {
       const body = await apiFetch<{ user: User; quota: Quota }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password, turnstileToken: "dev" })
+        body: JSON.stringify({ email, password, turnstileToken })
       });
       this.user = body.user;
       this.quota = body.quota;

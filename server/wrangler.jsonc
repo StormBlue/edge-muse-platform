@@ -20,14 +20,14 @@
   "vars": {
     "ENVIRONMENT": "production",
     "AI_GATEWAY_URL": "",
-    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAADDgU0ueTVgP8AUe",
     "ALERT_EMAIL": ""
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "edge-muse",
-      "database_id": "REPLACE_WITH_D1_ID"
+      "database_id": "5fca4c29-a54c-4b7c-a3bd-f94bcd156a4a"
     }
   ],
   "r2_buckets": [
@@ -39,7 +39,7 @@
   "kv_namespaces": [
     {
       "binding": "KV",
-      "id": "REPLACE_WITH_KV_ID"
+      "id": "ac7b33570100436fa033d09422daf050"
     }
   ],
   "durable_objects": {

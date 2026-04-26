@@ -151,7 +151,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-dvh overflow-hidden bg-background text-foreground lg:flex">
+  <div class="flex h-dvh overflow-hidden bg-background text-foreground">
     <button
       v-if="ui.sidebarOpen"
       class="fixed inset-0 z-20 bg-black/45 lg:hidden"

@@ -894,11 +894,10 @@ function padDatePart(value: number) {
 <style scoped>
 .workspace-page {
   display: grid;
-  height: calc(100dvh - 6rem);
-  min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: calc(100dvh - 6rem);
+  grid-template-rows: auto auto auto;
   gap: 1rem;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .workspace-grid,
@@ -907,7 +906,7 @@ function padDatePart(value: number) {
   display: grid;
   gap: 1rem;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .task-side,
@@ -916,6 +915,19 @@ function padDatePart(value: number) {
 }
 
 @media (min-width: 1024px) {
+  .workspace-page {
+    height: calc(100dvh - 6rem);
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .workspace-grid,
+  .task-side,
+  .conversation-side {
+    overflow: hidden;
+  }
+
   .workspace-grid--task {
     grid-template-columns: 22rem minmax(0, 1fr);
   }

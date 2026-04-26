@@ -43,6 +43,12 @@ app.get("/api/health", (c) =>
   })
 );
 
+app.get("/api/config", (c) =>
+  c.json({
+    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY || null
+  })
+);
+
 app.route("/api/auth", authRoutes);
 app.route("/api/me", meRoutes);
 app.route("/api/sessions", sessionRoutes);

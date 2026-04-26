@@ -14,7 +14,8 @@
     "db:gen": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply edge-muse --local",
     "db:migrate:remote": "wrangler d1 migrations apply edge-muse --remote",
-    "seed:local": "node scripts/seed-dev.mjs"
+    "seed:local": "node scripts/seed-dev.mjs",
+    "sysadmin:create:remote": "node scripts/create-sysadmin.mjs"
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
