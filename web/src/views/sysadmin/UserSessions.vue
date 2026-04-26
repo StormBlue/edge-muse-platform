@@ -1,18 +1,11 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
-import {
-  Dialog,
-  DialogDescription,
-  DialogHeader,
-  DialogScrollContent,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import type { ImageAttachment, Message, Session, SessionMode } from "@/stores/session";
@@ -108,35 +101,46 @@ const pageSize = 12;
 const total = ref(0);
 const loading = ref(false);
 const detailLoading = ref(false);
-const openPromptMessageId = ref<string | null>(null);
-const failureDialogOpen = ref(false);
-const selectedFailureMessage = ref<AuditMessage | null>(null);
-let promptPopoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
+const activeMessageIndex = ref(0);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 const selectedSessionId = computed(() => selectedSession.value?.id ?? getRouteSessionId());
+const resultMessages = computed(() =>
+  messages.value.filter(
+    (message) => message.role === "assistant" && (message.task || message.attachments.length)
+  )
+);
+const displayResultMessages = computed(() =>
+  resultMessages.value
+    .map((message, index) => ({ message, index }))
+    .sort((left, right) => {
+      const imagePriority =
+        Number(right.message.attachments.length > 0) - Number(left.message.attachments.length > 0);
+      return imagePriority || left.index - right.index;
+    })
+    .map(({ message }) => message)
+);
+const activeMessages = computed(() => {
+  const message = displayResultMessages.value[activeMessageIndex.value];
+  return message ? [message] : [];
+});
 const auditImages = computed(() =>
   messages.value.flatMap((message) => [
-    ...(message.referenceImages ?? []).map(toViewerImage),
-    ...message.attachments.map(toViewerImage)
+    ...message.attachments.map(toViewerImage),
+    ...(message.referenceImages ?? []).map(toViewerImage)
   ])
-);
-const selectedFailureGroups = computed(() =>
-  selectedFailureMessage.value ? failureGroups(selectedFailureMessage.value) : []
-);
-const selectedFailureCount = computed(() =>
-  selectedFailureMessage.value ? generationFailures(selectedFailureMessage.value).length : 0
-);
-const selectedFailurePrompt = computed(() =>
-  selectedFailureMessage.value ? messagePromptText(selectedFailureMessage.value) : ""
 );
 
 watch(page, (value) => {
   pageInput.value = String(value);
 });
 
-watch(failureDialogOpen, (open) => {
-  if (!open) selectedFailureMessage.value = null;
+watch(displayResultMessages, (items) => {
+  if (items.length === 0) {
+    activeMessageIndex.value = 0;
+    return;
+  }
+  activeMessageIndex.value = Math.min(activeMessageIndex.value, items.length - 1);
 });
 
 watch(
@@ -173,10 +177,6 @@ onMounted(async () => {
   if (sessionId) await loadDetail(sessionId);
 });
 
-onBeforeUnmount(() => {
-  clearPromptPopoverCloseTimer();
-});
-
 function resolveRouteUserId() {
   const routeUserId = typeof route.params.userId === "string" ? route.params.userId : "";
   if (routeUserId === "_") return "";
@@ -188,8 +188,7 @@ function clearDetail() {
   selectedSession.value = null;
   messages.value = [];
   selectedImage.value = null;
-  selectedFailureMessage.value = null;
-  failureDialogOpen.value = false;
+  activeMessageIndex.value = 0;
 }
 
 async function submitFilters() {
@@ -267,6 +266,7 @@ async function loadDetail(sessionId: string) {
     }>(`/sysadmin/sessions/${encodeURIComponent(sessionId)}/detail`);
     selectedSession.value = body.session;
     messages.value = body.messages.map(normalizeMessageAttachments);
+    activeMessageIndex.value = 0;
   } finally {
     detailLoading.value = false;
   }
@@ -394,32 +394,21 @@ function messagePromptText(message: AuditMessage) {
   return message.prompt || message.task?.params?.prompt || "";
 }
 
-function shouldShowPromptPopover(message: AuditMessage) {
+function isLongPrompt(message: AuditMessage) {
   const prompt = messagePromptText(message);
-  return prompt.length > 120 || prompt.includes("\n");
-}
-
-function clearPromptPopoverCloseTimer() {
-  if (!promptPopoverCloseTimer) return;
-  clearTimeout(promptPopoverCloseTimer);
-  promptPopoverCloseTimer = null;
-}
-
-function openPromptPopover(messageId: string) {
-  clearPromptPopoverCloseTimer();
-  openPromptMessageId.value = messageId;
-}
-
-function schedulePromptPopoverClose(messageId: string) {
-  clearPromptPopoverCloseTimer();
-  promptPopoverCloseTimer = setTimeout(() => {
-    if (openPromptMessageId.value === messageId) openPromptMessageId.value = null;
-    promptPopoverCloseTimer = null;
-  }, 120);
+  return prompt.length > 260 || prompt.split("\n").length > 5;
 }
 
 function generationFailures(message: AuditMessage) {
   return message.task?.generationFailures ?? [];
+}
+
+function taskFailureMessage(message: AuditMessage) {
+  return message.task?.errorMsg || message.error?.message || "";
+}
+
+function hasFailureDetails(message: AuditMessage) {
+  return generationFailures(message).length > 0 || Boolean(taskFailureMessage(message));
 }
 
 function failureGroups(message: AuditMessage) {
@@ -444,19 +433,6 @@ function failureGroups(message: AuditMessage) {
     groups.set(key, group);
   }
   return [...groups.values()].sort((left, right) => right.count - left.count);
-}
-
-function failurePreviewGroups(message: AuditMessage) {
-  return failureGroups(message).slice(0, 2);
-}
-
-function openFailureDialog(message: AuditMessage) {
-  selectedFailureMessage.value = message;
-  failureDialogOpen.value = true;
-}
-
-function remainingFailureGroupCount(message: AuditMessage) {
-  return Math.max(failureGroups(message).length - failurePreviewGroups(message).length, 0);
 }
 
 function failureCountLabel(count: number) {
@@ -500,6 +476,21 @@ function imageIndexLabel(index?: number | null) {
   return typeof index === "number" ? `#${index + 1}` : "#?";
 }
 
+function tableRowNumber(index: number) {
+  return (page.value - 1) * pageSize + index + 1;
+}
+
+function previousMessage() {
+  activeMessageIndex.value = Math.max(activeMessageIndex.value - 1, 0);
+}
+
+function nextMessage() {
+  activeMessageIndex.value = Math.min(
+    activeMessageIndex.value + 1,
+    Math.max(displayResultMessages.value.length - 1, 0)
+  );
+}
+
 function formatDuration(value?: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value)) return "-";
   if (value < 1000) return `${Math.max(Math.round(value), 0)}ms`;
@@ -514,124 +505,133 @@ function formatDuration(value?: number | null) {
 <template>
   <AppShell>
     <template v-if="selectedSessionId">
-      <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <div class="min-w-0">
-          <button
-            class="ui-button ui-button-secondary mb-3 h-9 px-3 text-sm"
-            type="button"
-            @click="backToTable"
-          >
-            <ArrowLeft class="h-4 w-4" />
-            {{ t("sysadmin.backToSessionTable") }}
-          </button>
-          <h1 class="truncate text-xl font-semibold leading-8">
-            {{ selectedSession?.title ?? t("history.detail") }}
-          </h1>
-          <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
-            {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
-          </p>
-        </div>
-      </div>
-
-      <div
-        v-if="detailLoading"
-        class="panel flex min-h-80 items-center justify-center gap-2 text-sm text-muted-foreground"
-      >
-        <Loader2 class="h-4 w-4 animate-spin" />
-        {{ t("common.loading") }}
-      </div>
-
-      <template v-else>
-        <section v-if="selectedSession" class="panel mb-4 p-4">
-          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("sysadmin.sessionId") }}</p>
-              <p class="mt-1 truncate font-mono text-sm font-semibold">{{ selectedSession.id }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("sysadmin.userFilter") }}</p>
-              <p class="mt-1 truncate font-semibold">{{ userLabel(selectedSession.user) }}</p>
-              <p class="truncate text-xs text-muted-foreground">
-                {{ userSubLabel(selectedSession.user) }}
-              </p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("workspace.generationMode") }}</p>
-              <p class="mt-1 font-semibold">{{ modeLabel(selectedSession.mode) }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("adminUsers.taskCount") }}</p>
-              <p class="mt-1 font-semibold">{{ selectedSession.taskCount ?? 0 }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.createdAt") }}</p>
-              <p class="mt-1 font-semibold">{{ formatDateTime(selectedSession.createdAt) }}</p>
-            </div>
-            <div class="rounded-lg border border-border bg-muted/25 p-3">
-              <p class="text-xs text-muted-foreground">{{ t("history.updatedAt") }}</p>
-              <p class="mt-1 font-semibold">{{ formatDateTime(selectedSession.lastMessageAt) }}</p>
-            </div>
+      <div class="flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden">
+        <div
+          class="mb-4 flex shrink-0 flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
+        >
+          <div class="min-w-0">
+            <button
+              class="ui-button ui-button-secondary mb-3 h-9 px-3 text-sm"
+              type="button"
+              @click="backToTable"
+            >
+              <ArrowLeft class="h-4 w-4" />
+              {{ t("sysadmin.backToSessionTable") }}
+            </button>
+            <h1 class="truncate text-xl font-semibold leading-8">
+              {{ selectedSession?.title ?? t("history.detail") }}
+            </h1>
+            <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
+              {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
+            </p>
           </div>
-        </section>
-
-        <div v-if="!messages.length" class="panel p-8 text-center text-sm text-muted-foreground">
-          {{ t("sysadmin.noMessages") }}
+          <div
+            v-if="displayResultMessages.length > 1"
+            class="flex shrink-0 items-center gap-2 text-sm"
+          >
+            <button
+              class="ui-button ui-button-secondary h-9 px-3"
+              type="button"
+              :disabled="activeMessageIndex <= 0"
+              @click="previousMessage"
+            >
+              <ChevronLeft class="h-4 w-4" />
+              {{ t("common.previous") }}
+            </button>
+            <span class="min-w-16 text-center text-muted-foreground">
+              {{ activeMessageIndex + 1 }} / {{ displayResultMessages.length }}
+            </span>
+            <button
+              class="ui-button ui-button-secondary h-9 px-3"
+              type="button"
+              :disabled="activeMessageIndex >= displayResultMessages.length - 1"
+              @click="nextMessage"
+            >
+              {{ t("common.next") }}
+              <ChevronRight class="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <div v-else class="panel overflow-hidden">
-          <div class="thin-scrollbar overflow-auto">
-            <table class="w-full min-w-[78rem] border-collapse text-sm">
-              <thead class="bg-muted text-left text-muted-foreground">
-                <tr>
-                  <th class="p-3">{{ t("sysadmin.messageRole") }}</th>
-                  <th class="p-3">{{ t("workspace.prompt") }}</th>
-                  <th class="p-3">{{ t("sysadmin.generationParameters") }}</th>
-                  <th class="p-3">{{ t("history.taskStatus") }}</th>
-                  <th class="p-3">{{ t("workspace.imageCount") }}</th>
-                  <th class="p-3">{{ t("sysadmin.failureReason") }}</th>
-                  <th class="p-3">{{ t("history.createdAt") }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="message in messages" :key="message.id" class="border-t border-border">
-                  <td class="p-3 align-top font-medium">{{ roleLabel(message.role) }}</td>
-                  <td class="max-w-xl p-3 align-top">
-                    <Popover
-                      v-if="shouldShowPromptPopover(message)"
-                      :open="openPromptMessageId === message.id"
-                    >
-                      <PopoverTrigger as-child>
-                        <button
-                          class="line-clamp-3 w-full cursor-help appearance-none rounded-sm border-0 bg-transparent p-0 text-left leading-5 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                          type="button"
-                          @click.prevent.stop
-                          @mouseenter="openPromptPopover(message.id)"
-                          @mouseleave="schedulePromptPopoverClose(message.id)"
-                        >
-                          {{ messagePromptText(message) }}
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        align="start"
-                        class="max-h-80 w-[min(42rem,calc(100vw-2rem))] overflow-auto whitespace-pre-wrap text-sm leading-6"
-                        side="top"
-                        @mouseenter="openPromptPopover(message.id)"
-                        @mouseleave="schedulePromptPopoverClose(message.id)"
+
+        <div
+          v-if="detailLoading"
+          class="panel flex min-h-0 flex-1 items-center justify-center gap-2 text-sm text-muted-foreground"
+        >
+          <Loader2 class="h-4 w-4 animate-spin" />
+          {{ t("common.loading") }}
+        </div>
+
+        <template v-else>
+          <div
+            v-if="!displayResultMessages.length"
+            class="panel flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm text-muted-foreground"
+          >
+            {{ t("sysadmin.noMessages") }}
+          </div>
+          <div v-else class="min-h-0 flex-1">
+            <article
+              v-for="message in activeMessages"
+              :key="message.id"
+              class="panel h-full min-h-0 overflow-hidden"
+            >
+              <div
+                class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(16rem,24rem)] lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_26rem]"
+              >
+                <ScrollArea class="h-full min-h-0 bg-muted/15">
+                  <div class="flex flex-col gap-4 p-3 sm:p-4">
+                    <section>
+                      <div
+                        v-if="message.attachments.length"
+                        :class="[
+                          'grid gap-3',
+                          message.attachments.length === 1
+                            ? 'min-h-[24rem] grid-cols-1'
+                            : 'grid-cols-2 2xl:grid-cols-3'
+                        ]"
                       >
-                        {{ messagePromptText(message) }}
-                      </PopoverContent>
-                    </Popover>
-                    <p v-else class="line-clamp-3 whitespace-pre-wrap">
-                      {{ messagePromptText(message) || "-" }}
-                    </p>
-                    <div v-if="message.referenceImages?.length" class="mt-2">
-                      <p class="mb-1 text-[11px] font-medium text-muted-foreground">
+                        <div v-for="image in message.attachments" :key="image.id" class="min-w-0">
+                          <button
+                            :class="[
+                              'w-full overflow-hidden rounded-lg border border-border bg-muted',
+                              message.attachments.length === 1 ? 'min-h-[24rem]' : 'aspect-square'
+                            ]"
+                            type="button"
+                            :title="imageTitle(image)"
+                            @click="openImage(image)"
+                          >
+                            <img
+                              class="h-full w-full object-contain"
+                              :src="image.url"
+                              alt=""
+                              loading="lazy"
+                            />
+                          </button>
+                          <p class="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {{ imageIndexLabel(image.generationIndex) }}
+                            · {{ formatDuration(image.generationDurationMs) }}
+                          </p>
+                        </div>
+                      </div>
+                      <div
+                        v-else
+                        class="flex min-h-[24rem] items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+                      >
+                        {{ t("history.noResults") }}
+                      </div>
+                    </section>
+
+                    <section
+                      v-if="message.referenceImages?.length"
+                      class="rounded-lg border border-border bg-background/70 p-3"
+                    >
+                      <p class="mb-2 text-xs font-medium text-muted-foreground">
                         {{ t("history.references") }}
                       </p>
                       <div class="flex flex-wrap gap-2">
                         <button
                           v-for="image in message.referenceImages"
                           :key="image.id"
-                          class="h-14 w-14 overflow-hidden rounded-md border border-border bg-muted"
+                          class="h-20 w-20 overflow-hidden rounded-md border border-border bg-muted"
                           type="button"
                           :title="t('workspace.openPreview')"
                           @click="openImage(image)"
@@ -639,167 +639,187 @@ function formatDuration(value?: number | null) {
                           <img class="h-full w-full object-cover" :src="image.url" alt="" />
                         </button>
                       </div>
-                    </div>
-                    <div v-if="message.attachments.length" class="mt-2 flex flex-wrap gap-2">
-                      <div v-for="image in message.attachments" :key="image.id" class="w-16">
-                        <button
-                          class="h-14 w-14 overflow-hidden rounded-md border border-border bg-muted"
-                          type="button"
-                          :title="imageTitle(image)"
-                          @click="openImage(image)"
+                    </section>
+
+                    <ScrollArea
+                      v-if="hasFailureDetails(message)"
+                      class="h-40 rounded-lg border border-destructive/25 bg-destructive/5"
+                    >
+                      <div class="px-3 py-2 text-sm text-destructive">
+                        <p class="font-semibold">
+                          {{
+                            message.task?.errorCode?.startsWith("PROVIDER")
+                              ? t("workspace.providerGenerationFailed")
+                              : t("workspace.generationFailed")
+                          }}
+                        </p>
+                        <p
+                          v-if="generationFailures(message).length"
+                          class="mt-1 text-xs text-destructive/80"
                         >
-                          <img class="h-full w-full object-cover" :src="image.url" alt="" />
-                        </button>
-                        <p class="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                          {{ imageIndexLabel(image.generationIndex) }}
-                          · {{ formatDuration(image.generationDurationMs) }}
+                          {{ failureCountLabel(generationFailures(message).length) }}
+                        </p>
+
+                        <div v-if="failureGroups(message).length" class="mt-2 flex flex-col gap-3">
+                          <div v-for="group in failureGroups(message)" :key="group.key">
+                            <div class="flex items-start justify-between gap-3">
+                              <div class="min-w-0">
+                                <p class="truncate text-xs font-semibold">
+                                  {{ failureGroupTitle(group) }}
+                                </p>
+                                <p class="mt-0.5 font-mono text-[11px] text-destructive/70">
+                                  {{ failureImageRangeLabel(group) }}
+                                </p>
+                              </div>
+                              <span
+                                v-if="group.count > 1"
+                                class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium"
+                              >
+                                {{ failureCountLabel(group.count) }}
+                              </span>
+                            </div>
+                            <p v-if="group.phase" class="mt-1 text-[11px] text-destructive/70">
+                              {{ t("sysadmin.failurePhase") }}: {{ group.phase }}
+                            </p>
+                            <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">
+                              {{ group.message }}
+                            </p>
+                          </div>
+                        </div>
+                        <p v-else class="mt-1 whitespace-pre-wrap break-words text-xs leading-5">
+                          {{ taskFailureMessage(message) }}
                         </p>
                       </div>
-                    </div>
-                  </td>
-                  <td class="w-72 p-3 align-top">
-                    <div
-                      v-if="message.task"
-                      class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5"
-                    >
-                      <span class="text-muted-foreground">{{ t("workspace.generationMode") }}</span>
-                      <span class="font-medium">{{ modeLabel(taskParameters(message).mode) }}</span>
-                      <span class="text-muted-foreground">{{ t("workspace.canvasSize") }}</span>
-                      <span class="font-medium">{{ taskParameters(message).size }}</span>
-                      <span class="text-muted-foreground">{{ t("workspace.imageCount") }}</span>
-                      <span class="font-medium">{{ taskParameters(message).count }}</span>
-                      <span class="text-muted-foreground">{{ t("history.references") }}</span>
-                      <span class="font-medium">{{ taskParameters(message).referenceCount }}</span>
-                      <span class="text-muted-foreground">{{ t("sysadmin.imageDuration") }}</span>
-                      <span class="font-medium">{{
-                        formatDuration(taskParameters(message).durationMs)
-                      }}</span>
-                      <template v-if="taskParameters(message).model">
-                        <span class="text-muted-foreground">{{ t("history.model") }}</span>
-                        <span class="truncate font-medium">{{
-                          taskParameters(message).model
-                        }}</span>
-                      </template>
-                    </div>
-                    <span v-else class="text-muted-foreground">-</span>
-                  </td>
-                  <td class="p-3 align-top">
-                    <span
-                      :class="[
-                        'rounded-full px-2.5 py-1 text-xs font-medium',
-                        statusTone(message.task?.status ?? message.status)
-                      ]"
-                    >
-                      {{ statusLabel(message.task?.status ?? message.status) }}
-                    </span>
-                  </td>
-                  <td class="p-3 align-top font-mono">
-                    {{ message.attachments.length }} / {{ requestedImageCount(message) }}
-                  </td>
-                  <td class="w-80 max-w-sm p-3 align-top">
-                    <button
-                      v-if="generationFailures(message).length"
-                      class="w-full rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-left text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30"
-                      type="button"
-                      @click="openFailureDialog(message)"
-                    >
-                      <span class="flex items-center justify-between gap-3">
-                        <span class="font-semibold">
-                          {{ failureCountLabel(generationFailures(message).length) }}
-                        </span>
-                        <span class="shrink-0 text-[11px] font-medium">
-                          {{ t("sysadmin.viewFailureDetails") }}
-                        </span>
-                      </span>
-                      <span
-                        v-for="group in failurePreviewGroups(message)"
-                        :key="group.key"
-                        class="mt-1.5 block min-w-0"
-                      >
-                        <span class="block truncate font-medium">
-                          {{ failureGroupTitle(group) }}
-                        </span>
-                        <span class="line-clamp-2 block leading-5 text-destructive/80">
-                          {{ group.message }}
-                        </span>
-                      </span>
-                      <span
-                        v-if="remainingFailureGroupCount(message)"
-                        class="mt-1 block text-[11px] text-destructive/70"
-                      >
-                        {{
-                          t("sysadmin.moreFailureGroups", {
-                            count: remainingFailureGroupCount(message)
-                          })
-                        }}
-                      </span>
-                    </button>
-                    <p v-else class="text-muted-foreground">-</p>
-                  </td>
-                  <td class="p-3 align-top text-muted-foreground">
-                    {{ formatDateTime(message.createdAt) }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <Dialog v-model:open="failureDialogOpen">
-          <DialogScrollContent
-            v-if="selectedFailureMessage"
-            class="max-h-[calc(100vh-4rem)] w-[min(64rem,calc(100vw-2rem))] max-w-none overflow-hidden p-0"
-          >
-            <DialogHeader class="border-b border-border px-6 py-4">
-              <DialogTitle>{{ t("sysadmin.failureReason") }}</DialogTitle>
-              <DialogDescription>
-                {{ failureCountLabel(selectedFailureCount) }}
-                <template v-if="selectedFailurePrompt"> · {{ selectedFailurePrompt }} </template>
-              </DialogDescription>
-            </DialogHeader>
-            <div class="thin-scrollbar max-h-[calc(100vh-12rem)] overflow-auto">
-              <div class="divide-y divide-border">
-                <div v-for="group in selectedFailureGroups" :key="group.key" class="px-6 py-5">
-                  <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div class="min-w-0">
-                      <p class="break-all text-sm font-semibold text-destructive">
-                        {{ group.code }}
-                      </p>
-                      <p class="mt-1 text-xs text-muted-foreground">
-                        {{ failureImageRangeLabel(group) }}
-                      </p>
-                    </div>
-                    <span
-                      class="shrink-0 rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive"
-                    >
-                      {{ failureCountLabel(group.count) }}
-                    </span>
+                    </ScrollArea>
                   </div>
-                  <dl
-                    class="mt-4 grid grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-xs sm:grid-cols-[8rem_minmax(0,1fr)]"
-                  >
-                    <dt class="text-muted-foreground">
-                      {{ t("sysadmin.failureAffectedImages") }}
-                    </dt>
-                    <dd class="break-words font-mono">
-                      {{ failureImageRangeLabel(group) }}
-                    </dd>
-                    <template v-if="group.phase">
-                      <dt class="text-muted-foreground">
-                        {{ t("sysadmin.failurePhase") }}
-                      </dt>
-                      <dd class="break-words">{{ group.phase }}</dd>
-                    </template>
-                  </dl>
-                  <p class="mt-4 whitespace-pre-wrap break-words text-sm leading-6">
-                    {{ group.message }}
-                  </p>
-                </div>
+                </ScrollArea>
+
+                <aside
+                  class="h-full min-h-0 min-w-0 overflow-hidden border-t border-border bg-background lg:border-l lg:border-t-0"
+                >
+                  <ScrollArea class="h-full min-h-0">
+                    <div class="flex min-h-full flex-col gap-4 p-4">
+                      <div class="flex shrink-0 items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <p class="text-xs text-muted-foreground">
+                            {{ t("sysadmin.messageRole") }}
+                          </p>
+                          <p class="mt-1 font-medium">{{ roleLabel(message.role) }}</p>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            {{ formatDateTime(message.createdAt) }}
+                          </p>
+                        </div>
+                        <span
+                          :class="[
+                            'shrink-0 rounded-full px-2.5 py-1 text-xs font-medium',
+                            statusTone(message.task?.status ?? message.status)
+                          ]"
+                        >
+                          {{ statusLabel(message.task?.status ?? message.status) }}
+                        </span>
+                      </div>
+
+                      <dl
+                        v-if="selectedSession"
+                        class="shrink-0 divide-y divide-border rounded-lg border border-border text-sm"
+                      >
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("sysadmin.sessionId") }}</dt>
+                          <dd class="min-w-0 truncate font-mono font-medium">
+                            {{ selectedSession.id }}
+                          </dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("sysadmin.userFilter") }}</dt>
+                          <dd class="min-w-0">
+                            <p class="truncate font-medium">
+                              {{ userLabel(selectedSession.user) }}
+                            </p>
+                            <p class="truncate text-xs text-muted-foreground">
+                              {{ userSubLabel(selectedSession.user) }}
+                            </p>
+                          </dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("adminUsers.taskCount") }}</dt>
+                          <dd class="min-w-0 font-medium">{{ selectedSession.taskCount ?? 0 }}</dd>
+                        </div>
+                      </dl>
+
+                      <dl
+                        class="shrink-0 divide-y divide-border rounded-lg border border-border text-sm"
+                      >
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("workspace.generationMode") }}</dt>
+                          <dd class="min-w-0 font-medium">
+                            {{ modeLabel(taskParameters(message).mode) }}
+                          </dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("workspace.canvasSize") }}</dt>
+                          <dd class="min-w-0 font-medium">{{ taskParameters(message).size }}</dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("workspace.imageCount") }}</dt>
+                          <dd class="min-w-0 font-medium">
+                            {{ message.attachments.length }} / {{ requestedImageCount(message) }}
+                          </dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("history.references") }}</dt>
+                          <dd class="min-w-0 font-medium">
+                            {{ taskParameters(message).referenceCount }}
+                          </dd>
+                        </div>
+                        <div class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2">
+                          <dt class="text-muted-foreground">{{ t("sysadmin.imageDuration") }}</dt>
+                          <dd class="min-w-0 font-medium">
+                            {{ formatDuration(taskParameters(message).durationMs) }}
+                          </dd>
+                        </div>
+                        <div
+                          v-if="taskParameters(message).model"
+                          class="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 px-3 py-2"
+                        >
+                          <dt class="text-muted-foreground">{{ t("history.model") }}</dt>
+                          <dd class="min-w-0 break-words font-medium">
+                            {{ taskParameters(message).model }}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <section
+                        :class="[
+                          'min-w-0',
+                          isLongPrompt(message) ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'
+                        ]"
+                      >
+                        <h2 class="text-xs font-medium text-muted-foreground">
+                          {{ t("workspace.prompt") }}
+                        </h2>
+                        <ScrollArea
+                          v-if="isLongPrompt(message)"
+                          class="mt-2 min-h-0 flex-1 rounded-lg bg-muted/35"
+                        >
+                          <div class="whitespace-pre-wrap break-words p-3 text-sm leading-6">
+                            {{ messagePromptText(message) || "-" }}
+                          </div>
+                        </ScrollArea>
+                        <div
+                          v-else
+                          class="mt-2 whitespace-pre-wrap break-words rounded-lg bg-muted/35 p-3 text-sm leading-6"
+                        >
+                          {{ messagePromptText(message) || "-" }}
+                        </div>
+                      </section>
+                    </div>
+                  </ScrollArea>
+                </aside>
               </div>
-            </div>
-          </DialogScrollContent>
-        </Dialog>
-      </template>
+            </article>
+          </div>
+        </template>
+      </div>
     </template>
 
     <template v-else>
@@ -845,9 +865,10 @@ function formatDuration(value?: number | null) {
       </div>
       <div v-else class="panel overflow-hidden">
         <div class="thin-scrollbar overflow-auto">
-          <table class="w-full min-w-[72rem] border-collapse text-sm">
+          <table class="w-full min-w-[76rem] border-collapse text-sm">
             <thead class="bg-muted text-left text-muted-foreground">
               <tr>
+                <th class="w-20 p-3">#</th>
                 <th class="p-3">{{ t("workspace.sessionTitle") }}</th>
                 <th class="p-3">{{ t("sysadmin.userFilter") }}</th>
                 <th class="p-3">{{ t("workspace.generationMode") }}</th>
@@ -859,18 +880,19 @@ function formatDuration(value?: number | null) {
             </thead>
             <tbody>
               <tr v-if="!sessions.length" class="border-t border-border">
-                <td class="p-8 text-center text-muted-foreground" colspan="7">
+                <td class="p-8 text-center text-muted-foreground" colspan="8">
                   {{ t("sysadmin.noSessions") }}
                 </td>
               </tr>
               <tr
-                v-for="session in sessions"
+                v-for="(session, index) in sessions"
                 :key="session.id"
                 class="cursor-pointer border-t border-border transition hover:bg-muted/40"
                 tabindex="0"
                 @click="openDetail(session)"
                 @keyup.enter="openDetail(session)"
               >
+                <td class="p-3 font-mono text-muted-foreground">{{ tableRowNumber(index) }}</td>
                 <td class="p-3">
                   <p class="truncate font-medium">{{ session.title }}</p>
                   <p class="truncate font-mono text-xs text-muted-foreground">{{ session.id }}</p>
