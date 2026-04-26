@@ -65,6 +65,15 @@ type AuditMessage = Omit<Message, "attachments"> & {
   } | null;
 };
 
+type FailureGroup = {
+  key: string;
+  code: string;
+  message: string;
+  phase?: string | null;
+  count: number;
+  indexes: number[];
+};
+
 type UserOption = {
   id: string;
   email: string | null;
@@ -375,6 +384,75 @@ function generationFailures(message: AuditMessage) {
   return message.task?.generationFailures ?? [];
 }
 
+function failureGroups(message: AuditMessage) {
+  const groups = new Map<string, FailureGroup>();
+  for (const failure of generationFailures(message)) {
+    const code = failure.code || "UNKNOWN_ERROR";
+    const failureMessage = failure.message || "-";
+    const phase = failure.phase ?? null;
+    const key = [code, phase ?? "", failureMessage].join("\u0000");
+    const group = groups.get(key) ?? {
+      key,
+      code,
+      message: failureMessage,
+      phase,
+      count: 0,
+      indexes: []
+    };
+    group.count += 1;
+    if (typeof failure.index === "number" && Number.isFinite(failure.index)) {
+      group.indexes.push(failure.index);
+    }
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((left, right) => right.count - left.count);
+}
+
+function failurePreviewGroups(message: AuditMessage) {
+  return failureGroups(message).slice(0, 2);
+}
+
+function remainingFailureGroupCount(message: AuditMessage) {
+  return Math.max(failureGroups(message).length - failurePreviewGroups(message).length, 0);
+}
+
+function failureCountLabel(count: number) {
+  return t("sysadmin.failureImagesCount", { count });
+}
+
+function failureGroupTitle(group: FailureGroup) {
+  return group.count > 1 ? `${group.code} · ${failureCountLabel(group.count)}` : group.code;
+}
+
+function failureImageRangeLabel(group: FailureGroup) {
+  const sorted = [...new Set(group.indexes)]
+    .filter((index) => Number.isFinite(index))
+    .sort((left, right) => left - right);
+  if (!sorted.length) return "-";
+
+  const ranges: string[] = [];
+  let start = sorted[0];
+  let end = sorted[0];
+
+  for (const index of sorted.slice(1)) {
+    if (index === end + 1) {
+      end = index;
+      continue;
+    }
+    ranges.push(formatFailureIndexRange(start, end));
+    start = index;
+    end = index;
+  }
+  ranges.push(formatFailureIndexRange(start, end));
+  return ranges.join(", ");
+}
+
+function formatFailureIndexRange(start: number, end: number) {
+  const displayStart = start + 1;
+  const displayEnd = end + 1;
+  return displayStart === displayEnd ? `#${displayStart}` : `#${displayStart}-#${displayEnd}`;
+}
+
 function imageIndexLabel(index?: number | null) {
   return typeof index === "number" ? `#${index + 1}` : "#?";
 }
@@ -472,8 +550,8 @@ function formatDuration(value?: number | null) {
               </thead>
               <tbody>
                 <tr v-for="message in messages" :key="message.id" class="border-t border-border">
-                  <td class="p-3 font-medium">{{ roleLabel(message.role) }}</td>
-                  <td class="max-w-xl p-3">
+                  <td class="p-3 align-top font-medium">{{ roleLabel(message.role) }}</td>
+                  <td class="max-w-xl p-3 align-top">
                     <Popover
                       v-if="shouldShowPromptPopover(message)"
                       :open="openPromptMessageId === message.id"
@@ -519,7 +597,7 @@ function formatDuration(value?: number | null) {
                       </div>
                     </div>
                   </td>
-                  <td class="w-72 p-3">
+                  <td class="w-72 p-3 align-top">
                     <div
                       v-if="message.task"
                       class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs leading-5"
@@ -545,7 +623,7 @@ function formatDuration(value?: number | null) {
                     </div>
                     <span v-else class="text-muted-foreground">-</span>
                   </td>
-                  <td class="p-3">
+                  <td class="p-3 align-top">
                     <span
                       :class="[
                         'rounded-full px-2.5 py-1 text-xs font-medium',
@@ -555,25 +633,103 @@ function formatDuration(value?: number | null) {
                       {{ statusLabel(message.task?.status ?? message.status) }}
                     </span>
                   </td>
-                  <td class="p-3 font-mono">
+                  <td class="p-3 align-top font-mono">
                     {{ message.attachments.length }} / {{ requestedImageCount(message) }}
                   </td>
-                  <td class="max-w-sm p-3">
-                    <div v-if="generationFailures(message).length" class="space-y-2">
-                      <div
-                        v-for="failure in generationFailures(message)"
-                        :key="`${message.id}-${failure.index}-${failure.code}`"
-                        class="rounded-md border border-destructive/25 bg-destructive/5 px-2 py-1.5 text-xs text-destructive"
+                  <td class="w-80 max-w-sm p-3 align-top">
+                    <Popover v-if="generationFailures(message).length">
+                      <PopoverTrigger as-child>
+                        <button
+                          class="w-full rounded-md border border-destructive/25 bg-destructive/5 px-3 py-2 text-left text-xs text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/30"
+                          type="button"
+                        >
+                          <span class="flex items-center justify-between gap-3">
+                            <span class="font-semibold">
+                              {{ failureCountLabel(generationFailures(message).length) }}
+                            </span>
+                            <span class="shrink-0 text-[11px] font-medium">
+                              {{ t("sysadmin.viewFailureDetails") }}
+                            </span>
+                          </span>
+                          <span
+                            v-for="group in failurePreviewGroups(message)"
+                            :key="group.key"
+                            class="mt-1.5 block min-w-0"
+                          >
+                            <span class="block truncate font-medium">
+                              {{ failureGroupTitle(group) }}
+                            </span>
+                            <span class="line-clamp-2 block leading-5 text-destructive/80">
+                              {{ group.message }}
+                            </span>
+                          </span>
+                          <span
+                            v-if="remainingFailureGroupCount(message)"
+                            class="mt-1 block text-[11px] text-destructive/70"
+                          >
+                            {{
+                              t("sysadmin.moreFailureGroups", {
+                                count: remainingFailureGroupCount(message)
+                              })
+                            }}
+                          </span>
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        class="max-h-[70vh] w-[min(40rem,calc(100vw-2rem))] overflow-auto p-0"
+                        side="bottom"
                       >
-                        <p class="font-semibold">
-                          {{ imageIndexLabel(failure.index) }} · {{ failure.code }}
-                        </p>
-                        <p class="mt-1 whitespace-pre-wrap leading-5">{{ failure.message }}</p>
-                      </div>
-                    </div>
+                        <div class="border-b border-border px-4 py-3">
+                          <p class="font-semibold">{{ t("sysadmin.failureReason") }}</p>
+                          <p class="mt-1 text-xs text-muted-foreground">
+                            {{ failureCountLabel(generationFailures(message).length) }}
+                          </p>
+                        </div>
+                        <div class="divide-y divide-border">
+                          <div
+                            v-for="group in failureGroups(message)"
+                            :key="group.key"
+                            class="px-4 py-3 text-sm"
+                          >
+                            <div class="flex items-start justify-between gap-3">
+                              <p class="break-all font-semibold text-destructive">
+                                {{ group.code }}
+                              </p>
+                              <span
+                                class="shrink-0 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive"
+                              >
+                                {{ failureCountLabel(group.count) }}
+                              </span>
+                            </div>
+                            <dl
+                              class="mt-2 grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs"
+                            >
+                              <dt class="text-muted-foreground">
+                                {{ t("sysadmin.failureAffectedImages") }}
+                              </dt>
+                              <dd class="break-words font-mono">
+                                {{ failureImageRangeLabel(group) }}
+                              </dd>
+                              <template v-if="group.phase">
+                                <dt class="text-muted-foreground">
+                                  {{ t("sysadmin.failurePhase") }}
+                                </dt>
+                                <dd class="break-words">{{ group.phase }}</dd>
+                              </template>
+                            </dl>
+                            <p class="mt-2 whitespace-pre-wrap break-words text-xs leading-5">
+                              {{ group.message }}
+                            </p>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <p v-else class="text-muted-foreground">-</p>
                   </td>
-                  <td class="p-3 text-muted-foreground">{{ formatDateTime(message.createdAt) }}</td>
+                  <td class="p-3 align-top text-muted-foreground">
+                    {{ formatDateTime(message.createdAt) }}
+                  </td>
                 </tr>
               </tbody>
             </table>
