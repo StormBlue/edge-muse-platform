@@ -2,6 +2,15 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "edge-muse",
   "main": "src/index.ts",
+  "workers_dev": true,
+  "preview_urls": false,
+  // Fill your production hostname, then uncomment this block before deploying.
+  "routes": [
+    {
+      "pattern": "pinkteck.com",
+      "custom_domain": true
+    }
+  ],
   "compatibility_date": "2026-04-25",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
