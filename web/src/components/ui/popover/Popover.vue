@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 气泡层根：与 PopoverContent/Trigger 配合的定位浮层。
+ */
 import type { PopoverRootEmits, PopoverRootProps } from "reka-ui";
 import { PopoverRoot, useForwardPropsEmits } from "reka-ui";
 

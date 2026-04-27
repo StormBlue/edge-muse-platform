@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 内联 SVG 品牌标：线性渐变依赖 `url(#id)`，`useId()` 保证多实例 id 唯一；
+ * 再过滤非 URL 安全字符，避免个别运行时下划线变体导致 `url(#...)` 解析异常。
+ */
 import { useId } from "vue";
 
 const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");

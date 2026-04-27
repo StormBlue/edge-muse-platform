@@ -1,3 +1,4 @@
+/** 对话框系列：Reka 封装，含居中内容、可滚变体、标题/底栏与触发器。 */
 export { default as Dialog } from "./Dialog.vue";
 export { default as DialogClose } from "./DialogClose.vue";
 export { default as DialogContent } from "./DialogContent.vue";

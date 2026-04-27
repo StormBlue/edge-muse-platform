@@ -1,3 +1,10 @@
+/**
+ * 会话 CRUD、消息分页、`/active-generation` 查询当前进行中任务。
+ * 另导出 `historyRoutes`：用户「历史」只读列表与详情，与侧栏会话接口分离（复杂统计与封面 SQL）。
+ *
+ * 权限：全组 `requireAuth`；`assertSessionAccess` 对 `:id` 资源校验 `sessions.user_id === user.id`。
+ * 消息分页：`cursor` 为**更旧**一侧的边界（`lt(createdAt|lastMessageAt)`），多取 1 条算 `nextCursor`。
+ */
 import { and, desc, eq, inArray, isNull, like, lt } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -20,6 +27,7 @@ import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
 
 const modeSchema = z.enum(["text2image", "image2image", "chat"]);
+/** 历史/消息 JSON 里嵌套的附件形状，与前端 `ImageAttachment` 对齐 */
 type HistoryImageAttachment = {
   id: string;
   url: string;
@@ -33,6 +41,7 @@ type HistoryImageAttachment = {
   prompt?: string | null;
 };
 type MessageReferenceImage = HistoryImageAttachment;
+/** 会话默认生图参数，整段 JSON 存 D1 `sessions.settings` */
 const settingsSchema = z.object({
   size: z.string().default("1024x1024"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
@@ -41,8 +50,11 @@ const settingsSchema = z.object({
 
 export const sessionRoutes = new Hono<AppEnv>();
 
+// 本组所有路由需登录；具体 session 再 `assertSessionAccess`
 sessionRoutes.use("*", requireAuth);
 
+// ===================== 会话：创建、列表、活跃任务、单条、更新、软删 =====================
+// POST /api/sessions：新建会话行，标题缺省用 `defaultSessionTitle`
 sessionRoutes.post(
   "/",
   zValidator(
@@ -88,6 +100,8 @@ sessionRoutes.post(
   }
 );
 
+// GET /api/sessions：侧栏列表，按 lastMessageAt 倒序
+// cursor=上页**最后一条**（更旧）的 lastMessageAt，`lt` 再取更旧的一页
 sessionRoutes.get("/", async (c) => {
   const user = c.get("user");
   const limit = Math.min(Number(c.req.query("limit") ?? "20"), 50);
@@ -107,10 +121,12 @@ sessionRoutes.get("/", async (c) => {
     .limit(limit + 1);
   return c.json({
     items: rows.slice(0, limit).map((row) => ({ ...row, settings: parseJson(row.settings, {}) })),
+    // `slice(0,limit)` 后第 limit 条即多取的那条，其 lastMessageAt 作为下一页游标
     nextCursor: rows.length > limit ? rows[limit - 1].lastMessageAt : null
   });
 });
 
+// 非 sysadmin：单活跃生图，用于刷新后恢复 UI/WS；sysadmin/多任务策略返回 `{ active: null }`
 sessionRoutes.get("/active-generation", async (c) => {
   const user = c.get("user");
   if (!isSingleActiveGenerationRole(user.role)) return c.json({ active: null });
@@ -118,11 +134,13 @@ sessionRoutes.get("/active-generation", async (c) => {
   return c.json({ active });
 });
 
+// GET /api/sessions/:id：单条元数据，settings 从 JSON 字符串解析
 sessionRoutes.get("/:id", async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
   return c.json({ session: { ...session, settings: parseJson(session.settings, {}) } });
 });
 
+// PATCH：有任务后锁标题（防与首条生成摘要不一致）；settings.n 受角色策略约束
 sessionRoutes.patch(
   "/:id",
   zValidator(
@@ -142,6 +160,7 @@ sessionRoutes.patch(
       const task = await db.query.tasks.findFirst({
         where: eq(tasks.sessionId, session.id)
       });
+      // 已产生过任务则不允许改会话标题，避免与消息流展示不一致
       if (task) throw appError("VALIDATION_ERROR", "Session title is locked after generation");
     }
     const patch = {
@@ -162,6 +181,7 @@ sessionRoutes.patch(
   }
 );
 
+// 软删：写 deletedAt，列表与消息查询均过滤
 sessionRoutes.delete("/:id", async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
   await getDb(c.env)
@@ -177,6 +197,8 @@ sessionRoutes.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+// ===================== 消息：分页（工作台）、单条删除 =====================
+// 按 createdAt 倒序取一页，再 reverse 成时间正序；leftJoin tasks 附带错误码供气泡展示
 sessionRoutes.get("/:id/messages", async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
   const limit = Math.min(Number(c.req.query("limit") ?? "20"), 50);
@@ -213,6 +235,7 @@ sessionRoutes.get("/:id/messages", async (c) => {
     uniqueSessionMessageReferenceImageIds(pageRows),
     session.userId
   );
+  // `nextCursor` = 多取的第 limit+1 条（更**早**）的 createdAt，供前端 `loadOlderMessages` 再拉
   return c.json({
     items: pageRows.map((row) => {
       const referenceImageIds = parseJson<string[]>(row.referenceImageIds, []);
@@ -238,6 +261,7 @@ sessionRoutes.get("/:id/messages", async (c) => {
   });
 });
 
+// 单条消息软删，并软删其附件里**本人拥有**的 image_objects（防引用泄露）
 sessionRoutes.delete("/:sessionId/messages/:messageId", async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("sessionId"), c.get("user"));
   const db = getDb(c.env);
@@ -269,8 +293,12 @@ sessionRoutes.delete("/:sessionId/messages/:messageId", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * 用户「历史」只读 API：挂载在 `/api/history/*`，与会话 CRUD 分离；列表为复杂 SQL（任务数、封面图、搜索标题/正文 prompt）。
+ */
 export const historyRoutes = new Hono<AppEnv>();
 
+// ---------- 历史列表：分页、标题/prompt 搜索、多子查询聚合（任务数、请求张数、实落库图、封面、进行状态）----------
 historyRoutes.get("/", requireAuth, async (c) => {
   const user = c.get("user");
   const q = c.req.query("q");
@@ -436,6 +464,7 @@ historyRoutes.get("/", requireAuth, async (c) => {
   });
 });
 
+// ---------- 历史详情：与侧栏消息接口类似，全量正序 200 条，合并 D1 持久化图与 reference ----------
 historyRoutes.get("/:id", requireAuth, async (c) => {
   const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
   const rows = await c.env.DB.prepare(
@@ -553,6 +582,7 @@ type TaskParamsWithReferences = {
   [key: string]: unknown;
 };
 
+/** 工作台消息页：本页行里出现的参考图 id 去重，用于 `loadReferenceImagesById` 一次批量查 */
 function uniqueSessionMessageReferenceImageIds(
   rows: Array<{ referenceImageIds: string }>
 ): string[] {
@@ -563,6 +593,7 @@ function uniqueSessionMessageReferenceImageIds(
   return [...ids];
 }
 
+/** 历史详情：消息行上 `reference_image_ids` 与 `task_params` 内双来源合并去重 */
 function uniqueReferenceImageIds(
   rows: Array<{ reference_image_ids: string; task_params: string | null }>
 ): string[] {
@@ -578,6 +609,7 @@ function uniqueReferenceImageIds(
   return [...ids];
 }
 
+/** 从 `image_objects` 拉元数据（需 owner 匹配）；返回 Map 供按 id 顺序展开 */
 async function loadReferenceImagesById(
   env: AppEnv["Bindings"],
   imageIds: string[],
@@ -619,6 +651,7 @@ async function loadReferenceImagesById(
   );
 }
 
+/** 按 `imageIds` 顺序从 Map 取图并写入当前 message 的上下文字段 */
 function referenceImagesForIds(
   imagesById: Map<string, MessageReferenceImage>,
   imageIds: string[],
@@ -641,6 +674,9 @@ function referenceImagesForIds(
     }));
 }
 
+/**
+ * 历史详情：本会话下所有**非参考**图按 `tasks.message_id` 归到各消息（JSON 可能滞后于 D1）
+ */
 async function loadPersistedGeneratedImagesByMessageId(
   env: AppEnv["Bindings"],
   sessionId: string
@@ -692,6 +728,7 @@ async function loadPersistedGeneratedImagesByMessageId(
   return imagesByMessageId;
 }
 
+/** 以 messages.attachments JSON 为主序，把 D1 多出的 `persistedImages` 追加在末尾不重复 */
 function mergePersistedGeneratedImages(
   attachments: Array<Partial<HistoryImageAttachment> & { id: string }>,
   persistedImages: HistoryImageAttachment[],
@@ -712,6 +749,7 @@ function mergePersistedGeneratedImages(
   return merged;
 }
 
+/** 补齐 url/mime/外键，与前台 `ImageAttachment` 展示一致 */
 function normalizeHistoryImageAttachment(
   image: Partial<HistoryImageAttachment> & { id: string },
   context: {

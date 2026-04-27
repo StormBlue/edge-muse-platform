@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 滚动条：纵向/横向 + Thumb，供 ScrollArea 内部使用。
+ */
 import type { ScrollAreaScrollbarProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";
@@ -17,6 +20,7 @@ const delegatedProps = reactiveOmit(props, "class");
 </script>
 
 <template>
+  <!-- 纵向为右侧细条+左边透明边距防裁切；横向为底部条，Thumb 为圆角填充 track -->
   <ScrollAreaScrollbar
     data-slot="scroll-area-scrollbar"
     v-bind="delegatedProps"

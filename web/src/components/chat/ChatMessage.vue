@@ -1,4 +1,10 @@
 <script setup lang="ts">
+/**
+ * 单条消息气泡：用户右对齐 / 助手左对齐。
+ * - 生成中：`queued`/`running` 显示假进度（无 WS 进度时用 6%/28% 占位）与文案；
+ * - 有附件：`ImageMessage` 缩略栅格，点击 emit `open`；
+ * - 失败：根据 error.code 是否 PROVIDER* 切换标题，emit `retry` 由父组件重放任务。
+ */
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { ImageOff, Loader2, RotateCw } from "lucide-vue-next";
@@ -14,6 +20,9 @@ const { t } = useI18n();
 const isGenerating = computed(
   () => props.message.status === "queued" || props.message.status === "running"
 );
+/**
+ * 条宽百分比：优先用 `message.progress`（0~1）；否则 queued 给 6%、running 给 28% 避免条全空
+ */
 const generationProgress = computed(() => {
   if (typeof props.message.progress === "number") {
     return Math.min(99, Math.max(6, Math.round(props.message.progress * 100)));
@@ -116,6 +125,7 @@ const failureMessage = computed(
 </template>
 
 <style scoped>
+/* 长列表性能：视口外气泡略过绘制，预留高度减布局抖动 */
 .chat-message-row {
   content-visibility: auto;
   contain-intrinsic-size: 9rem;

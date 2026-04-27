@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 服务商 API 密钥：创建时提交明文，服务端 AES 入库；列表仅显示 keyHint；可配配额与归属。
+ */
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Plus, RefreshCw } from "lucide-vue-next";
@@ -6,6 +9,7 @@ import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import { apiFetch } from "@/api/client";
 
+/** 上游 OpenAI 兼容服务商标识，密钥必须归属某一 provider */
 type ProviderRow = {
   id: string;
   name: string;
@@ -13,6 +17,7 @@ type ProviderRow = {
   enabled: boolean;
 };
 
+/** 一行密钥：明文在创建/编辑时提交，列表仅回显 keyHint 与额度用量 */
 type KeyRow = {
   id: string;
   providerId: string;
@@ -27,6 +32,7 @@ type KeyRow = {
 const keys = ref<KeyRow[]>([]);
 const providers = ref<ProviderRow[]>([]);
 const { t } = useI18n();
+/** 创建/编辑弹层 */
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<KeyRow | null>(null);
@@ -47,8 +53,10 @@ const editForm = ref({
   enabled: true
 });
 
+/** 建密钥时下拉只列 enabled 的 provider */
 const activeProviders = computed(() => providers.value.filter((provider) => provider.enabled));
 
+/** 并行拉密钥与 provider；首次设置默认 `form.providerId` */
 async function load() {
   const [keyBody, providerBody] = await Promise.all([
     apiFetch<{ items: KeyRow[] }>("/sysadmin/provider-keys"),
@@ -61,6 +69,7 @@ async function load() {
   }
 }
 
+/** 打开创建并重置表单项；默认绑第一个可用 provider */
 function openCreate() {
   form.value = {
     providerId: activeProviders.value[0]?.id ?? "",
@@ -73,6 +82,7 @@ function openCreate() {
   createOpen.value = true;
 }
 
+/** POST 明文 apiKey，服务端加密落库 */
 async function create() {
   await apiFetch("/sysadmin/provider-keys", {
     method: "POST",
@@ -83,6 +93,7 @@ async function create() {
   await load();
 }
 
+/** 编辑时 apiKey 留空表示不更换 */
 function openEdit(key: KeyRow) {
   editing.value = key;
   editForm.value = {
@@ -98,6 +109,7 @@ function openEdit(key: KeyRow) {
 
 async function saveEdit() {
   if (!editing.value) return;
+  // 空串不传 apiKey，避免无意覆盖
   await apiFetch(`/sysadmin/provider-keys/${editing.value.id}`, {
     method: "PATCH",
     body: JSON.stringify({
@@ -115,6 +127,7 @@ async function saveEdit() {
   await load();
 }
 
+/** 行内快速启停，不调弹层 */
 async function toggleKey(key: KeyRow) {
   const enabled = !key.enabled;
   await apiFetch(`/sysadmin/provider-keys/${key.id}`, {
@@ -125,6 +138,7 @@ async function toggleKey(key: KeyRow) {
   await load();
 }
 
+/** 硬删前二次确认，若有用户绑定会由后端拒绝或级联策略处理 */
 async function deleteKey(key: KeyRow) {
   if (!window.confirm(t("sysadmin.deleteKeyConfirm", { label: key.label }))) return;
   await apiFetch(`/sysadmin/provider-keys/${key.id}`, { method: "DELETE" });
@@ -132,6 +146,7 @@ async function deleteKey(key: KeyRow) {
   await load();
 }
 
+/** 表格中 provider 列展示名，未找到时退回 raw id */
 function providerLabel(id: string) {
   const provider = providers.value.find((item) => item.id === id);
   return provider ? provider.name : id;

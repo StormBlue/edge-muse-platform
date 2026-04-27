@@ -1,3 +1,9 @@
+/**
+ * 租户管理员 API（`/api/admin/*`）：
+ * - `requireRole("admin")`：含 **admin 与 sysadmin**（`requireRole` 实现里 admin 可访问 admin 路由）；
+ * - 非 sysadmin 时 `users.createdBy = actor.id`，只能管自己挂名的下属；sysadmin 可调 `?role=` 看全局 admin/user；
+ * - 配额、子用户 CRUD、用量聚合等与 `quotas` / `user_provider_keys` 联动。
+ */
 import { and, desc, eq, inArray, isNull, like, lt, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -26,28 +32,39 @@ export const adminRoutes = new Hono<AppEnv>();
 
 adminRoutes.use("*", requireAuth, requireRole("admin"));
 
+// ===================== 校验 schema（与前端表单/错误提示对齐） =====================
+
+/** 空串视为未提供邮箱，与「可选」字段表单一致 */
 const optionalEmailSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }, z.string().email().optional());
 
+/** 空串表示不更新或不绑定 provider key */
 const optionalProviderKeySchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }, z.string().min(1).optional());
 
+/** 去首尾空白，防复制粘贴带入换行 */
 const usernameSchema = z.preprocess((value) => {
   if (typeof value !== "string") return value;
   return value.trim();
 }, z.string().min(1).max(40));
 
+// ---------- 下属用户列表：非 sysadmin 仅 `createdBy = 自己`；sysadmin 可按 ?role= 筛 admin|user ----------
+/**
+ * 多表 join 聚合 `generationCount` / `lastGenerationAt`；where 随 `actor.role` 分支。
+ * `role` 为 null 且 actor 为 sysadmin 时：`inArray(users.role, ["admin","user"])` 看两类下属。
+ */
 adminRoutes.get("/users", async (c) => {
   const actor = c.get("user");
   const q = c.req.query("q");
   const status = c.req.query("status");
   const requestedRole = c.req.query("role");
+  // sysadmin 显式要某一类；否则全站两类；普通 admin 的 role 在下方固定为 "user"（通过三元）
   const role =
     actor.role === "sysadmin" && (requestedRole === "admin" || requestedRole === "user")
       ? requestedRole
@@ -97,6 +114,7 @@ adminRoutes.get("/users", async (c) => {
   return c.json({ items: rows });
 });
 
+// ---------- 可选的 Provider 密钥（下拉用）：不返回 `encryptedKey`；sysadmin 看全部启用，admin 仅「绑到自己 user_id」的 key ----------
 adminRoutes.get("/provider-keys", async (c) => {
   const actor = c.get("user");
   const db = getDb(c.env);
@@ -131,6 +149,7 @@ adminRoutes.get("/provider-keys", async (c) => {
   return c.json({ items: rows });
 });
 
+// ---------- 创建下属用户：配额从「操作者自己的池子」扣减（非 sysadmin）；admin 角色须指定 providerKeyId ----------
 adminRoutes.post(
   "/users",
   zValidator(
@@ -225,6 +244,7 @@ adminRoutes.post(
         assignedAt: timestamp
       });
     }
+    // 租户 admin 给子用户预分配额度时，从自己 `quotas.allocated_quota` 扣减（与 grantQuota 语义一致，避免超发）
     if (actor.role !== "sysadmin" && (body.quota ?? 0) > 0) {
       await c.env.DB.prepare(
         "UPDATE quotas SET allocated_quota = allocated_quota - ?1, updated_at = ?2 WHERE user_id = ?3"
@@ -243,6 +263,7 @@ adminRoutes.post(
   }
 );
 
+// ---------- 更新用户：非 sysadmin 不能改 key/配额/密码；改密钥时对「管辖树」下用户 UPSERT `user_provider_keys` ----------
 adminRoutes.patch(
   "/users/:id",
   zValidator(
@@ -304,6 +325,7 @@ adminRoutes.patch(
         .run();
     }
     if (changedProviderKeyId) {
+      // 若被改的是租户 admin，则其本人 + 所有 createdBy 指向它的用户一并换绑到同一把 key
       const managed =
         target.role === "admin"
           ? await getDb(c.env)
@@ -338,9 +360,11 @@ adminRoutes.patch(
   }
 );
 
+// ---------- 配额流水游标列表 + 加配额（grant）：非 sysadmin 加多少先从自己池子减多少 ----------
 adminRoutes.get("/users/:id/quota", async (c) => {
   const target = await assertManagedUserAccess(c.env, c.req.param("id"), c.get("user"));
   const limit = Math.min(Number(c.req.query("limit") ?? "20"), 50);
+  // cursor=上条 `createdAt`，拉取**更早**的流水（`lt`，与新在前排序一致）
   const cursor = Number(c.req.query("cursor") ?? "0");
   const tx = await getDb(c.env)
     .select()
@@ -390,6 +414,7 @@ adminRoutes.post(
   }
 );
 
+// ---------- 单用户任务按 status/mode 聚合 + 近 30 日按天趋势（queued_at 按天桶）----------
 adminRoutes.get("/users/:id/usage", async (c) => {
   const target = await assertManagedUserAccess(c.env, c.req.param("id"), c.get("user"));
   const stats = await c.env.DB.prepare(
@@ -416,6 +441,7 @@ adminRoutes.get("/users/:id/usage", async (c) => {
   return c.json({ stats: stats.results, trend: trend.results, total: totalRow[0]?.count ?? 0 });
 });
 
+// ---------- 强制重置密码（不返回明文）；**被操作者**为 sysadmin 时拒绝（任意 sysadmin 账号均不可在此改密）----------
 adminRoutes.post(
   "/users/:id/password",
   zValidator("json", z.object({ password: z.string().min(8) })),

@@ -1,3 +1,9 @@
+/**
+ * Cloudflare Worker 入口：Hono 挂载 REST `/api/*`，**以及** 根路径 WebSocket `GET /ws/task/:id`（与 POST /api/generate 返回的 wsUrl 一致）。
+ *
+ * `fetch` 导出上在特定路径会 `scheduleInterruptedTaskRecovery`：对「排队中未消费」的任务做轻量重试入口（详见 lib/tasks `recoverInterruptedGenerateTasks`）。
+ * `scheduled`：Cron 触发的维护任务（中断恢复、R2 清理、运维摘要等）。
+ */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authRoutes } from "./routes/auth";
@@ -23,6 +29,7 @@ const app = new Hono<AppEnv>();
 
 installErrorHandling(app);
 
+// ---------- 中间件：全站安全头 + 仅 /api 的 CORS（带 Cookie）与 CSRF ----------
 app.use("*", requestLogger);
 app.use("*", securityHeaders);
 app.use(
@@ -34,6 +41,7 @@ app.use(
 );
 app.use("/api/*", csrf);
 
+// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框）----------
 app.get("/api/health", (c) =>
   c.json({
     ok: true,
@@ -49,6 +57,7 @@ app.get("/api/config", (c) =>
   })
 );
 
+// ---------- 业务路由挂载（均含各自 requireAuth / 角色，见各 routes 文件）----------
 app.route("/api/auth", authRoutes);
 app.route("/api/me", meRoutes);
 app.route("/api/sessions", sessionRoutes);
@@ -58,15 +67,21 @@ app.route("/api", imageRoutes);
 app.route("/api", uploadRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
+/** 浏览器 WebSocket 连接点：`wss://<host>/ws/task/<taskId>`（无前缀 /api） */
 app.get("/ws/task/:id", handleTaskWebSocket);
 
 export default {
   fetch: (request, env, ctx) => {
+    // 与任务相关的入口顺带调度「排队任务恢复」到 waitUntil，不阻塞当前响应
     if (shouldScheduleInterruptedTaskRecovery(request)) {
       scheduleInterruptedTaskRecovery(env, ctx);
     }
     return app.fetch(request, env, ctx);
   },
+  /**
+   * Cron 触发：`throttle: false` 全量扫中断任务；与其余维护任务并列入 `waitUntil`。
+   * 具体间隔在 wrangler / 控制台配置，与「请求路径顺带 recovery」互补。
+   */
   scheduled: (_controller, env, ctx) => {
     ctx.waitUntil(
       Promise.all([
@@ -80,6 +95,10 @@ export default {
   }
 } satisfies ExportedHandler<Cloudflare.Env>;
 
+/**
+ * 在「可能 touch 生图状态」的入口上顺带 `scheduleInterruptedTaskRecovery`，
+ * 避免仅靠 Cron 时长时间无人访问导致 queued 不点火；路径列表与产品入口对齐即可维护。
+ */
 function shouldScheduleInterruptedTaskRecovery(request: Request): boolean {
   const path = new URL(request.url).pathname;
   return (

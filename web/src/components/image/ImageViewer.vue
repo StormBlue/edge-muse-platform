@@ -1,4 +1,12 @@
 <script setup lang="ts">
+/**
+ * 全屏大图查看器（固定层 z-50）：
+ * - **单图**：仅传 `image`，无左右箭头；
+ * - **多图**：传 `image`（当前张）+ `images`（全集），`currentIndex` 由 id 匹配，左右键/按钮 emit `select` 换张；
+ * - **缩放**：`scale` 作用于 `<img>` 的 transform，换图时重置为 1；
+ * - **删除**：需 `image.messageId` 有值（软删消息），无则禁用；
+ * - **键盘**：Esc 关闭，左右箭头在有多图时切换（与 `move` 一致）。
+ */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
@@ -18,12 +26,16 @@ import type { ImageAttachment } from "@/stores/session";
 const props = defineProps<{ image: ImageAttachment | null; images?: ImageAttachment[] }>();
 const emit = defineEmits<{
   close: [];
+  /** 画廊内切换下一张/上一张 */
   select: [image: ImageAttachment];
+  /** 删整条消息，由父级调 API */
   delete: [image: ImageAttachment];
 }>();
 
 const { t } = useI18n();
+/** 仅影响当前展示图，切图时由 watch 重置 */
 const scale = ref(1);
+/** 在 `images` 里定位当前 `image.id`；无集合时为 -1，左右不可用 */
 const currentIndex = computed(() =>
   props.image && props.images?.length
     ? props.images.findIndex((image) => image.id === props.image?.id)
@@ -41,6 +53,7 @@ const extension = computed(() => {
   if (mime.includes("svg")) return "svg";
   return "png";
 });
+/** 顶栏辅文：尺寸、体积、可选 taskId */
 const metadata = computed(() => {
   if (!props.image) return "";
   const size =
@@ -70,12 +83,14 @@ async function copyPrompt() {
   toast.success(t("viewer.promptCopied"));
 }
 
+/** 在 `images` 数组内按下标步进并通知父组件更新 `image` */
 function move(delta: -1 | 1) {
   const images = props.images ?? [];
   const next = images[currentIndex.value + delta];
   if (next) emit("select", next);
 }
 
+/** 全局监听：仅在有当前图时响应，避免其它页面抢键 */
 function onKeydown(event: KeyboardEvent) {
   if (!props.image) return;
   if (event.key === "Escape") emit("close");
@@ -83,6 +98,7 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === "ArrowRight") move(1);
 }
 
+/** 元数据行 human-readable 体积 */
 function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   const kb = bytes / 1024;
@@ -202,6 +218,7 @@ function formatBytes(bytes: number) {
 </template>
 
 <style scoped>
+/* 三行：顶栏工具 / 可滚主图区 / 底栏 prompt；窄屏隐藏底栏省高 */
 .image-viewer {
   grid-template-rows: auto minmax(0, 1fr) auto;
 }

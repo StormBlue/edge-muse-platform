@@ -1,3 +1,6 @@
+/**
+ * 新会话默认标题：本地化「日期时间」串，用户可在 UI 修改。
+ */
 export function defaultSessionTitle(timestamp = Date.now()): string {
   const date = new Date(timestamp);
   const year = date.getFullYear();

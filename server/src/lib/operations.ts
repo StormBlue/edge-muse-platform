@@ -1,8 +1,16 @@
+/**
+ * 运维向：由 `index.ts` 的 `scheduled` **并行**拉起的若干任务，失败不应拖死整批 `Promise.all`（各函数内部吞或打日志）。
+ *
+ * - `sendFailureDigest`：近 24h `tasks.status=failed` 按 `error_code` 聚合，邮件需 `ALERT_EMAIL`+mailer 绑定，否则只 `console.warn`。
+ * - `logD1TableSizes`：固定表名 `COUNT(*)`，打结构化 JSON 到 Workers 日志，便于 Logpush/仪表盘。
+ * - `backupOperationalSnapshot`：按日路径写 R2 JSON，**非** D1 全量 dump，作趋势与应急对照用。
+ */
 import type { AppBindings } from "../types";
 import { sendMail } from "./mailer";
 
 const dayMs = 24 * 60 * 60 * 1000;
 
+/** 失败任务统计窗口：近 24 小时 */
 export async function sendFailureDigest(env: AppBindings): Promise<void> {
   const since = Date.now() - dayMs;
   const failed = await env.DB.prepare(
@@ -18,6 +26,7 @@ export async function sendFailureDigest(env: AppBindings): Promise<void> {
   const body = failed.results
     .map((row) => `${row.error_code ?? "UNKNOWN"}: ${row.count}`)
     .join("\n");
+  // 无收件人时仍可见聚合结果，避免静默丢告警
   if (!env.ALERT_EMAIL) {
     console.warn(JSON.stringify({ event: "ops.failure_digest", body }));
     return;
@@ -28,6 +37,7 @@ export async function sendFailureDigest(env: AppBindings): Promise<void> {
   });
 }
 
+/** 主表行数体检；表名与 schema 主业务表对齐，新表可在此增一行 */
 export async function logD1TableSizes(env: AppBindings): Promise<void> {
   const tables = [
     "users",
@@ -48,6 +58,10 @@ export async function logD1TableSizes(env: AppBindings): Promise<void> {
   console.log(JSON.stringify({ event: "ops.d1_size", counts }));
 }
 
+/**
+ * 将聚合统计以 JSON 写入 R2；路径含 **UTC 日期** 前缀，同日多次跑会**覆盖**同 key 尾部（以 timestamp 在 body 内区分）。
+ * 不含用户明细，体积极小，适合与配额/增长监控对照。
+ */
 export async function backupOperationalSnapshot(env: AppBindings): Promise<void> {
   const timestamp = new Date().toISOString();
   const [users, tasks, imageObjects] = await Promise.all([

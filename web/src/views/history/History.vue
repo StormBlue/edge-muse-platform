@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 历史会话列表与详情：按 API 分页拉会话，点进展开消息与任务信息；封面图来自接口 `coverImage`。
+ */
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -9,6 +12,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiFetch } from "@/api/client";
 import type { ImageAttachment, Message, Session, SessionMode } from "@/stores/session";
 
+/** 列表页扩展 Session：统计字段 + 封面图 */
 type HistorySession = Session & {
   createdAt?: number;
   updatedAt?: number;
@@ -18,6 +22,7 @@ type HistorySession = Session & {
   requestedImageCount?: number;
   coverImage?: ImageAttachment | null;
 };
+/** 与任务/会话 settings 对齐的参数字段快照 */
 type TaskParams = {
   prompt?: string;
   mode?: SessionMode;
@@ -26,6 +31,7 @@ type TaskParams = {
   model?: string;
   referenceImageIds?: string[];
 };
+/** 详情里从消息挂接的任务摘要 */
 type HistoryTask = {
   id: string;
   mode: SessionMode | null;
@@ -37,7 +43,9 @@ type HistoryTask = {
   startedAt?: number | null;
   finishedAt?: number | null;
 };
+/** 历史详情中单条消息，可带 reference 与 task 嵌套 */
 type HistoryMessage = Message & { referenceImages?: ImageAttachment[]; task?: HistoryTask | null };
+/** 单条结果进度条用：总张数/成功/失败/完成百分比 */
 type GenerationStats = {
   total: number;
   success: number;
@@ -51,6 +59,7 @@ const router = useRouter();
 const { locale, t } = useI18n();
 const items = ref<HistorySession[]>([]);
 const q = ref("");
+/** 排序：最近 / 最旧 / 按任务数 */
 const order = ref<"recent" | "oldest" | "task_count">("recent");
 const page = ref(1);
 const pageInput = ref("1");
@@ -61,14 +70,17 @@ const detailLoading = ref(false);
 const selectedSession = ref<HistorySession | null>(null);
 const detailMessages = ref<HistoryMessage[]>([]);
 const selectedImage = ref<ImageAttachment | null>(null);
+/** 在 `displayResultMessages` 中当前高亮下标 */
 const activeResultIndex = ref(0);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+/** 仅助手行且已有 task 或附件，作「可浏览结果」集合 */
 const resultMessages = computed(() =>
   detailMessages.value.filter(
     (message) => message.role === "assistant" && (message.task || message.attachments.length)
   )
 );
+/** 有出图的助手消息优先，其余保持原序 */
 const displayResultMessages = computed(() =>
   resultMessages.value
     .map((message, index) => ({ message, index }))
@@ -79,10 +91,12 @@ const displayResultMessages = computed(() =>
     })
     .map(({ message }) => message)
 );
+/** 与 UserSessions/Workspace 类似：有图条目前排 */
 const activeResultMessages = computed(() => {
   const message = displayResultMessages.value[activeResultIndex.value];
   return message ? [message] : [];
 });
+/** 当前会话下全部出图+参考，供 ImageViewer 画廊 */
 const detailImages = computed(() =>
   detailMessages.value.flatMap((message) => [
     ...message.attachments.map(toViewerImage),
@@ -96,6 +110,7 @@ onMounted(async () => {
   if (sessionId) await loadDetail(sessionId);
 });
 
+// 深链或浏览器前进后退：带 session 则拉详情，否则回到网格并清空右栏
 watch(
   () => route.query.session,
   async () => {
@@ -122,6 +137,7 @@ watch(displayResultMessages, (messages) => {
   activeResultIndex.value = Math.min(activeResultIndex.value, messages.length - 1);
 });
 
+/** 分页拉取当前用户历史会话，支持 order/q */
 async function load(nextPage = page.value) {
   const targetPage = sanitizePage(nextPage);
   loading.value = true;
@@ -153,6 +169,7 @@ async function jumpToPage() {
   await load(targetPage);
 }
 
+/** 与当前 URL 的 session 一致时只拉数据，避免重复 push */
 async function openDetail(session: HistorySession) {
   selectedSession.value = session;
   if (getRouteSessionId() === session.id) {
@@ -162,10 +179,12 @@ async function openDetail(session: HistorySession) {
   await router.push({ path: "/history", query: { session: session.id } });
 }
 
+/** 清 query.session 回到只显示网格 */
 async function backToGrid() {
   await router.push({ path: "/history" });
 }
 
+/** GET /history/:id 拉会话头 + 全消息 */
 async function loadDetail(sessionId: string) {
   detailLoading.value = true;
   try {
@@ -181,10 +200,12 @@ async function loadDetail(sessionId: string) {
   }
 }
 
+/** 深链 `?session=` */
 function getRouteSessionId() {
   return typeof route.query.session === "string" ? route.query.session : null;
 }
 
+/** 画廊模式不绑定 messageId，避免 Viewer 按消息过滤过窄 */
 function toViewerImage(image: ImageAttachment): ImageAttachment {
   return { ...image, messageId: null };
 }
@@ -193,6 +214,7 @@ function openImage(image: ImageAttachment) {
   selectedImage.value = toViewerImage(image);
 }
 
+/** 列表与详情时间展示 */
 function formatDateTime(value?: number | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(locale.value, {
@@ -208,6 +230,7 @@ function modeLabel(mode?: SessionMode | null) {
   return mode ? t(`workspace.${mode}`) : "-";
 }
 
+/** 优先 task.status，否则仅有 taskId 时退回到消息级状态 */
 function taskStatusValue(message: HistoryMessage) {
   return message.task?.status ?? (message.taskId ? message.status : null);
 }
@@ -224,6 +247,7 @@ function sessionStatusLabel(status?: string | null) {
   return status ? taskStatusLabel(status) : t("history.noTaskStatus");
 }
 
+/** 与 UserSessions 类似：按状态给边框/底色的 Tailwind 组合 */
 function taskStatusTone(status?: string | null) {
   if (status === "succeeded") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
@@ -253,6 +277,7 @@ function isLongPrompt(message: HistoryMessage) {
   return prompt.length > 260 || prompt.split("\n").length > 5;
 }
 
+/** 多图任务：用请求张数、成功附件数、终态推失败张数，算进度条 */
 function taskGenerationStats(message: HistoryMessage): GenerationStats {
   const total = requestedImageCount(message);
   const success = message.attachments.length;
@@ -268,12 +293,14 @@ function taskGenerationStats(message: HistoryMessage): GenerationStats {
   };
 }
 
+/** 与 sysadmin 审计页一致：配置 n 与已出张数取 max 防除零 */
 function requestedImageCount(message: HistoryMessage) {
   const configured = message.task?.params?.n ?? selectedSession.value?.settings?.n;
   const count = typeof configured === "number" && Number.isFinite(configured) ? configured : 0;
   return Math.max(Math.floor(count), message.attachments.length);
 }
 
+/** 网格卡片上「已出/请求」的国际化片段 */
 function sessionImageCountLabel(session: HistorySession) {
   const success = Math.max(Math.floor(session.imageCount ?? 0), 0);
   const requested = Math.max(Math.floor(session.requestedImageCount ?? success), success);
@@ -293,6 +320,7 @@ function clampPageInput(value: string) {
   return Math.min(sanitizePage(numeric), totalPages.value);
 }
 
+/** 右栏卡片的 mode/size/model/参考数等展示结构 */
 function taskParameters(message: HistoryMessage) {
   const params = message.task?.params ?? {};
   return {
@@ -306,10 +334,12 @@ function taskParameters(message: HistoryMessage) {
   };
 }
 
+/** 底栏结果条上一张 */
 function previousResult() {
   activeResultIndex.value = Math.max(activeResultIndex.value - 1, 0);
 }
 
+/** 底栏结果条下一张，上界与 `displayResultMessages` 长度绑定 */
 function nextResult() {
   activeResultIndex.value = Math.min(
     activeResultIndex.value + 1,

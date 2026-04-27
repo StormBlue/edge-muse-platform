@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 服务商 CRUD：OpenAI 兼容的 baseUrl、默认模型、supportedSizes；密钥在「密钥管理」页维护。
+ */
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Plus, RefreshCw } from "lucide-vue-next";
@@ -6,6 +9,7 @@ import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import { apiFetch } from "@/api/client";
 
+/** 一条上游配置：生图时由 registry 选用；密钥在别表 */
 type Provider = {
   id: string;
   name: string;
@@ -28,12 +32,14 @@ const editForm = ref({
   name: "",
   baseUrl: ""
 });
+/** 创建时与名称/baseUrl 一并 POST，与后端默认约定一致，避免表单过长 */
 const defaultProviderSettings = {
   defaultModel: "gpt-image-2",
   supportedSizes: ["1024x1024", "1024x1536", "1536x1024", "auto"],
   enabled: true
 };
 
+/** 拉取全量 provider（含 enabled 与 baseUrl） */
 async function load() {
   items.value = (await apiFetch<{ items: Provider[] }>("/sysadmin/providers")).items;
 }
@@ -43,6 +49,7 @@ function openCreate() {
   createOpen.value = true;
 }
 
+/** 合并 `defaultProviderSettings` 一次性写入，模型/尺寸可后续 PATCH */
 async function create() {
   await apiFetch("/sysadmin/providers", {
     method: "POST",
@@ -62,6 +69,7 @@ function openEdit(provider: Provider) {
   editOpen.value = true;
 }
 
+/** 仅改展示名与 baseUrl，模型/尺寸若需调应用 PATCH 全量或专用接口 */
 async function saveEdit() {
   if (!editing.value) return;
   await apiFetch(`/sysadmin/providers/${editing.value.id}`, {
@@ -74,6 +82,7 @@ async function saveEdit() {
   await load();
 }
 
+/** 行内仅切换 enabled，不影响默认模型等字段 */
 async function toggleProvider(provider: Provider) {
   const enabled = !provider.enabled;
   await apiFetch(`/sysadmin/providers/${provider.id}`, {
@@ -84,6 +93,7 @@ async function toggleProvider(provider: Provider) {
   await load();
 }
 
+/** 删除前确认；若仍有关联赛道或任务历史，后端可 409 */
 async function deleteProvider(provider: Provider) {
   if (!window.confirm(t("sysadmin.deleteProviderConfirm", { name: provider.name }))) return;
   await apiFetch(`/sysadmin/providers/${provider.id}`, { method: "DELETE" });

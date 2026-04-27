@@ -1,3 +1,7 @@
+/**
+ * OpenAI 兼容生图：优先 `POST /v1/responses`（含 image tool），失败或 404/405/501 时回退
+ * `images.generations` 或 `chat/completions`（图生图多模态），与 docs §3 一致。`baseUrl === "mock:"` 返回本地 SVG 便测试。
+ */
 import { base64ToBytes, bytesToBase64 } from "../lib/encoding";
 import { logError, logInfo, logWarn, urlSummary } from "../lib/log";
 import type {
@@ -23,11 +27,15 @@ const PROVIDER_FETCH_TIMEOUT_MS = 10 * 60 * 1000;
 
 type UnknownRecord = Record<string, unknown>;
 
+/**
+ * gpt-image-2 等：统一解析 Responses/Legacy/Chat 多种 JSON 响型为 `ProviderImage[]`。
+ */
 export class OpenAICompatibleProvider implements ImageProvider {
   id = "openai_compatible";
   name = "OpenAI Compatible";
   supportedSizes = DEFAULT_SIZES;
 
+  /** 以 GET /v1/models 探测密钥是否可用 */
   async health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean> {
     const startedAt = Date.now();
     logInfo("provider.health.started", {
@@ -49,6 +57,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
     return response.ok;
   }
 
+  /** 入口：mock / chat 分支 + responses 主路 + 错误时降级 legacy */
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
     logInfo("provider.generate.started", {
       ...req.logContext,
@@ -88,6 +97,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
     }
   }
 
+  /** Responses API（/v1/responses），文生图与图生图多模态 input */
   private async responses(req: GenerateRequest): Promise<GenerateResponse> {
     const baseUrl = req.baseUrl.replace(/\/$/, "");
     const body =
@@ -140,6 +150,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
     };
   }
 
+  /** 回退：POST /v1/images/generations（仅文生图路径） */
   private async legacyImage(req: GenerateRequest): Promise<GenerateResponse> {
     const baseUrl = req.baseUrl.replace(/\/$/, "");
     const json = await providerFetch(
@@ -179,6 +190,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
     };
   }
 
+  /** Chat Completions：对话式或图生图回退时走 messages */
   private async chat(req: GenerateRequest): Promise<GenerateResponse> {
     const baseUrl = req.baseUrl.replace(/\/$/, "");
     const messages = req.messages?.map((message) => ({
@@ -250,6 +262,7 @@ type ProviderFetchLogContext = ProviderLogContext & {
   messageCount?: number;
 };
 
+/** 带超时与结构化请求/响应日志的 POST JSON，失败抛 ProviderError */
 async function providerFetch(
   url: string,
   apiKey: string,
@@ -321,6 +334,9 @@ async function providerFetch(
   }
 }
 
+/**
+ * 从任意 OpenAI/兼容 JSON 中递归收集图片：支持 output/data/choices、内嵌 b64、url 字段与字符串里的 img/markdown。
+ */
 export function parseProviderImages(payload: unknown): ProviderImage[] {
   const images: ProviderImage[] = [];
   const visit = (value: unknown) => {
@@ -359,6 +375,7 @@ export function parseProviderImages(payload: unknown): ProviderImage[] {
   return dedupeImages(images);
 }
 
+/** 从模型返回的 HTML/Markdown/裸 URL/内嵌 data URL 中尽力解析出图 */
 function extractImagesFromText(text: string): ProviderImage[] {
   const images: ProviderImage[] = [];
   const patterns = [
@@ -376,6 +393,7 @@ function extractImagesFromText(text: string): ProviderImage[] {
   return images;
 }
 
+/** 单字符串转 ProviderImage：data URL、https、或裸 base64 猜测 */
 function imageFromUrlOrData(value: string): ProviderImage | null {
   if (value.startsWith("data:image/")) {
     const stripped = stripDataUrl(value);
@@ -387,12 +405,14 @@ function imageFromUrlOrData(value: string): ProviderImage | null {
   return null;
 }
 
+/** 解析 data:...;base64,... 或退回纯 base64 串 */
 function stripDataUrl(value: string): { data: string; mime: string } {
   const match = /^data:([^;]+);base64,(.*)$/s.exec(value.trim());
   if (!match) return { data: value.replace(/\s/g, ""), mime: "image/png" };
   return { mime: match[1], data: match[2].replace(/\s/g, "") };
 }
 
+/** 轻量启发式：长度 + 前 80 字符可解码为字节 */
 function looksLikeBase64Image(value: string): boolean {
   const stripped = stripDataUrl(value).data;
   if (stripped.length < 32) return false;
@@ -404,6 +424,7 @@ function looksLikeBase64Image(value: string): boolean {
   }
 }
 
+/** 同 URL 或同 base64 前缀去重，避免重复落库 */
 function dedupeImages(images: ProviderImage[]): ProviderImage[] {
   const seen = new Set<string>();
   return images.filter((image) => {
@@ -419,6 +440,7 @@ function dedupeImages(images: ProviderImage[]): ProviderImage[] {
   });
 }
 
+/** 日志统计用（与 tasks 中同名函数职责类似） */
 function imageKindCounts(images: ProviderImage[]): Record<string, number> {
   return images.reduce<Record<string, number>>((counts, image) => {
     counts[image.kind] = (counts[image.kind] ?? 0) + 1;
@@ -426,6 +448,7 @@ function imageKindCounts(images: ProviderImage[]): Record<string, number> {
   }, {});
 }
 
+/** 请求体只记键名与长度类元数据，不记录 prompt 全文 */
 function requestBodyShape(body: unknown): UnknownRecord {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { type: typeof body };
   const record = body as UnknownRecord;
@@ -443,6 +466,7 @@ function requestBodyShape(body: unknown): UnknownRecord {
   return shape;
 }
 
+/** 响应体摘要：output 项 type、error 块等，供 fetch 完成日志 */
 function payloadShape(payload: unknown): UnknownRecord {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return { type: Array.isArray(payload) ? "array" : typeof payload };
@@ -467,6 +491,7 @@ function payloadShape(payload: unknown): UnknownRecord {
   return shape;
 }
 
+/** 尝试把模型返回的字符串当 JSON 解析（如 content 内嵌 JSON） */
 function tryJson(text: string): unknown {
   try {
     return JSON.parse(text) as unknown;
@@ -475,6 +500,7 @@ function tryJson(text: string): unknown {
   }
 }
 
+/** 从标准 error.message 或顶层 message 抽用户可读错误 */
 function providerMessage(json: unknown, fallback: string): string {
   if (json && typeof json === "object") {
     const record = json as UnknownRecord;
@@ -484,6 +510,7 @@ function providerMessage(json: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Chat 完成：取 choices[0].message.content 文本 */
 function extractText(json: unknown): string | undefined {
   if (!json || typeof json !== "object") return undefined;
   const record = json as UnknownRecord;
@@ -494,10 +521,12 @@ function extractText(json: unknown): string | undefined {
   return stringValue(message?.content);
 }
 
+/** 非空字符串才视为有效，避免把空串当内容 */
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+/** 本地/CI：`baseUrl: mock:` 时返回确定性 SVG，无外部网络 */
 function mockGenerate(req: GenerateRequest): GenerateResponse {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" fill="#faf7f2"/>
@@ -515,6 +544,7 @@ function mockGenerate(req: GenerateRequest): GenerateResponse {
   };
 }
 
+/** 嵌入 mock SVG 的 <text>，防 prompt 破环 XML */
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

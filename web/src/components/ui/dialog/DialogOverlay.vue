@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 独立遮罩层：全屏暗色 80% 与淡入淡出，可配合自定义布局（`DialogContent` 已内嵌自己的 Overlay）。
+ */
 import type { DialogOverlayProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";

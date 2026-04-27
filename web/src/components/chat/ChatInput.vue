@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 工作台底部输入：prompt、尺寸/张数（受角色限制）、图生图时本地上传参考图（最多 5）。
+ * `variant=chat` 时可隐藏部分工具条；`readOnly` 用于仅展示历史参数。
+ */
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Loader2, Send, Upload, X } from "lucide-vue-next";
@@ -26,8 +30,10 @@ const { t } = useI18n();
 const prompt = ref("");
 const size = ref("1024x1024");
 const n = ref(1);
+/** 图生本地上传队列；提交后由父组件走上传 API，此处仅保 File */
 const files = ref<File[]>([]);
 const dragging = ref(false);
+/** 与 `files` 同步的 objectURL 预览，销毁时 revoke */
 const previews = ref<Array<{ file: File; url: string }>>([]);
 const maxReferenceFiles = 5;
 const maxCustomCount = 100;
@@ -37,6 +43,7 @@ const isContinuousChat = computed(() => props.mode === "chat");
 const isChatVariant = computed(() => props.variant === "chat");
 const isBusy = computed(() => Boolean(props.loading || props.generating));
 const hasPrompt = computed(() => prompt.value.trim().length > 0);
+/** 只读/请求中/无 prompt/图生未选图 时不可提交 */
 const submitDisabled = computed(
   () =>
     isReadOnly.value ||
@@ -66,9 +73,11 @@ const selectedSizeOption = computed(
       label: size.value
     }
 );
+/** 只读时只显示当前选中的尺寸，避免点选改参 */
 const visibleSizeOptions = computed(() =>
   isReadOnly.value ? [selectedSizeOption.value] : sizeOptions
 );
+/** 多轮/禁自定义张数时固定为 1，只读时锁当前 n */
 const visibleCountOptions = computed(() => {
   if (isReadOnly.value) return [n.value];
   return [1];
@@ -108,6 +117,7 @@ watch(
   }
 );
 
+// 文件列表变更时全量换预览 URL，防泄漏须 revoke 旧 URL
 watch(
   files,
   (next) => {
@@ -117,6 +127,7 @@ watch(
   { deep: false }
 );
 
+// 只读且父级已给 reference 图时，清掉本地选文件以免两套引用混淆
 watch(
   () => [isReadOnly.value, readonlyReferenceImages.value.length] as const,
   ([readOnly, referenceImageCount]) => {
@@ -128,6 +139,9 @@ onBeforeUnmount(() => {
   for (const preview of previews.value) URL.revokeObjectURL(preview.url);
 });
 
+/**
+ * 提交后清空 prompt；文生/对话清参考文件，图生保留直到下次成功提交或切模式
+ */
 async function submit() {
   if (submitDisabled.value) return;
   emit("submit", {
@@ -164,6 +178,7 @@ async function onPaste(event: ClipboardEvent) {
   }
 }
 
+/** 只收图片 MIME，经压缩后截断为最多 5 张 */
 async function addFiles(inputFiles: File[]) {
   if (isReadOnly.value) return;
   if (!isImageToImage.value) return;
@@ -198,6 +213,9 @@ function clampImageCount(value: number) {
   return Math.min(maxCustomCount, Math.max(1, Math.floor(value)));
 }
 
+/**
+ * 大图或超 ~1.5MB 时压到长边 2048、jpeg 0.85，失败则回传原 File
+ */
 async function compressImage(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file).catch(() => null);
   if (!bitmap) return file;

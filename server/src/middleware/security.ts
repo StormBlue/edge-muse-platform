@@ -1,3 +1,10 @@
+/**
+ * 在 `await next()` 之后追加响应头，避免影响上游状态码/Content-Type 判定。
+ * - **nosniff**：减 MIME 嗅探攻击面；
+ * - **DENY / frame-ancestors**：禁嵌 iframe；
+ * - **CSP**：允许 Turnstile 脚本与 iframe、同域 API 与 `ws/wss` 生图长连；
+ * - **HSTS**：仅 production，强跳 HTTPS。
+ */
 import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "../types";
 

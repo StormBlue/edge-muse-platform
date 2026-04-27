@@ -1,6 +1,17 @@
+/**
+ * D1（SQLite）表定义与关系：
+ * - 时间戳：统一毫秒级 Unix epoch（`Date.now()` 语义）。
+ * - 软删：多数用 `deleted_at`；`image_objects` 等配合业务「清理任务图」会写删除时间。
+ * - JSON 列：`settings`、`params`、`attachments`、`supported_sizes` 等由 `stringifyJson` / `parseJson` 与 TS 类型对齐。
+ * 与产品文档数据模型一致，迁移由 drizzle-kit 生成到 `db/migrations`。
+ */
 import { relations, type InferSelectModel, type InferInsertModel } from "drizzle-orm";
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
+/**
+ * 用户主表：sysadmin / admin / user；普通用户由租户 admin 在后台创建，`createdBy` 指向创建者。
+ * `preferredProviderKeyId` 为个人默认生图所用密钥行（可空，运行时还有 `user_provider_keys` 回退逻辑）。
+ */
 export const users = sqliteTable(
   "users",
   {
@@ -10,7 +21,9 @@ export const users = sqliteTable(
     passwordHash: text("password_hash").notNull(),
     nickname: text("nickname").notNull(),
     role: text("role", { enum: ["sysadmin", "admin", "user"] }).notNull(),
+    /** 由哪位管理员创建；sysadmin 自注册可为空；用于 admin 仅管理「名下」用户 */
     createdBy: text("created_by"),
+    /** 与 `resolveProviderKey` 的「偏好密钥」一致 */
     preferredProviderKeyId: text("preferred_provider_key_id"),
     locale: text("locale").notNull().default("zh-CN"),
     status: text("status", { enum: ["active", "disabled"] })
@@ -27,6 +40,9 @@ export const users = sqliteTable(
   })
 );
 
+/**
+ * 忘记密码/重置：邮件中的随机 token 一次性；`used_at` 或过期后不可复用（具体路由以 auth 实现为准）。
+ */
 export const passwordResets = sqliteTable("password_resets", {
   token: text("token").primaryKey(),
   userId: text("user_id")
@@ -37,6 +53,10 @@ export const passwordResets = sqliteTable("password_resets", {
   createdAt: integer("created_at").notNull()
 });
 
+/**
+ * 上游 Provider 元数据（非密钥）：`baseUrl`、`requestFormat` 与 `providers/registry` 里适配器名对应；
+ * `supported_sizes` 为 JSON 字符串数组；`deleted_at` 非空即逻辑下线。
+ */
 export const providers = sqliteTable("providers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -50,6 +70,11 @@ export const providers = sqliteTable("providers", {
   deletedAt: integer("deleted_at")
 });
 
+/**
+ * 具体 API Key 行：密文 `encryptedKey` 由 `KEY_ENCRYPTION_KEY` 加解密；`keyHint` 仅展示后几位。
+ * `allocatedQuota` / `usedQuota` 可为密钥维度的资源控制（与 `lib/quota` 用户配额并存时取业务规则）。
+ * `ownerAdminId` 可选，标记「由哪位租户 admin 主要维护」、便于级联把下属绑到同一把 key。
+ */
 export const providerKeys = sqliteTable(
   "provider_keys",
   {
@@ -74,6 +99,10 @@ export const providerKeys = sqliteTable(
   })
 );
 
+/**
+ * 用户与 provider key 的绑定表：主键为 `user_id`，每用户最多一行（改绑走 UPSERT/替换）。
+ * 生图时 `resolveProviderKey` 在 preference / 本行 / 全局启用 key 间回退。
+ */
 export const userProviderKeys = sqliteTable("user_provider_keys", {
   userId: text("user_id")
     .primaryKey()
@@ -84,6 +113,9 @@ export const userProviderKeys = sqliteTable("user_provider_keys", {
   assignedAt: integer("assigned_at").notNull()
 });
 
+/**
+ * 按「张」为单位的生图配额：`allocatedQuota` 为 null 表示不限；`usedQuota` 随 `tryConsumeQuota` / `refundQuota` 变。
+ */
 export const quotas = sqliteTable("quotas", {
   userId: text("user_id")
     .primaryKey()
@@ -93,6 +125,9 @@ export const quotas = sqliteTable("quotas", {
   updatedAt: integer("updated_at").notNull()
 });
 
+/**
+ * 配额流水：delta 可正可负；reason 区分管理员加量、任务预扣、失败退款等；`taskId` 便于按任务对账。
+ */
 export const quotaTransactions = sqliteTable(
   "quota_transactions",
   {
@@ -111,6 +146,10 @@ export const quotaTransactions = sqliteTable(
   })
 );
 
+/**
+ * 聊天/生图会话：`mode` 与 `tasks.mode` 对齐；`settings` 存 `size`/`n`/`model` JSON；
+ * `lastMessageAt` 供列表排序；`archived` 为布尔；`deleted_at` 为软删。
+ */
 export const sessions = sqliteTable("sessions", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -127,6 +166,10 @@ export const sessions = sqliteTable("sessions", {
   deletedAt: integer("deleted_at")
 });
 
+/**
+ * 单条消息：`referenceImageIds` / `attachments` 为 JSON 字符串数组；
+ * assistant 生图时 `taskId` 联到 `tasks`，`status` 随任务 queued→running→终态 更新。
+ */
 export const messages = sqliteTable(
   "messages",
   {
@@ -148,6 +191,11 @@ export const messages = sqliteTable(
   })
 );
 
+/**
+ * 异步生图任务：`params` 为 `GenerateParams` JSON；`status` 与 `started_at` 构成执行租约，防并发覆盖。
+ * `provider_raw_response` 可含多槽成功/失败、崩溃恢复等结构化数组；`retryOf` 指向重试的源任务 id。
+ * `heartbeat_at` 供长跑观测与恢复扫描；`finished_at` 与终态同时写。
+ */
 export const tasks = sqliteTable(
   "tasks",
   {
@@ -186,6 +234,10 @@ export const tasks = sqliteTable(
   })
 );
 
+/**
+ * R2 上图片对象的 D1 索引：`r2Key` 唯一；`sha256` 与 `putImage` 去重；`is_reference=1` 为图生图用户上传参考图。
+ * 任务生成图在 `tasks` 跑完后会出现在本表；软删用 `deleted_at`。
+ */
 export const imageObjects = sqliteTable(
   "image_objects",
   {
@@ -212,6 +264,9 @@ export const imageObjects = sqliteTable(
   })
 );
 
+/**
+ * 管理操作审计：actor 可为空（系统任务）；`payload` 建议存 JSON 且敏感字段打码；`ip` 便于溯源。
+ */
 export const auditLogs = sqliteTable("audit_logs", {
   id: text("id").primaryKey(),
   actorId: text("actor_id").references(() => users.id),
@@ -223,6 +278,7 @@ export const auditLogs = sqliteTable("audit_logs", {
   createdAt: integer("created_at").notNull()
 });
 
+/** Drizzle 关系：用于 query API `with` 预加载，非外键替代 */
 export const usersRelations = relations(users, ({ one, many }) => ({
   creator: one(users, {
     fields: [users.createdBy],
@@ -244,6 +300,7 @@ export const messagesRelations = relations(messages, ({ one }) => ({
   session: one(sessions, { fields: [messages.sessionId], references: [sessions.id] })
 }));
 
+/** 各表行类型与插入类型，供路由/领域函数标注返回值 */
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type Provider = InferSelectModel<typeof providers>;

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 工作台：会话列表 + 消息流 + 生图输入与模式切换；`useTaskWebSocket` 订阅进行中任务；
+ * 路由 `/workspace/s/:sessionId` 与 `sessionId` query 同步加载消息。
+ */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -34,13 +38,22 @@ const router = useRouter();
 const { t } = useI18n();
 const sessions = useSessionStore();
 const auth = useAuthStore();
+
+/** 大图模态当前选中的图片；与右侧「结果缩略条」的选中 id 可独立 */
 const selectedImage = ref<ImageAttachment | null>(null);
+/** 非对话模式下右侧结果条高亮哪张；null 表示跟默认首张 */
 const activePreviewImageId = ref<string | null>(null);
+/** 与 `currentSession.mode` 同步的 UI 模式，切换受「进行中任务/单次锁定」限制 */
 const activeMode = ref<SessionMode>("text2image");
+/** 尚未落库成会话前，用作默认会话标题的草稿 */
 const draftTitle = ref(defaultSessionTitle());
 const submitting = ref(false);
+/** 消息列表可滚动容器，作 IntersectionObserver 的 root */
 const messageList = ref<HTMLElement | null>(null);
+/** 列表顶部哨兵：进入视口则触发 `loadOlderMessages` */
 const topSentinel = ref<HTMLElement | null>(null);
+
+/** 当前会话下所有出图/参考图，供大图查看器轮播 allImages */
 const allImages = computed(() =>
   sessions.messages.flatMap((message) => [
     ...message.attachments,
@@ -54,13 +67,17 @@ const resultImages = computed(() => {
   }
   return [];
 });
+
+/** 从底部往上找**最后一条带附件的助手消息**，作为非 chat 模式右侧主预览源 */
 const activePreviewImage = computed(
   () =>
     resultImages.value.find((image) => image.id === activePreviewImageId.value) ??
     resultImages.value[0] ??
     null
 );
+
 const runningMessages = computed(() => sessions.messages.filter(isGeneratingMessage));
+/** 同会话多条排队时取最后一个（最新任务） */
 const activeRunningMessage = computed(() => {
   const messages = runningMessages.value;
   return messages[messages.length - 1] ?? null;
@@ -80,7 +97,10 @@ const activeFailedMessage = computed(() => {
   if (!message || hasRunningTask.value) return null;
   return message.status === "failed" && message.attachments.length === 0 ? message : null;
 });
+
+/** 对话模式：两栏布局，主区为聊天气泡列表 */
 const isConversationMode = computed(() => activeMode.value === "chat");
+/** 最近 6 条用户 prompt 倒序，供对话模式快选 */
 const promptRecords = computed(() =>
   sessions.messages
     .filter((message) => message.role === "user" && message.prompt)
@@ -88,6 +108,8 @@ const promptRecords = computed(() =>
     .reverse()
 );
 const latestPrompt = computed(() => promptRecords.value[0]?.prompt ?? "");
+
+/** 顶栏/右侧与 ChatMessage 一致的进度百分比（0–99 与 queued 保底） */
 const generationProgress = computed(() => {
   const progress = activeRunningMessage.value?.progress;
   if (typeof progress === "number") return Math.min(99, Math.max(6, Math.round(progress * 100)));
@@ -111,7 +133,9 @@ const failedMessage = computed(
     failedPrompt.value ||
     t("workspace.generationFailedHint")
 );
+
 const inputLoading = computed(() => submitting.value || sessions.loading);
+/** 用于只读/上传区展示与当前「单次」生图配对的 user 消息 */
 const latestUserMessage = computed(() => {
   for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
     const message = sessions.messages[index];
@@ -119,11 +143,18 @@ const latestUserMessage = computed(() => {
   }
   return null;
 });
+
+/**
+ * 文生图/图生图每会话只允一条助手任务：已有 taskId 则锁模式，避免同会话重复提交（与后端 assertNoActiveGeneration 一致产品侧表现）
+ */
 const oneShotTaskLocked = computed(
   () =>
     activeMode.value !== "chat" &&
     sessions.messages.some((message) => message.role === "assistant" && Boolean(message.taskId))
 );
+/**
+ * 输入区绑定的模式：单次锁定时若上一条 user 有参考图则**显示为** image2image，避免 UI 与数据不一致
+ */
 const taskInputMode = computed<SessionMode>({
   get: () => {
     if (oneShotTaskLocked.value && latestUserMessage.value?.referenceImageIds.length) {
@@ -139,6 +170,7 @@ const currentGenerationSettings = computed(() => ({
   size: sessions.currentSession?.settings?.size ?? "1024x1024",
   n: sessions.currentSession?.settings?.n ?? 1
 }));
+
 const latestReferenceCount = computed(() => latestUserMessage.value?.referenceImageIds.length ?? 0);
 const latestReferenceImages = computed(() => latestUserMessage.value?.referenceImages ?? []);
 const sessionTitle = computed(() => sessions.currentSession?.title ?? draftTitle.value);
@@ -151,8 +183,11 @@ const modeOptions = computed(() => [
   { value: "image2image" as const, label: t("workspace.image2image"), icon: ImageIcon },
   { value: "chat" as const, label: t("workspace.continuousChat"), icon: MessageSquare }
 ]);
+
 let messageObserver: IntersectionObserver | null = null;
+/** 防 `loadMessages` 与 `restore` 的 watch 重入互抢路由 */
 let restoringActiveGeneration = false;
+
 const { status, connect, disconnect } = useTaskWebSocket((payload) => {
   sessions.applyTaskEvent(payload);
   const eventType =
@@ -172,6 +207,7 @@ const { status, connect, disconnect } = useTaskWebSocket((payload) => {
 });
 
 onMounted(async () => {
+  // 先拉会话列表，再尝试恢复中断任务或按路由加载消息
   await sessions.loadSessions();
   const restored = await restoreActiveGenerationIfNeeded();
   const routeSessionId = currentRouteSessionId();
@@ -210,6 +246,7 @@ watch(
   { immediate: true }
 );
 
+// 结果图列表变化时：若无图则清空高亮；若当前高亮 id 已不在列表则默认选中第一张
 watch(
   resultImages,
   (images) => {
@@ -224,12 +261,14 @@ watch(
   { immediate: true }
 );
 
+// 切到多轮模式后下一帧再挂顶哨兵，保证 DOM 已渲染
 watch(isConversationMode, async (enabled) => {
   if (!enabled) return;
   await nextTick();
   setupMessageObserver();
 });
 
+/** 新开一次：非 sysadmin 若有进行中任务则只尝试恢复，不允许多会话并行生图 */
 async function newSession() {
   if (!auth.isSysadmin && hasRunningTask.value) {
     await restoreActiveGenerationIfNeeded();
@@ -240,10 +279,15 @@ async function newSession() {
   await router.push("/workspace");
 }
 
+/** 从 `/workspace/s/:sessionId` 取当前会话 id */
 function currentRouteSessionId() {
   return typeof route.params.sessionId === "string" ? route.params.sessionId : null;
 }
 
+/**
+ * 刷新进入时：若存在 queued/running 任务则拉消息、连 WS、必要时 replace 路由到该会话。
+ * sysadmin 不自动抢（可多任务），直接 false。
+ */
 async function restoreActiveGenerationIfNeeded() {
   if (auth.isSysadmin || restoringActiveGeneration) return false;
   const active = await sessions.loadActiveGeneration();
@@ -252,6 +296,7 @@ async function restoreActiveGenerationIfNeeded() {
   return true;
 }
 
+/** 设置 `restoringActiveGeneration`，保证 watch 路由时不会覆盖刚加载的消息列表 */
 async function openActiveGeneration(active: ActiveGeneration) {
   restoringActiveGeneration = true;
   try {
@@ -265,6 +310,7 @@ async function openActiveGeneration(active: ActiveGeneration) {
   }
 }
 
+/** 无会话 id 的「空白工作台」：清空消息、预览与标题草稿 */
 function resetWorkspaceDraft() {
   sessions.currentSessionId = null;
   sessions.messages = [];
@@ -275,15 +321,20 @@ function resetWorkspaceDraft() {
   draftTitle.value = defaultSessionTitle();
 }
 
+/** 三模式切换按钮；受 `modeSelectionDisabled` 时 no-op */
 function setActiveMode(mode: SessionMode) {
   if (modeSelectionDisabled.value) return;
   activeMode.value = mode;
 }
 
+/** 用于筛「进行中」消息行，与 ChatMessage 展示条件一致 */
 function isGeneratingMessage(message: Message) {
   return message.status === "queued" || message.status === "running";
 }
 
+/**
+ * 向上滚动加载历史：哨兵进入视口则 `loadOlderMessages`，并用 scrollHeight 差值保持视口不跳动
+ */
 function setupMessageObserver() {
   messageObserver?.disconnect();
   if (!topSentinel.value || !messageList.value) return;
@@ -301,6 +352,10 @@ function setupMessageObserver() {
   messageObserver.observe(topSentinel.value);
 }
 
+/**
+ * 提交生图：图生图先 POST `/uploads`，再 `sessions.generate` + `connect(ws)` + 落到 `/workspace/s/:id`。
+ * 冲突 409 时从 `error.details.activeGeneration` 恢复现场。
+ */
 async function submit(input: {
   prompt: string;
   mode: SessionMode;
@@ -316,6 +371,7 @@ async function submit(input: {
   }
   submitting.value = true;
   try {
+    // 1) 参考图先上传得 imageId
     let referenceImageIds: string[] = [];
     let referenceImages: ImageAttachment[] = [];
     if (input.mode === "image2image" && input.files.length) {
@@ -328,6 +384,7 @@ async function submit(input: {
       referenceImageIds = uploaded.images.map((image) => image.id);
       referenceImages = uploaded.images;
     }
+    // 2) 创建任务并乐观更新 store → 3) 连 WS → 4) 进会话深链
     const task = await sessions.generate({
       title: draftTitle.value.trim() || defaultSessionTitle(),
       prompt: input.prompt,
@@ -356,6 +413,7 @@ async function submit(input: {
   }
 }
 
+/** 失败重试：POST `/tasks/:id/retry` 后本地再插一对 user/assistant 并发 WS（与首发生成同构） */
 async function retry(message: Message) {
   if (!message.taskId) return;
   try {
@@ -404,14 +462,17 @@ async function retry(message: Message) {
   }
 }
 
+/** 重试时从同会话上一条 user 取参考图 id，保持图生文上下文 */
 function findSourceReferenceImageIds(message: Message) {
   return findSourceUserMessage(message)?.referenceImageIds ?? [];
 }
 
+/** 重试展示用：带给 `local-retry` user 气泡的缩略引用 */
 function findSourceReferenceImages(message: Message) {
   return findSourceUserMessage(message)?.referenceImages ?? [];
 }
 
+/** 在消息数组中自 assistant 起向前找同 session 的最近一条 user */
 function findSourceUserMessage(message: Message) {
   const messageIndex = sessions.messages.findIndex((item) => item.id === message.id);
   const endIndex = messageIndex >= 0 ? messageIndex - 1 : sessions.messages.length - 1;
@@ -424,6 +485,7 @@ function findSourceUserMessage(message: Message) {
   return null;
 }
 
+/** 解析 API 409 响应体中的 `activeGeneration`，用于引导用户到正在跑的任务 */
 function activeGenerationFromError(error: unknown): ActiveGeneration | null {
   if (!error || typeof error !== "object" || !("error" in error)) return null;
   const details = (error as { error?: { details?: unknown } }).error?.details;
@@ -440,19 +502,23 @@ function activeGenerationFromError(error: unknown): ActiveGeneration | null {
   return null;
 }
 
+/** 右侧失败态 CTA：对 `activeFailedMessage` 调 `retry` */
 async function retryFailedResult() {
   if (!activeFailedMessage.value) return;
   await retry(activeFailedMessage.value);
 }
 
+/** 在右侧/抽屉中展示指定附件大图 */
 function openImage(image: ImageAttachment) {
   selectedImage.value = image;
 }
 
+/** 从结果条「打开」进入与缩略条选中的一张 */
 function openActivePreview() {
   if (activePreviewImage.value) openImage(activePreviewImage.value);
 }
 
+/** 软删消息（及关联展示），并关闭当前大图 */
 async function deleteImageMessage(image: ImageAttachment) {
   if (!image.sessionId || !image.messageId) return;
   if (!window.confirm(t("workspace.deleteConfirm"))) return;
@@ -462,6 +528,7 @@ async function deleteImageMessage(image: ImageAttachment) {
   toast.success(t("workspace.messageDeleted"));
 }
 
+/** 与后端 `defaultSessionTitle` 同形，用于新会话未命名时的展示 */
 function defaultSessionTitle(date = new Date()) {
   const year = date.getFullYear();
   const month = padDatePart(date.getMonth() + 1);
@@ -472,6 +539,7 @@ function defaultSessionTitle(date = new Date()) {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
+/** 标题日期时间各段补零为两位 */
 function padDatePart(value: number) {
   return String(value).padStart(2, "0");
 }

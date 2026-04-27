@@ -1,3 +1,6 @@
+/**
+ * 审计落库：关键写操作（登录、改配额、建任务等）写 `audit_logs`，payload 为 JSON 文本。
+ */
 import { auditLogs } from "../db/schema";
 import { getDb } from "../db/client";
 import { newId, now } from "./id";

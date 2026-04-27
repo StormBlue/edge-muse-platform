@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 无障碍主标题：对应 `Dialog` 的 `aria-labelledby`，样式为大号加粗一行。
+ */
 import type { DialogTitleProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 饼图（圆锥渐变）：`conic-gradient` 从 0° 起按 value/total 累加扇区角度；
+ * 图例与圆点颜色用同一 `colors` 下标取模。`total` 至少为 1，全 0 时仍占满但视觉上退化为空数据可用 `--muted`。
+ */
 import { computed } from "vue";
 
 const props = defineProps<{
@@ -13,6 +17,7 @@ const total = computed(() =>
     props.items.reduce((sum, item) => sum + item.value, 0)
   )
 );
+/** 将每项占比转为 `色 start% end%` 多段，拼进 conic-gradient */
 const background = computed(() => {
   if (props.items.length === 0) return "var(--muted)";
   let cursor = 0;

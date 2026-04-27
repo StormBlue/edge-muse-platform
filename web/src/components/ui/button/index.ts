@@ -1,3 +1,6 @@
+/**
+ * 按钮变体与尺寸（cva），供 `Button.vue` 与 `cn` 复用；导出类型供 props 约束。
+ */
 import type { VariantProps } from "class-variance-authority";
 import { cva } from "class-variance-authority";
 

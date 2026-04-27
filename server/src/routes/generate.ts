@@ -1,3 +1,17 @@
+/**
+ * 生图 HTTP 路由：`POST /api/generate`、任务查询/取消/重试、以及 **WebSocket 升级入口**（见文件末 handleTaskWebSocket）
+ *
+ * 核心路径（与 docs 一致）：
+ * 1. POST /generate：校验参数 → `createGenerateTask`（D1 写会话/消息/任务 + 配额）→ `startGenerateTask`（Workflow 或内联 runGenerateTask）→ 202 返回 taskId + **wsUrl**。
+ * 2. GET /ws/task/:id：把 WebSocket 交给 Durable Object `TaskRoom`，用于向浏览器推送任务事件。
+ *
+ * 生图主链路时序（符号）：
+ *   Client --POST /api/generate--> Worker
+ *     → createGenerateTask(D1: tasks=queued, 配额扣减)
+ *     → startGenerateTask → waitUntil(workflow 或 runGenerateTask)
+ *   Client <--202-- { taskId, wsUrl, ... }
+ *   Client --WS /ws/task/taskId--> TaskRoom（后续事件由 Workflow/runGenerateTask → broadcastTaskEvent → DO）
+ */
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -14,6 +28,7 @@ import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import type { AppContext, AppEnv } from "../types";
 
+/** 预设与「宽x高」自定义尺寸白名单；具体能力还受 provider supportedSizes 约束 */
 const allowedSizes = [
   "1024x1024",
   "1024x1536",
@@ -25,6 +40,7 @@ const allowedSizes = [
   "auto"
 ];
 
+/** POST 体：可选 session（无则新建）、张数经 `resolveImageCountForRole` 再压一道 */
 const generateSchema = z.object({
   sessionId: z.string().optional(),
   title: z.string().trim().min(1).max(80).optional(),
@@ -41,6 +57,8 @@ const generateSchema = z.object({
 
 export const generateRoutes = new Hono<AppEnv>();
 
+// ===================== POST /generate：建任务 + 非阻塞执行 + 返回 wsUrl =====================
+/** 创建异步生图任务：不等待第三方完成，立即返回 202 + WebSocket 地址 */
 generateRoutes.post(
   "/generate",
   requireAuth,
@@ -62,6 +80,7 @@ generateRoutes.post(
       referenceImageCount: rawBody.referenceImageIds?.length ?? 0,
       ...promptSummary(rawBody.prompt)
     });
+    // 图生图：去重参考图 id；文生/对话不传 reference
     const referenceImageIds =
       rawBody.mode === "image2image" ? [...new Set(rawBody.referenceImageIds ?? [])] : [];
     if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
@@ -73,6 +92,7 @@ generateRoutes.post(
       });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
+    // 非 sysadmin 的 n 可能被压到 1（多轮 chat 等策略见 lib/generationPolicy）
     const body = {
       ...rawBody,
       n: resolveImageCountForRole(user.role, rawBody.mode, rawBody.n),
@@ -115,8 +135,10 @@ generateRoutes.post(
       userId: user.id,
       taskId: result.taskId
     });
+    // `startGenerateTask` 仅 `waitUntil` 子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
     startGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
+    // 与 `index` 中注册的 `GET /ws/task/:id` 同 host，**无** `/api` 前缀
     const wsUrl = `${wsProtocol}//${new URL(c.req.url).host}/ws/task/${result.taskId}`;
     logInfo("generate.task.dispatched", {
       traceId,
@@ -129,11 +151,13 @@ generateRoutes.post(
   }
 );
 
+// ---------- 单任务只读；`assertTaskAccess` 保证属于当前用户 ----------
 generateRoutes.get("/tasks/:id", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
   return c.json({ task });
 });
 
+// ---------- 仅 `queued` 可取消；写库 cancelled 并推 task.update 给已连上的 WS ----------
 generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
   if (task.status !== "queued")
@@ -156,6 +180,7 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// ---------- 失败任务用原 params 再建一条任务（`retryOf` 记血缘），不重复用旧 message 行 ----------
 generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   const user = c.get("user");
   const task = await assertTaskAccess(c.env, c.req.param("id"), user);
@@ -183,13 +208,19 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   return c.json(result, 202);
 });
 
+/** 注意：全局路由在 index.ts 注册为 `GET /ws/task/:id`（无 /api 前缀），与返回给前端的 wsUrl 一致 */
 generateRoutes.get("/ws/task/:id", handleTaskWebSocket);
 
+/**
+ * WebSocket 升级：按 taskId 派发到对应 Durable Object 实例（`idFromName(taskId)`）。
+ * 鉴权若需加强，可在此校验 Cookie/JWT 与 task.userId（当前依赖 DO 侧或上游中间件策略时见项目演进）。
+ */
 export async function handleTaskWebSocket(c: AppContext) {
   if (c.req.header("Upgrade") !== "websocket") return c.text("Expected websocket", 426);
   if (!c.env.TASK_ROOM) throw appError("INTERNAL", "Task room binding is missing");
   const taskId = c.req.param("id");
   if (!taskId) throw appError("VALIDATION_ERROR", "Task id required");
+  // 每个 taskId 一个 DO 实例，与 `broadcastTaskEvent` 的 idFromName 一致
   const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);
   logInfo("task.websocket.connecting", {

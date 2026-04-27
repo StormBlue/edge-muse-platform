@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * Shadcn 风格按钮：Reka UI `Primitive` + `buttonVariants`（variant/size 见同目录 index）。
+ */
 import type { PrimitiveProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import type { ButtonVariants } from ".";

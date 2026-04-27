@@ -1,4 +1,11 @@
 <script setup lang="ts">
+/**
+ * 登录页：
+ * - 先 GET `/api/config` 读 `turnstileSiteKey`；无 key 则不调起人机，直接可登录（开发/内网场景）。
+ * - 有 key 时异步加载 Turnstile 脚本、`render` 到占位 div，token 经 `auth.login` 带给后端 `verifyTurnstile`。
+ * - 成功：`router.push(redirect || /workspace)`；失败：toast + `resetTurnstile` 让用户重试。
+ * - 顶栏语言切换走 `ui.setLocale`，与全站 i18n 一致。
+ */
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -9,6 +16,7 @@ import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 
+/** 防重复插入官方 challenge 脚本 */
 const TURNSTILE_SCRIPT_ID = "cf-turnstile-script";
 
 const auth = useAuthStore();
@@ -20,8 +28,10 @@ const email = ref("");
 const password = ref("");
 const loading = ref(false);
 const turnstileSiteKey = ref<string | null>(null);
+/** 由 Turnstile callback 写入，随登录请求提交 */
 const turnstileToken = ref("");
 const turnstileEl = ref<HTMLElement | null>(null);
+/** `render` 返回值，供 reset/remove */
 const turnstileWidgetId = ref<string | null>(null);
 
 async function submit() {
@@ -44,6 +54,7 @@ async function submit() {
   }
 }
 
+/** 拉配置 → 按需插脚本 → nextTick 后 render 一次，防重复用 turnstileWidgetId 判断 */
 async function initTurnstile() {
   const config = await apiFetch<{ turnstileSiteKey: string | null }>("/config");
   turnstileSiteKey.value = config.turnstileSiteKey;
@@ -65,6 +76,7 @@ async function initTurnstile() {
   });
 }
 
+/** 若脚本已在别页插入则监听 load；否则创建并挂 head */
 function loadTurnstileScript(): Promise<void> {
   if (window.turnstile) return Promise.resolve();
   const existing = document.getElementById(TURNSTILE_SCRIPT_ID) as HTMLScriptElement | null;
@@ -90,6 +102,7 @@ function loadTurnstileScript(): Promise<void> {
   });
 }
 
+/** 登录失败或过期时清空 token 并 reset 组件，促使用户重新点选 */
 function resetTurnstile() {
   if (!turnstileWidgetId.value || !window.turnstile) return;
   turnstileToken.value = "";
@@ -97,6 +110,7 @@ function resetTurnstile() {
 }
 
 onMounted(() => {
+  // 配置拉取失败时静默关闭 Turnstile，不阻塞无站点 key 的环境
   initTurnstile().catch(() => {
     turnstileSiteKey.value = null;
   });

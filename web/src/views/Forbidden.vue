@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 403：路由 `meta.role` 与当前用户角色不匹配时由 `router.beforeEach` 重定向至此。
+ * 使用与登录页一致的 ScrollArea + 全高居中，避免无 AppShell 时布局跳变。
+ */
 import { useI18n } from "vue-i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
