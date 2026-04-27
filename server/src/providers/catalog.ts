@@ -23,7 +23,7 @@ export const BUILT_IN_PROVIDERS = [
   {
     id: CUBENCE_PROVIDER_ID,
     name: "Cubence",
-    baseUrl: "https://api.cubence.com",
+    baseUrl: "https://api-dmit.cubence.com",
     defaultModel: "gpt-image-2",
     requestFormat: "openai_images",
     supportedSizes: [
@@ -58,8 +58,7 @@ export function isProviderKeyAssignable(providerId: string): boolean {
  * 补齐并修复内置服务商。
  *
  * - 缺失时插入“米醋API”和 Cubence，密钥页永远有明确可选服务商；
- * - 已存在时恢复 enabled/deleted_at，并校正名称、协议和尺寸；
- * - 不覆盖非空 base_url，给生产通过受控 SQL/API 切换备用上游域名留空间。
+ * - 内置 provider 配置以代码 catalog 为准，避免服务商页下线后数据库残留错误配置。
  */
 export async function ensureBuiltInProviders(env: AppBindings): Promise<void> {
   const timestamp = now();
@@ -84,7 +83,7 @@ export async function ensureBuiltInProviders(env: AppBindings): Promise<void> {
           `UPDATE providers
          SET
            name = ?2,
-           base_url = CASE WHEN base_url = '' THEN ?3 ELSE base_url END,
+           base_url = ?3,
            default_model = ?4,
            request_format = ?5,
            supported_sizes = ?6,
@@ -94,7 +93,7 @@ export async function ensureBuiltInProviders(env: AppBindings): Promise<void> {
          WHERE id = ?1
            AND (
              name <> ?2
-             OR base_url = ''
+             OR base_url <> ?3
              OR default_model <> ?4
              OR request_format <> ?5
              OR supported_sizes <> ?6

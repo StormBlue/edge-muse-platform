@@ -6,7 +6,7 @@ import type { Provider } from "../src/db/schema";
 const cubenceProvider: Provider = {
   id: "prv_cubence",
   name: "Cubence",
-  baseUrl: "https://api.cubence.com",
+  baseUrl: "https://api-dmit.cubence.com",
   defaultModel: "gpt-image-2",
   requestFormat: "openai_images",
   supportedSizes: JSON.stringify(["1024x1024", "2048x2048"]),

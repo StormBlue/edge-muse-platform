@@ -328,6 +328,12 @@ adminRoutes.patch(
               .from(users)
               .where(sql`${users.id} = ${target.id} OR ${users.createdBy} = ${target.id}`)
           : [{ id: target.id }];
+      const managedUserIds = managed.map((row) => row.id);
+      // 运行时先读 users.preferredProviderKeyId，再读 user_provider_keys；两边必须同时级联换绑。
+      await getDb(c.env)
+        .update(users)
+        .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
+        .where(inArray(users.id, managedUserIds));
       for (const row of managed) {
         await c.env.DB.prepare(
           `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)

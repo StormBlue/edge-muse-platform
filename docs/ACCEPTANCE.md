@@ -46,3 +46,9 @@ Latest Cubence audit-fix verification on 2026-04-27:
 - `pnpm -F server build`
 
 Real Cubence text-to-image and image-to-image smoke tests still require a live Cubence key with `gpt-image-2` share group and balance.
+
+## Related docs
+
+- [TESTING.md](./TESTING.md)
+- [DEPLOYMENT.md](./DEPLOYMENT.md)
+- [archive/CUBENCE_INTEGRATION_TASKS.md](./archive/CUBENCE_INTEGRATION_TASKS.md) — historical integration checklist

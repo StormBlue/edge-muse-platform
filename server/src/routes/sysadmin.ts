@@ -523,6 +523,12 @@ sysadminRoutes.patch(
         .select({ id: users.id })
         .from(users)
         .where(sql`${users.id} = ${adminId} OR ${users.createdBy} = ${adminId}`);
+      const managedUserIds = managed.map((row) => row.id);
+      // `resolveProviderKey` 优先读取 users.preferredProviderKeyId，改绑管理员时必须同步子用户偏好。
+      await getDb(c.env)
+        .update(users)
+        .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
+        .where(inArray(users.id, managedUserIds));
       for (const row of managed) {
         await c.env.DB.prepare(
           `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)

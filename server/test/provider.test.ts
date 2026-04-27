@@ -72,7 +72,7 @@ describe("provider response parsing", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
-        expect(url).toBe("https://api.cubence.com/v1/images/generations");
+        expect(url).toBe("https://api-dmit.cubence.com/v1/images/generations");
         expect(init.method).toBe("POST");
         const headers = new Headers(init.headers);
         expect(headers.get("Authorization")).toBe("Bearer key");
@@ -102,10 +102,27 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "2048x2048",
       apiKey: "key",
-      baseUrl: "https://api.cubence.com"
+      baseUrl: "https://api-dmit.cubence.com"
     });
 
     expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
+  });
+
+  it("does not run extra Cubence health probes when models endpoint is absent", async () => {
+    const provider = new OpenAIImagesProvider();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("404 page not found", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      provider.health({
+        apiKey: "key",
+        baseUrl: "https://api-dmit.cubence.com",
+        model: "gpt-image-2"
+      })
+    ).resolves.toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("calls OpenAI Images edits endpoint with multipart reference image", async () => {
@@ -113,7 +130,7 @@ describe("provider response parsing", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
-        expect(url).toBe("https://api.cubence.com/v1/images/edits");
+        expect(url).toBe("https://api-dmit.cubence.com/v1/images/edits");
         expect(init.method).toBe("POST");
         const headers = new Headers(init.headers);
         expect(headers.get("Authorization")).toBe("Bearer key");
@@ -142,7 +159,7 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "1024x1024",
       apiKey: "key",
-      baseUrl: "https://api.cubence.com",
+      baseUrl: "https://api-dmit.cubence.com",
       referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
     });
 
@@ -159,7 +176,7 @@ describe("provider response parsing", () => {
         model: "gpt-image-2",
         size: "1024x1024",
         apiKey: "key",
-        baseUrl: "https://api.cubence.com"
+        baseUrl: "https://api-dmit.cubence.com"
       })
     ).rejects.toMatchObject({ code: "PROVIDER_UNSUPPORTED_MODE" });
   });

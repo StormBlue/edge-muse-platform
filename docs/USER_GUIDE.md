@@ -27,3 +27,8 @@
 
 - Sysadmins manage provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference. Provider types are selected directly while creating a key; there is no separate provider management page.
 - Cubence keys support 文生图 and 图生图. 对话 mode is hidden for Cubence until its image chat endpoint is confirmed.
+
+## Related docs
+
+- [PRODUCT_SENSE.md](./PRODUCT_SENSE.md) — roles and journeys
+- [OPERATIONS.md](./OPERATIONS.md) — sysadmin configuration (operators)

@@ -80,3 +80,9 @@ pnpm -F server deploy
 ```
 
 GitHub Actions 在 `main` 分支推送时执行同一套 `db:migrate:remote` + `deploy` 流程。
+
+## 文档
+
+- AI 助手入口：[AGENTS.md](./AGENTS.md)
+- 架构详解：[ARCHITECTURE.md](./ARCHITECTURE.md)
+- 完整索引：[docs/README.md](./docs/README.md)

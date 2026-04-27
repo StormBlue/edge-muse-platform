@@ -45,12 +45,11 @@ Cubence 提供多个可选 base URL：
 
 | endpoint                | base URL                       | 建议             |
 | ----------------------- | ------------------------------ | ---------------- |
-| CDN Optimized           | `https://api.cubence.com`      | 默认推荐         |
-| DMIT Optimized          | `https://api-dmit.cubence.com` | 网络不稳定时备选 |
+| DMIT Optimized          | `https://api-dmit.cubence.com` | 当前文档推荐     |
 | BandwagonHost Optimized | `https://api-bwg.cubence.com`  | 网络不稳定时备选 |
 | CF CDN                  | `https://api-cf.cubence.com`   | CDN 备选         |
 
-项目配置时应填写不带 `/v1` 的 base URL，例如 `https://api.cubence.com`。适配器负责拼接 `/v1/images/generations` 或 `/v1/images/edits`。
+项目配置时应填写不带 `/v1` 的 base URL，例如 `https://api-dmit.cubence.com`。适配器负责拼接 `/v1/images/generations` 或 `/v1/images/edits`。
 
 ### 3.2 鉴权
 
@@ -198,16 +197,16 @@ Content-Type: multipart/form-data
 
 #### CUB-0.1 确认 Cubence 生产配置
 
-| 字段     | 内容                                                                                                                                             |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 优先级   | P0                                                                                                                                               |
-| 状态     | 已完成                                                                                                                                           |
-| 目标     | 确认首发使用的 base URL、API key 获取方式、share group 配置步骤                                                                                  |
-| 当前现状 | 文档推荐 `https://api.cubence.com`，也提供多个备用 endpoint                                                                                      |
-| 开发内容 | 不写代码；整理部署配置记录                                                                                                                       |
-| 交付物   | 运维文档中的 Cubence 配置章节                                                                                                                    |
-| 验收     | sysadmin 能按文档创建 Cubence key，并确认 share group 已绑定 `gpt-image-2`                                                                       |
-| 备注     | 真实 key 不应写入仓库；只进入后台密钥表并加密存储。2026-04-27 回顾：Cubence 默认使用 `https://api.cubence.com`，仍保留备用 endpoint 的运维选择。 |
+| 字段     | 内容                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 优先级   | P0                                                                                                                                                                                 |
+| 状态     | 已完成                                                                                                                                                                             |
+| 目标     | 确认首发使用的 base URL、API key 获取方式、share group 配置步骤                                                                                                                    |
+| 当前现状 | 当前默认使用 `https://api-dmit.cubence.com`；内置 provider 元数据由代码 catalog 统一刷新                                                                                           |
+| 开发内容 | 不写代码；整理部署配置记录                                                                                                                                                         |
+| 交付物   | 运维文档中的 Cubence 配置章节                                                                                                                                                      |
+| 验收     | sysadmin 能按文档创建 Cubence key，并确认 share group 已绑定 `gpt-image-2`                                                                                                         |
+| 备注     | 真实 key 不应写入仓库；只进入后台密钥表并加密存储。2026-04-28 回顾：Cubence 默认改为 `https://api-dmit.cubence.com`，内置 provider 配置直接以 catalog 为准，不保留旧域名兼容分支。 |
 
 #### CUB-0.2 冻结首版协议决策
 

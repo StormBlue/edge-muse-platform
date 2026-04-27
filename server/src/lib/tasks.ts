@@ -1,7 +1,7 @@
 /**
  * 生图任务域：从「建任务 / 跑任务 / 广播事件 / 失败与配额 / 断线恢复」到「多并发张数 n、图生图参考图、对话上下文」
  *
- * 与产品文档的对应关系（docs/开发需求.md）：
+ * 与产品文档的对应关系（docs/archive/开发需求.md）：
  * - 配额：`tryConsumeQuota` 在 `createGenerateTask` 内按「张数 n」预扣；`failGenerateTask` 在非 PROVIDER_ERROR 时 `refundQuota`（见业务规则）。
  * - 1 个任务 1 条 assistant 消息：messages.attachments 存生成结果；image_objects 存 R2 元数据。
  * - 在线推送：`TaskEvent` 类型与文档 §6.7 一致，经 `broadcastTaskEvent` 写入 DO TaskRoom。

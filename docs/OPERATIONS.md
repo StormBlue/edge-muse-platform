@@ -27,7 +27,7 @@ The SPA no longer exposes a standalone provider management page. Sysadmins confi
 1. Click **创建密钥**.
 2. Select a supported provider.
    - 米醋API is inserted automatically as a built-in provider with `base_url = https://www.openclaudecode.cn` and the `openai_compatible` adapter.
-   - Cubence is inserted automatically as a built-in provider with `base_url = https://api.cubence.com`, `request_format = openai_images`, and default model `gpt-image-2`.
+   - Cubence is inserted automatically as a built-in provider with `base_url = https://api-dmit.cubence.com`, `request_format = openai_images`, and default model `gpt-image-2`.
 3. Enter the provider API key and keep or override the default model.
 4. Click the key row's test action to run the low-cost health check.
 5. Assign the created key to admins or users through the existing user/admin management flows.
@@ -36,7 +36,7 @@ Only built-in supported providers can be selected when creating or rebinding key
 
 Generation users must have an explicit preferred key or `user_provider_keys` binding. The server intentionally does not fall back to the newest enabled global key, so adding a Cubence key cannot move unassigned users into Cubence traffic.
 
-Cubence API keys must have the OpenAI share group set to `gpt-image-2` in the Cubence console. A `/v1/models` health check can confirm basic authentication, but it does not prove that the image share group is configured. A real text-to-image smoke test is still required before production rollout and may consume Cubence balance.
+Cubence API keys must have the OpenAI share group set to `gpt-image-2` in the Cubence console. Built-in provider metadata is refreshed from the code catalog, so Cubence uses the current `api-dmit` base URL without keeping old-domain compatibility branches. If a Cubence key was created during earlier testing, delete it and create a new key before assigning traffic. A real text-to-image smoke test is required before production rollout and may consume Cubence balance.
 
 ## Rollback
 
@@ -86,3 +86,10 @@ Trace by `taskId` first. For the initial HTTP request, use `traceId`; after asyn
 5. Login as admin, create user with quota.
 6. Login as user, generate one text-to-image task, open large viewer, verify history.
 7. For Cubence, generate one image-to-image task with a single reference image and confirm it uses `/v1/images/edits`.
+
+## Related docs
+
+- [RELIABILITY.md](./RELIABILITY.md) — cron, recovery, snapshots
+- [DEPLOYMENT.md](./DEPLOYMENT.md) — CI/CD and Wrangler
+- [SECURITY.md](./SECURITY.md) — secret rotation implications
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) — logging and component map

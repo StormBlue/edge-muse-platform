@@ -156,6 +156,9 @@ describe("Cubence integration regressions", () => {
       const update = updateStatements.find((statement) => statement.bindings[0] === provider.id);
       expect(update?.sql).toContain("enabled = 1");
       expect(update?.sql).toContain("deleted_at = NULL");
+      expect(update?.sql).toContain("base_url = ?3");
+      expect(update?.sql).toContain("base_url <> ?3");
+      expect(update?.bindings).toHaveLength(7);
       expect(update?.bindings).toEqual(
         expect.arrayContaining([provider.id, provider.name, provider.requestFormat])
       );
