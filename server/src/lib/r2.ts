@@ -1,3 +1,7 @@
+/**
+ * 私有 R2 对象与 `image_objects` 元数据：上传走 `putImage`；读走 `routes/images` 代理并在 `assertImageAccess` 鉴权。
+ * 同用户下非参考图按 sha256 去重可复用行（省存储）。
+ */
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { imageObjects } from "../db/schema";
@@ -7,6 +11,10 @@ import { newId, now } from "./id";
 import { sha256Hex } from "./crypto";
 import type { AppBindings, AuthUser, ImageAttachment } from "../types";
 
+/**
+ * 生成分层 R2 对象键：`u/{userId}/y/年/m/月/{imageId}.ext`。
+ * 按用户与时间前缀便于运维按前缀列举、批量删或生命周期策略；`ext` 与 MIME 简映射（webp 等可再扩）。
+ */
 export function buildImageKey(userId: string, imageId: string, mime: string): string {
   const date = new Date();
   const ext = mime.includes("jpeg") ? "jpg" : mime.includes("svg") ? "svg" : "png";
@@ -16,6 +24,9 @@ export function buildImageKey(userId: string, imageId: string, mime: string): st
   )}/${imageId}.${ext}`;
 }
 
+/**
+ * 写 R2 并插入元数据行；返回前端可用的 `ImageAttachment`（url 为相对 /api/i/:id）。
+ */
 export async function putImage(
   env: AppBindings,
   input: {
@@ -39,6 +50,7 @@ export async function putImage(
     sha256: sha
   };
   logInfo("image.put.started", baseFields);
+  // 参考图/已关联 session 或任务的不去重，避免多会话引用同一张被错误合并
   if (!input.isReference && !input.taskId && !input.sessionId) {
     const duplicate = await db.query.imageObjects.findFirst({
       where: and(eq(imageObjects.sha256, sha), isNull(imageObjects.deletedAt))
@@ -66,6 +78,7 @@ export async function putImage(
   const imageId = newId("img");
   const r2Key = buildImageKey(input.ownerUserId, imageId, input.mime);
   logInfo("image.r2.put_started", { ...baseFields, imageId, r2Key });
+  // 新对象必写 R2；customMetadata 存 sha 便于桶侧对账
   await env.R2.put(r2Key, input.bytes, {
     httpMetadata: { contentType: input.mime },
     customMetadata: { sha256: sha }
@@ -99,6 +112,9 @@ export async function putImage(
   };
 }
 
+/**
+ * 读图前鉴权：属主与当前用户相同，或**系统管理员**可看任意；`deletedAt` 非空等同不存在。
+ */
 export async function assertImageAccess(env: AppBindings, imageId: string, user: AuthUser) {
   const image = await getDb(env).query.imageObjects.findFirst({
     where: and(eq(imageObjects.id, imageId), isNull(imageObjects.deletedAt))

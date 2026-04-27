@@ -1,3 +1,8 @@
+/**
+ * 当前登录用户（`/api/me`）：
+ * - GET：`user` 来自 `requireAuth` 中间件（库表 active 用户），`quota` 由 `getQuota` 现算。
+ * - PATCH：仅允许改昵称；响应里 `user` 为**合并后**对象（昵称新值，其余与 JWT 注入一致）。
+ */
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -12,11 +17,13 @@ import type { AppEnv } from "../types";
 
 export const meRoutes = new Hono<AppEnv>();
 
+// GET：应用首屏/路由守卫调用；与 auth store `bootstrap` 对齐
 meRoutes.get("/", requireAuth, async (c) => {
   const user = c.get("user");
   return c.json({ user, quota: await getQuota(c.env, user.id) });
 });
 
+// PATCH /api/me：仅改昵称；响应仍带刷新后的 quota 以便侧栏与设置页数字一致
 meRoutes.patch(
   "/",
   requireAuth,

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 标题区布局：小屏居中、宽屏左对齐的纵向 flex 容器，放 `DialogTitle` / `DialogDescription`。
+ */
 import type { HTMLAttributes } from "vue";
 import { cn } from "@/lib/utils";
 

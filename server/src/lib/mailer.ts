@@ -1,3 +1,6 @@
+/**
+ * 可选 Resend 发信：未配 `RESEND_API_KEY` 时仅打控制台，供运维 digest 等。
+ */
 import type { AppBindings } from "../types";
 
 export type MailTemplate = "ops-alert";

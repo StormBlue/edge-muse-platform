@@ -1,3 +1,6 @@
+/**
+ * Cloudflare Turnstile 服务端校验；开发环境可用占位 token 跳过。
+ */
 import type { AppBindings } from "../types";
 
 export async function verifyTurnstile(

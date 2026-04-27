@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 管理员下属用户：列表、创建、配额、用量图、禁用等；`?role=admin` 时与系统管理入口复用界面。
+ */
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
@@ -19,6 +22,7 @@ import {
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 
+/** 管理端用户列表/编辑表单使用的行数据（与 GET /admin/users 项对齐） */
 type AdminUser = {
   id: string;
   email: string;
@@ -37,12 +41,14 @@ type AdminUser = {
   generationCount?: number;
 };
 
+/** 详情侧栏当前用户的配额概览，供环形进度等展示 */
 type QuotaSnapshot = {
   allocatedQuota: number | null;
   usedQuota: number;
   remainingQuota: number | null;
 };
 
+/** 额度增减流水，支持游标翻页与表格 */
 type QuotaTransaction = {
   id: string;
   delta: number;
@@ -51,12 +57,14 @@ type QuotaTransaction = {
   createdAt: number;
 };
 
+/** 用量页签：总数 + 分状态/分模式 + 日趋势，供统计图组件 */
 type UsageResponse = {
   total: number;
   stats: Array<{ status: string; mode: string; count: number }>;
   trend: Array<{ day: number; count: number }>;
 };
 
+/** 本租户 Provider 密钥下拉（创建用户默认绑定、编辑更换） */
 type ProviderKeyRow = {
   id: string;
   label: string;
@@ -67,13 +75,17 @@ type ProviderKeyRow = {
 const auth = useAuthStore();
 const route = useRoute();
 const { locale, t } = useI18n();
+
+/** 当前页用户表与 Provider 密钥（创建/编辑用） */
 const users = ref<AdminUser[]>([]);
 const keys = ref<ProviderKeyRow[]>([]);
+/** 邮箱关键词与账号状态；`role` 仅 sysadmin 在 URL/表单中筛选 admin|user */
 const q = ref("");
 const status = ref("");
 const routeRole =
   route.query.role === "admin" || route.query.role === "user" ? route.query.role : "";
 const role = ref<"" | "admin" | "user">(routeRole);
+/** 各弹层开关与当前行指针 */
 const createOpen = ref(false);
 const editOpen = ref(false);
 const quotaOpen = ref(false);
@@ -90,7 +102,9 @@ const form = ref(defaultCreateForm());
 const editForm = ref(defaultEditForm());
 const passwordForm = ref({ password: "", confirmPassword: "" });
 
+/** 当前操作人（多为自己）剩余可划拨额度，用于 `grantQuota` 上限提示 */
 const actorRemaining = computed(() => auth.quota?.remainingQuota ?? null);
+/** 已用/分配 的百分比，仅在 allocatedQuota 有值时有效 */
 const quotaPercent = computed(() => {
   if (!quota.value?.allocatedQuota) return 0;
   return Math.min(100, Math.round((quota.value.usedQuota / quota.value.allocatedQuota) * 100));
@@ -105,6 +119,7 @@ const trendPoints = computed(
     })) ?? []
 );
 
+/** 按当前筛选拉取用户表 */
 async function load() {
   const params = new URLSearchParams();
   if (q.value) params.set("q", q.value);
@@ -116,6 +131,7 @@ async function load() {
   users.value = body.items;
 }
 
+/** 拉取 Provider 密钥；创建表单的默认 `providerKeyId` 取首条 */
 async function loadKeys() {
   const body = await apiFetch<{ items: ProviderKeyRow[] }>("/admin/provider-keys");
   keys.value = body.items;
@@ -124,6 +140,7 @@ async function loadKeys() {
   }
 }
 
+/** 新建用户初始值；`quota` 为初始分配、username/email 在表单填写 */
 function defaultCreateForm() {
   return {
     role: "user" as "admin" | "user",
@@ -136,6 +153,7 @@ function defaultCreateForm() {
   };
 }
 
+/** 编辑用户：可改昵称/状态/绑定的 key/总配额/密码（密码非空才提交） */
 function defaultEditForm() {
   return {
     nickname: "",
@@ -146,12 +164,14 @@ function defaultEditForm() {
   };
 }
 
+/** 打开创建弹层并确保 keys 已加载供下拉使用 */
 function openCreateDialog() {
   form.value = defaultCreateForm();
   createOpen.value = true;
   if (!keys.value.length) void loadKeys();
 }
 
+/** POST 创建后 toast、关弹层、刷新表 */
 async function createUser() {
   await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
   toast.success(
@@ -162,6 +182,7 @@ async function createUser() {
   await load();
 }
 
+/** 将行数据灌入 `editForm` 并拉 keys（若空） */
 function openEditDialog(user: AdminUser) {
   editingUser.value = user;
   editForm.value = {
@@ -175,6 +196,7 @@ function openEditDialog(user: AdminUser) {
   if (!keys.value.length) void loadKeys();
 }
 
+/** 仅提交与初始行有差异的字段，空 diff 则直接关层 */
 async function saveEdit() {
   if (!editingUser.value) return;
   const payload: {
@@ -188,6 +210,7 @@ async function saveEdit() {
     payload.nickname = editForm.value.nickname;
   }
   if (editForm.value.status !== editingUser.value.status) payload.status = editForm.value.status;
+  // API 上 preferred 与 providerKeyId 可能只回其一，比较时要归一成同一字段语义
   const currentProviderKeyId =
     editingUser.value.providerKeyId ?? editingUser.value.preferredProviderKeyId ?? "";
   if (editForm.value.providerKeyId && editForm.value.providerKeyId !== currentProviderKeyId) {
@@ -211,6 +234,7 @@ async function saveEdit() {
   await load();
 }
 
+/** 选中详情用户并并行拉「配额+流水+用量图」；流水游标会重置 */
 async function openDetails(user: AdminUser) {
   selectedUser.value = user;
   transactions.value = [];
@@ -218,6 +242,7 @@ async function openDetails(user: AdminUser) {
   await Promise.all([loadQuota(user.id), loadUsage(user.id)]);
 }
 
+/** 分页加载额度交易；`transactionsNextCursor` 非空时追加分页 */
 async function loadQuota(userId = selectedUser.value?.id) {
   if (!userId) return;
   const params = new URLSearchParams({ limit: "10" });
@@ -232,11 +257,16 @@ async function loadQuota(userId = selectedUser.value?.id) {
   transactionsNextCursor.value = body.nextCursor;
 }
 
+/** 生图/任务维度的统计供饼/柱/线三图 */
 async function loadUsage(userId = selectedUser.value?.id) {
   if (!userId) return;
   usage.value = await apiFetch<UsageResponse>(`/admin/users/${userId}/usage`);
 }
 
+/**
+ * 给选中用户**追加**一笔额度；扣减的是当前登录管理员剩余池（`actorRemaining`）
+ * 成功后刷新本页列表与 auth 自身 quota
+ */
 async function grantQuota() {
   if (!selectedUser.value) return;
   if (actorRemaining.value !== null && quotaAmount.value > actorRemaining.value) {
@@ -254,6 +284,7 @@ async function grantQuota() {
   await Promise.all([load(), loadQuota(), auth.bootstrap()]);
 }
 
+/** 列表行内快速启停账号；若当前侧栏正在看该用户则同步本地 `selectedUser.status` */
 async function toggleStatus(user: AdminUser) {
   const nextStatus = user.status === "active" ? "disabled" : "active";
   await apiFetch(`/admin/users/${user.id}`, {
@@ -267,12 +298,14 @@ async function toggleStatus(user: AdminUser) {
   if (selectedUser.value?.id === user.id) selectedUser.value.status = nextStatus;
 }
 
+/** 超管/管理员在列表行内重置子账号密码 */
 function openPasswordDialog(user: AdminUser) {
   passwordUser.value = user;
   passwordForm.value = { password: "", confirmPassword: "" };
   passwordOpen.value = true;
 }
 
+/** 两次输入一致时 POST 专用改密端点 */
 async function resetPassword() {
   if (!passwordUser.value) return;
   if (passwordForm.value.password !== passwordForm.value.confirmPassword) {
@@ -289,6 +322,7 @@ async function resetPassword() {
   passwordForm.value = { password: "", confirmPassword: "" };
 }
 
+/** 打开「追加额度」弹层；若切到不同用户会触发 `openDetails` 以刷新 quota 区 */
 function openQuotaDialog(user: AdminUser) {
   const previousUserId = selectedUser.value?.id;
   selectedUser.value = user;
@@ -297,6 +331,7 @@ function openQuotaDialog(user: AdminUser) {
   if (!quota.value || previousUserId !== user.id) openDetails(user);
 }
 
+/** 将 usage.stats 按状态或生图模式聚合成 {label,value}[] 供饼/柱 */
 function aggregateUsage(key: "status" | "mode") {
   const map = new Map<string, number>();
   for (const row of usage.value?.stats ?? []) {
@@ -306,6 +341,7 @@ function aggregateUsage(key: "status" | "mode") {
   return Array.from(map, ([label, value]) => ({ label, value }));
 }
 
+/** 将后端状态枚举映射为 i18n 可读文案 */
 function statusLabel(status: string) {
   if (status === "active") return t("common.enabled");
   if (status === "disabled") return t("common.disabled");
@@ -316,12 +352,14 @@ function statusLabel(status: string) {
   return status;
 }
 
+/** 角色列展示用（与 `role` 筛选值对应） */
 function roleLabel(value: string) {
   if (value === "admin") return t("adminUsers.roleAdmin");
   if (value === "user") return t("adminUsers.roleUser");
   return value;
 }
 
+/** 列表与详情中时间戳的本地化展示 */
 function formatDateTime(value?: number | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(locale.value, {
@@ -333,12 +371,14 @@ function formatDateTime(value?: number | null) {
   }).format(value);
 }
 
+/** Provider 下拉里展示「标签 (hint)」，找不到时退回原始 id */
 function keyLabel(id?: string | null) {
   if (!id) return t("sysadmin.unassigned");
   const key = keys.value.find((item) => item.id === id);
   return key ? `${key.label} (${key.keyHint})` : id;
 }
 
+/** 生图三模式在用量图里显示为工作台同款文案 */
 function modeLabel(mode: string) {
   if (mode === "text2image") return t("workspace.text2image");
   if (mode === "image2image") return t("workspace.image2image");

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 对话框主体：Portal + 半透明遮罩 + 屏幕居中内容区，内置右上角关闭（可 `showCloseButton={false}` 关闭）。
+ * 动效、定位与 reka-ui `DialogContent` 的 data-state 类名配合。
+ */
 import type { DialogContentEmits, DialogContentProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";
@@ -22,6 +26,7 @@ const props = withDefaults(
 );
 const emits = defineEmits<DialogContentEmits>();
 
+// 不把 `class` 透传给 reka，由下方 `cn` 合并进最终节点
 const delegatedProps = reactiveOmit(props, "class");
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);

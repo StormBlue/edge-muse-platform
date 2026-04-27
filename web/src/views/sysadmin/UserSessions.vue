@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 运维巡查：按路由 userId 拉取指定用户的会话/消息/任务与图（sysadmin 只读全量数据）。
+ */
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
@@ -10,6 +13,7 @@ import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 import type { ImageAttachment, Message, Session, SessionMode } from "@/stores/session";
 
+/** 系统管理拉取的会话行：在 Session 上扩展属主、归档、任务数等只读维表字段 */
 type AuditSession = Session & {
   userId?: string;
   user?: {
@@ -27,12 +31,14 @@ type AuditSession = Session & {
   taskCount?: number;
 };
 
+/** 审计页图片：附加生成时刻、第几张、单张耗时等排障信息 */
 type AuditImageAttachment = ImageAttachment & {
   createdAt?: number | null;
   generationDurationMs?: number | null;
   generationIndex?: number | null;
 };
 
+/** 任务落库时序列化的生成参数子集，用于只读展示 */
 type TaskParams = {
   prompt?: string;
   mode?: SessionMode;
@@ -42,6 +48,7 @@ type TaskParams = {
   referenceImageIds?: string[];
 };
 
+/** 单条消息 + 嵌套 task/失败列表，供运维查看单次生成全链路 */
 type AuditMessage = Omit<Message, "attachments"> & {
   attachments: AuditImageAttachment[];
   referenceImages?: AuditImageAttachment[];
@@ -66,6 +73,7 @@ type AuditMessage = Omit<Message, "attachments"> & {
   } | null;
 };
 
+/** 多图部分失败时按 code/phase 聚合，用于折叠展示 */
 type FailureGroup = {
   key: string;
   code: string;
@@ -75,6 +83,7 @@ type FailureGroup = {
   indexes: number[];
 };
 
+/** 顶栏按邮箱搜索时的用户候选项 */
 type UserOption = {
   id: string;
   email: string | null;
@@ -88,10 +97,14 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const { locale, t } = useI18n();
+
+/** 从路由解析的目标用户；`_` 表示不筛选、`me` 表示当前登录用户 */
 const userId = ref(resolveRouteUserId());
 const q = ref("");
 const userOptions = ref<UserOption[]>([]);
+/** 左表分页会话行 */
 const sessions = ref<AuditSession[]>([]);
+/** 当前会话详情里的消息流（时间序） */
 const messages = ref<AuditMessage[]>([]);
 const selectedSession = ref<AuditSession | null>(null);
 const selectedImage = ref<ImageAttachment | null>(null);
@@ -101,15 +114,22 @@ const pageSize = 12;
 const total = ref(0);
 const loading = ref(false);
 const detailLoading = ref(false);
+/** 在 `displayResultMessages` 中的下标，左右键与缩略条共用 */
 const activeMessageIndex = ref(0);
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
+/** 详情区标题等：以选中行为准，无选中时退回 query.session */
 const selectedSessionId = computed(() => selectedSession.value?.id ?? getRouteSessionId());
+/** 仅助手侧且带 task 或已有附件的消息，即「有结果可审」的集合 */
 const resultMessages = computed(() =>
   messages.value.filter(
     (message) => message.role === "assistant" && (message.task || message.attachments.length)
   )
 );
+/**
+ * 有图的任务优先排前（便于先看成品），同优先级保持原时间序；
+ * 供底栏缩略与 `activeMessageIndex` 步进
+ */
 const displayResultMessages = computed(() =>
   resultMessages.value
     .map((message, index) => ({ message, index }))
@@ -120,10 +140,12 @@ const displayResultMessages = computed(() =>
     })
     .map(({ message }) => message)
 );
+/** 与 ImageViewer/大图联动：仅当前选中的一条 result 作为「当前组」 */
 const activeMessages = computed(() => {
   const message = displayResultMessages.value[activeMessageIndex.value];
   return message ? [message] : [];
 });
+/** 平铺本会话所有出图与参考图，供 ImageViewer gallery 浏览 */
 const auditImages = computed(() =>
   messages.value.flatMap((message) => [
     ...message.attachments.map(toViewerImage),
@@ -131,10 +153,12 @@ const auditImages = computed(() =>
   ])
 );
 
+// 分页变更时同步页码输入框展示
 watch(page, (value) => {
   pageInput.value = String(value);
 });
 
+// 结果条数量变化时钳制下标，避免越界
 watch(displayResultMessages, (items) => {
   if (items.length === 0) {
     activeMessageIndex.value = 0;
@@ -143,6 +167,7 @@ watch(displayResultMessages, (items) => {
   activeMessageIndex.value = Math.min(activeMessageIndex.value, items.length - 1);
 });
 
+// 切换目标用户：重载左表第一页；若 URL 仍带 session 则继续拉详情
 watch(
   () => route.params.userId,
   async () => {
@@ -158,6 +183,7 @@ watch(
   }
 );
 
+// 仅 query.session 变化（同用户下点另一行）时换详情，不重复拉左表
 watch(
   () => route.query.session,
   async () => {
@@ -177,6 +203,7 @@ onMounted(async () => {
   if (sessionId) await loadDetail(sessionId);
 });
 
+/** `_` → 空串不筛用户；`me` → 当前登录者 id；否则为具体 UUID */
 function resolveRouteUserId() {
   const routeUserId = typeof route.params.userId === "string" ? route.params.userId : "";
   if (routeUserId === "_") return "";
@@ -184,6 +211,7 @@ function resolveRouteUserId() {
   return routeUserId;
 }
 
+/** 去掉 query.session 或换用户时清空右栏状态 */
 function clearDetail() {
   selectedSession.value = null;
   messages.value = [];
@@ -191,6 +219,7 @@ function clearDetail() {
   activeMessageIndex.value = 0;
 }
 
+/** 顶栏提交：必要时改路由到 `/users/:id/sessions` 再拉表 */
 async function submitFilters() {
   const normalizedUserId = userId.value.trim();
   const routeUserId = normalizedUserId || "_";
@@ -202,6 +231,7 @@ async function submitFilters() {
   await loadSessions(1);
 }
 
+/** 顶栏下拉的邮箱/昵称候选项，失败时置空不阻塞页 */
 async function loadUserOptions() {
   try {
     const body = await apiFetch<{ items: UserOption[] }>("/sysadmin/users");
@@ -211,6 +241,7 @@ async function loadUserOptions() {
   }
 }
 
+/** 拉左表；`userId` 空时用路由占位 `_` 表示全量/未指定 */
 async function loadSessions(nextPage = page.value) {
   const normalizedUserId = userId.value.trim();
   userId.value = normalizedUserId;
@@ -237,6 +268,7 @@ async function loadSessions(nextPage = page.value) {
   }
 }
 
+/** 从输入框跳页，非法或与当前页相同则 no-op */
 async function jumpToPage() {
   const targetPage = clampPageInput(pageInput.value);
   pageInput.value = String(targetPage);
@@ -244,6 +276,7 @@ async function jumpToPage() {
   await loadSessions(targetPage);
 }
 
+/** 点表格行：若已在该 session 的 URL 上则直接 `loadDetail`，否则 push 带 query */
 async function openDetail(session: AuditSession) {
   selectedSession.value = session;
   if (getRouteSessionId() === session.id) {
@@ -253,10 +286,12 @@ async function openDetail(session: AuditSession) {
   await router.push({ path: route.path, query: { session: session.id } });
 }
 
+/** 从详情回到无 query.session 的列表态 */
 async function backToTable() {
   await router.push({ path: route.path });
 }
 
+/** 拉单会话的 session 头 + 全量消息，供右侧审计 */
 async function loadDetail(sessionId: string) {
   detailLoading.value = true;
   try {
@@ -272,21 +307,25 @@ async function loadDetail(sessionId: string) {
   }
 }
 
+/** 当前深链正在看的会话 id（`?session=`） */
 function getRouteSessionId() {
   return typeof route.query.session === "string" ? route.query.session : null;
 }
 
+/** 分页入参合法化：非有限数回 1，否则正整数 */
 function sanitizePage(value: number) {
   if (!Number.isFinite(value)) return 1;
   return Math.max(1, Math.floor(value));
 }
 
+/** 手输页码：夹在 [1, totalPages] 且取整 */
 function clampPageInput(value: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return page.value;
   return Math.min(Math.max(Math.floor(parsed), 1), totalPages.value);
 }
 
+/** 与前台 session store 同逻辑：为每条附件补全 task/session/message 外键 */
 function normalizeMessageAttachments(message: AuditMessage): AuditMessage {
   return {
     ...message,
@@ -307,20 +346,24 @@ function normalizeMessageAttachments(message: AuditMessage): AuditMessage {
   };
 }
 
+/** 大图查看器不依赖 message 维度时用 null 解耦 */
 function toViewerImage(image: ImageAttachment): ImageAttachment {
   return { ...image, messageId: null };
 }
 
+/** 打开右侧/全屏 ImageViewer，复用 `selectedImage` */
 function openImage(image: ImageAttachment) {
   selectedImage.value = toViewerImage(image);
 }
 
+/** ImageViewer 标题行：含单张生成耗时 */
 function imageTitle(image: AuditImageAttachment) {
   return `${t("workspace.openPreview")} / ${t("sysadmin.imageDuration")} ${formatDuration(
     image.generationDurationMs
   )}`;
 }
 
+/** 列表与任务时间戳展示 */
 function formatDateTime(value?: number | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(locale.value, {
@@ -332,10 +375,12 @@ function formatDateTime(value?: number | null) {
   }).format(value);
 }
 
+/** 生图三模式在审计页用工作台同文案 */
 function modeLabel(mode?: SessionMode | null) {
   return mode ? t(`workspace.${mode}`) : "-";
 }
 
+/** 消息 role 的 i18n（与前台气泡标签对齐） */
 function roleLabel(role: string) {
   if (role === "user") return t("sysadmin.messageUser");
   if (role === "assistant") return t("sysadmin.messageAssistant");
@@ -343,17 +388,20 @@ function roleLabel(role: string) {
   return role;
 }
 
+/** 主标题：优先昵称/用户名/邮箱，附带角色 */
 function userLabel(user?: AuditSession["user"] | UserOption | null) {
   if (!user) return "-";
   const name = user.nickname || user.username || user.email || user.id;
   return user.role ? `${name} · ${user.role}` : name;
 }
 
+/** 副标题行：username · email */
 function userSubLabel(user?: AuditSession["user"] | UserOption | null) {
   if (!user) return "";
   return [user.username, user.email].filter(Boolean).join(" · ") || user.id;
 }
 
+/** 任务/账号状态转 common.* 键 */
 function statusLabel(status?: string | null) {
   if (!status) return "-";
   if (["queued", "running", "succeeded", "failed", "cancelled"].includes(status)) {
@@ -362,6 +410,7 @@ function statusLabel(status?: string | null) {
   return status;
 }
 
+/** 状态对应 Tailwind 浅底强调色，供 badge 用 */
 function statusTone(status?: string | null) {
   if (status === "succeeded") return "bg-primary/15 text-primary";
   if (status === "failed" || status === "cancelled") return "bg-destructive/10 text-destructive";
@@ -369,12 +418,17 @@ function statusTone(status?: string | null) {
   return "bg-muted text-muted-foreground";
 }
 
+/**
+ * 展示「本任务期望张数」：取 task.params.n 或会话 settings.n 与**已出图数**的较大者，
+ * 部分成功时条数会高于配置 n
+ */
 function requestedImageCount(message: AuditMessage) {
   const configured = message.task?.params?.n ?? selectedSession.value?.settings?.n;
   const count = typeof configured === "number" && Number.isFinite(configured) ? configured : 0;
   return Math.max(Math.floor(count), message.attachments.length);
 }
 
+/** 审计卡片标题区：归并 task、params、session.settings 的展示字段 */
 function taskParameters(message: AuditMessage) {
   const params = message.task?.params ?? {};
   return {
@@ -390,19 +444,23 @@ function taskParameters(message: AuditMessage) {
   };
 }
 
+/** 用户气泡正文或回退到任务里存的 prompt 快照 */
 function messagePromptText(message: AuditMessage) {
   return message.prompt || message.task?.params?.prompt || "";
 }
 
+/** 长文案/多行时模板里会折叠，避免撑爆布局 */
 function isLongPrompt(message: AuditMessage) {
   const prompt = messagePromptText(message);
   return prompt.length > 260 || prompt.split("\n").length > 5;
 }
 
+/** 多图任务里每张子失败条（与后端结构对齐） */
 function generationFailures(message: AuditMessage) {
   return message.task?.generationFailures ?? [];
 }
 
+/** 任务级错误文案：优先 task.errorMsg，否则落库 message.error */
 function taskFailureMessage(message: AuditMessage) {
   return message.task?.errorMsg || message.error?.message || "";
 }
@@ -411,6 +469,7 @@ function hasFailureDetails(message: AuditMessage) {
   return generationFailures(message).length > 0 || Boolean(taskFailureMessage(message));
 }
 
+/** 多图按 code+phase+message 分桶，折叠重复失败项 */
 function failureGroups(message: AuditMessage) {
   const groups = new Map<string, FailureGroup>();
   for (const failure of generationFailures(message)) {

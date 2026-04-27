@@ -1,4 +1,11 @@
 <script setup lang="ts">
+/**
+ * 应用壳（需已登录页使用）：
+ * - **侧栏**：`lg` 以上固定为宽屏侧栏，可 `sidebarCollapsed` 收图标栏；以下用 `sidebarOpen` + 遮罩抽屉；
+ * - **顶栏**：菜单、标语、语言、主题下拉、设置、登出；
+ * - **配额**：侧栏底部卡片展示「剩余/总额」或无限；
+ * - **路由高亮**：`isActiveNav` 用路径前三段前缀匹配，避免 `/sysadmin/foo` 与子路径全等失败。
+ */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { RouterLink, useRoute, useRouter } from "vue-router";
@@ -30,6 +37,7 @@ const router = useRouter();
 const { t } = useI18n();
 const themeMenuOpen = ref(false);
 const themeMenuRef = ref<HTMLElement | null>(null);
+/** ≥1024px 视为桌面：用折叠侧栏而非抽屉 */
 const isDesktopSidebar = ref(false);
 let sidebarModeQuery: MediaQueryList | null = null;
 let stopSidebarModeSync: (() => void) | null = null;
@@ -40,6 +48,7 @@ const quotaLabel = computed(() => {
   return `${Math.max(auth.quota.allocatedQuota - auth.quota.usedQuota, 0)}/${auth.quota.allocatedQuota}`;
 });
 
+/** 全量导航项；`show` 控制 admin/sysadmin 段显隐 */
 const nav = computed(() => [
   { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
   { to: "/history", label: t("nav.history"), icon: History, show: true },
@@ -98,6 +107,7 @@ function selectTheme(theme: ThemeMode) {
   themeMenuOpen.value = false;
 }
 
+/** 取 `to` 的前三级 path 作前缀，避免子路由丢高亮（如 /sysadmin/users/xxx/sessions） */
 function isActiveNav(to: string) {
   return route.path.startsWith(to.split("/").slice(0, 3).join("/"));
 }
@@ -107,6 +117,7 @@ function syncSidebarMode() {
   if (isDesktopSidebar.value) ui.closeSidebar();
 }
 
+/** 桌面：折叠/展开侧栏宽；移动：开关抽屉 */
 function toggleSidebarNav() {
   if (isDesktopSidebar.value) {
     ui.toggleSidebarCollapsed();
@@ -115,6 +126,7 @@ function toggleSidebarNav() {
   ui.toggleSidebar();
 }
 
+/** 点导航链接触发：仅移动关抽屉，避免桌面误关折叠态 */
 function closeMobileSidebar() {
   if (!isDesktopSidebar.value) ui.closeSidebar();
 }
@@ -124,12 +136,14 @@ async function logout() {
   await router.push("/login");
 }
 
+/** 点击主题菜单外关闭；目标在 ref 内则忽略 */
 function closeThemeMenu(event: PointerEvent) {
   if (!themeMenuOpen.value) return;
   if (themeMenuRef.value?.contains(event.target as Node)) return;
   themeMenuOpen.value = false;
 }
 
+// 换页后收起移动侧栏，避免挡内容
 watch(
   () => route.fullPath,
   () => closeMobileSidebar()

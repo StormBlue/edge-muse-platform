@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 平台级「租户管理员」维护：与 UserList 中 role=admin 的下属用户不同，此处为 sysadmin 专用 CRUD。
+ * 创建走 POST，编辑为差异 PATCH，密钥下拉与 Keys 管理页数据同源（仅 enabled）。
+ */
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -13,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/api/client";
 
+/** 列表行：不含密码；配额为租户分配给该管理员的池 */
 type AdminRow = {
   id: string;
   email: string;
@@ -30,6 +35,7 @@ type ProviderKeyRow = {
   keyHint: string;
   enabled: boolean;
 };
+/** 与后端 PATCH 体一致：仅非空/有变更字段 */
 type AdminUpdatePayload = {
   nickname?: string;
   status?: "active" | "disabled";
@@ -44,6 +50,7 @@ const { t } = useI18n();
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<AdminRow | null>(null);
+/** 创建管理员：初配 email/username/password、默认额度与 provider */
 const form = ref({
   email: "",
   username: "",
@@ -60,6 +67,7 @@ const editForm = ref({
   password: ""
 });
 
+/** 并行拉管理员与密钥；密钥筛 enabled 给下拉用 */
 async function load() {
   const [adminBody, keyBody] = await Promise.all([
     apiFetch<{ items: AdminRow[] }>("/sysadmin/admins"),
@@ -69,6 +77,7 @@ async function load() {
   keys.value = keyBody.items.filter((key) => key.enabled);
 }
 
+/** 新建租户管理员账号并刷新表 */
 async function create() {
   await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
   toast.success(t("sysadmin.adminCreated"));
@@ -84,6 +93,7 @@ async function create() {
   await load();
 }
 
+/** 编辑时 password 留空表示不改 */
 function openEdit(admin: AdminRow) {
   editing.value = admin;
   editForm.value = {
@@ -96,6 +106,7 @@ function openEdit(admin: AdminRow) {
   editOpen.value = true;
 }
 
+/** 仅提交变更字段；password 非空才更新哈希 */
 async function saveEdit() {
   if (!editing.value) return;
   const payload: AdminUpdatePayload = {};
@@ -123,6 +134,7 @@ async function saveEdit() {
   await load();
 }
 
+/** 表格中 provider 列：label + hint，未绑定时显示未分配 */
 function keyLabel(id: string | null) {
   const key = keys.value.find((item) => item.id === id);
   return key ? `${key.label} (${key.keyHint})` : id || t("sysadmin.unassigned");

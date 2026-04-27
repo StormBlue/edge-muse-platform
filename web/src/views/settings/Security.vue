@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 安全设置：修改登录密码。依赖已登录态 Cookie，旧密码在服务端与 bcrypt 摘要比对，成功后写新摘要。
+ * 不在这里处理「忘记密码」；修改成功后本地清空输入框防肩窥。
+ */
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -9,6 +13,7 @@ const oldPassword = ref("");
 const newPassword = ref("");
 const { t } = useI18n();
 
+/** POST 成功后清空输入，降低误提交与屏幕残留风险 */
 async function save() {
   await apiFetch("/auth/password/change", {
     method: "POST",

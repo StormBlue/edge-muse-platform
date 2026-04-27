@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 滚动区域封装：Viewport + 自定义 ScrollBar + Corner（Shadcn/Reka UI）。
+ */
 import type { ScrollAreaRootProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";
@@ -8,6 +11,7 @@ import ScrollBar from "./ScrollBar.vue";
 
 const props = defineProps<ScrollAreaRootProps & { class?: HTMLAttributes["class"] }>();
 
+// `class` 挂在根节点，与 reka 其余 props 分离避免重复
 const delegatedProps = reactiveOmit(props, "class");
 </script>
 

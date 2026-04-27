@@ -1,3 +1,6 @@
+/**
+ * Workers 环境纯 JS 编解码：UTF-8、Base64/Base64URL、随机字节、ArrayBuffer 视图转换。
+ */
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 

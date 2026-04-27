@@ -1,3 +1,32 @@
+/**
+ * 生图任务域：从「建任务 / 跑任务 / 广播事件 / 失败与配额 / 断线恢复」到「多并发张数 n、图生图参考图、对话上下文」
+ *
+ * 与产品文档的对应关系（docs/开发需求.md）：
+ * - 配额：`tryConsumeQuota` 在 `createGenerateTask` 内按「张数 n」预扣；`failGenerateTask` 在非 PROVIDER_ERROR 时 `refundQuota`（见业务规则）。
+ * - 1 个任务 1 条 assistant 消息：messages.attachments 存生成结果；image_objects 存 R2 元数据。
+ * - 在线推送：`TaskEvent` 类型与文档 §6.7 一致，经 `broadcastTaskEvent` 写入 DO TaskRoom。
+ *
+ * 全链路时序（符号，缩略）：
+ *
+ *   [HTTP]  Client → POST /api/generate
+ *              → createGenerateTask
+ *                 ├ D1: sessions + messages(用户+助手) + tasks(queued)
+ *                 ├ tryConsumeQuota(user, n, taskId)
+ *                 └ return { taskId, sessionId, messageId, title }
+ *              → startGenerateTask
+ *                 ├ 优先 GEN_WORKFLOW.create({ taskId })
+ *                 └ 否则 waitUntil(runGenerateTask(..., broadcastTaskEvent))
+ *
+ *   [Run]  runGenerateTask
+ *              → claimGenerateTask(queued → running, started_at)
+ *              → 可选：recoverTaskFromPersistedImages（崩后恢复）
+ *              → 并发 mapWithConcurrency：每 index 调 provider.generate → persistProviderImage(R2) → task.image 事件
+ *              → finishRunningTaskIfCurrent → messages.attachments 落库 → task.done | task.failed
+ *
+ *   [Push]  broadcastTaskEvent
+ *              → TASK_ROOM.get(idFromName(taskId)).updateStatus(event)
+ *                 → WebSocket 客户端收 JSON
+ */
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
 import {
@@ -24,17 +53,25 @@ import { getProvider } from "../providers/registry";
 import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus, UserRole } from "../types";
 import type { GenerateRequest, ProviderImage } from "../providers/types";
 
+/** 单任务从 started_at 起算的超时时间；DO alarm 与 sweep 用同一量级做兜底 */
 const GENERATION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
+/** 每次恢复扫描最多「再点火」的 queued 条数，防一次 waitUntil 拖太久 */
 const INTERRUPTED_TASK_RECOVERY_LIMIT = 20;
+/** 任务心跳写入间隔（供超时判断与僵尸任务识别，与实现细节相关） */
 const TASK_HEARTBEAT_INTERVAL_MS = 30 * 1000;
+/** 普通用户多图并发槽；过大易打满 provider 速率 */
 const DEFAULT_PARALLEL_GENERATIONS = 4;
+/** sysadmin 可提高并发，仍受单任务 n 上限约束 */
 const SYSADMIN_PARALLEL_GENERATIONS = 10;
+/** KV 键：跨请求节流 `recoverInterruptedGenerateTasks`，避免流量高峰重复扫库 */
 const TASK_RECOVERY_THROTTLE_KEY = "tasks:interrupted-recovery";
 const TASK_RECOVERY_THROTTLE_SECONDS = 60;
+/** 基64/URL 图从 provider 拉回时的重试次数与单次超时、指数退避（毫秒） */
 const PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS = 6;
 const PROVIDER_IMAGE_DOWNLOAD_ATTEMPT_TIMEOUT_MS = 30_000;
 const PROVIDER_IMAGE_DOWNLOAD_BACKOFF_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
 
+/** 与 GET /sessions/active-generation 以及 DO 广播协议一致 */
 export type ActiveGenerationTask = {
   taskId: string;
   sessionId: string;
@@ -52,6 +89,7 @@ export type ActiveGenerationTask = {
   };
 };
 
+/** WebSocket / DO 推送的离散事件（前端 `applyTaskEvent` 消费） */
 export type TaskEvent =
   | { type: "task.update"; task: { id: string; status: TaskStatus; progress?: number } }
   | { type: "task.image"; task: { id: string; status: "running" }; image: ImageAttachment }
@@ -62,6 +100,7 @@ export type TaskEvent =
     }
   | { type: "task.done"; task: { id: string; status: "succeeded" }; images: ImageAttachment[] };
 
+/** `recoverInterruptedGenerateTasks` 的汇总，供日志与运维 */
 export type TaskRecoveryResult = {
   scheduled: number;
   taskIds: string[];
@@ -75,6 +114,7 @@ export type TaskRecoveryResult = {
 
 type WaitUntilContext = Pick<ExecutionContext, "waitUntil">;
 
+/** 并行槽 `mapWithConcurrency` 每一「张」的聚合结果 */
 type GenerationResult = {
   index: number;
   requestId?: string;
@@ -85,6 +125,7 @@ type GenerationResult = {
   persistenceFailures: GenerationFailure[];
 };
 
+/** 单张失败：来自 provider 或 R2 落库，写入最终 `provider_raw_response` 数组 */
 type GenerationFailure = {
   type: "generation_failure";
   index: number;
@@ -95,15 +136,18 @@ type GenerationFailure = {
   raw?: unknown;
 };
 
+/** 单槽 settled：成功带 GenerationResult，失败只记 GenerationFailure */
 type GenerationSettledResult =
   | { ok: true; value: GenerationResult }
   | { ok: false; failure: GenerationFailure };
 
+/** 落库到 messages.attachments 与 WS 的图，可带来源槽位 generationIndex */
 type TaskImageAttachment = ImageAttachment & {
   generationIndex?: number | null;
   createdAt?: number;
 };
 
+/** 本 worker 的 started_at 与 DB 已不一致，应中止写库/通知（新实例或重复执行） */
 class TaskClaimLostError extends Error {
   constructor(taskId: string) {
     super(`Task claim lost: ${taskId}`);
@@ -111,6 +155,7 @@ class TaskClaimLostError extends Error {
   }
 }
 
+/** 单轮生成超过 GENERATION_ATTEMPT_TIMEOUT_MS 仍无终态时由 DO alarm / sweep 使用 */
 class TaskAttemptTimeoutError extends Error {
   readonly code = "GENERATION_TIMEOUT";
 
@@ -123,6 +168,10 @@ class TaskAttemptTimeoutError extends Error {
   }
 }
 
+/**
+ * 为任务解析实际使用的 `provider_keys` 行：优先系统管理员偏好的 key →
+ * `user_provider_keys` 绑定 → 任意启用中的 key 回退（无人配置时报错）。
+ */
 export async function resolveProviderKey(env: AppBindings, userId: string) {
   const db = getDb(env);
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
@@ -158,6 +207,9 @@ export async function resolveProviderKey(env: AppBindings, userId: string) {
   return fallback;
 }
 
+/**
+ * 当前用户是否有一条 queued/running 任务；用于侧栏「进行中」与 `assertNoActiveGenerationTask`。
+ */
 export async function findActiveGenerationTaskForUser(
   env: AppBindings,
   userId: string
@@ -208,6 +260,9 @@ export async function findActiveGenerationTaskForUser(
   };
 }
 
+/**
+ * 普通用户/管理员同时只允许一个进行中的生图；sysadmin 直接放行。冲突时 409 并带 `activeGeneration` 详情。
+ */
 export async function assertNoActiveGenerationTask(
   env: AppBindings,
   input: { userId: string; role: UserRole }
@@ -218,6 +273,11 @@ export async function assertNoActiveGenerationTask(
   throw appError("CONFLICT", "A generation task is already running", { activeGeneration });
 }
 
+/**
+ * 从 HTTP 202 路径「点火」：不阻塞响应。
+ * - 有 `GEN_WORKFLOW`：`waitUntil` 里 `startWorkflowGenerateTask`，失败则打日志并 **inline** `runGenerateTask`。
+ * - 无 Workflow：直接 `waitUntil(runGenerateTask)`，便于本地/测试环境。
+ */
 export function startGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskId: string): void {
   const workflow = env.GEN_WORKFLOW;
   logInfo("task.dispatch.requested", { taskId, workflowConfigured: Boolean(workflow) });
@@ -235,6 +295,9 @@ export function startGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskI
   ctx.waitUntil(runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event)));
 }
 
+/**
+ * 在 `index` 的 `fetch` 中针对生图/WS/恢复相关路径触发，异步扫描 queued 与超时 running。
+ */
 export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntilContext): void {
   ctx.waitUntil(
     recoverInterruptedGenerateTasks(env, ctx)
@@ -257,6 +320,9 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
   );
 }
 
+/**
+ * 1) KV 节流下跳过重入；2) 扫「超时未结束」的 running 任务；3) 对 queued 老任务再 `startGenerateTask` 点火。
+ */
 export async function recoverInterruptedGenerateTasks(
   env: AppBindings,
   ctx: WaitUntilContext,
@@ -313,6 +379,9 @@ type TimedOutSweepResult = {
 
 type TimedOutTaskResult = "failed" | "recovered" | "skipped";
 
+/**
+ * 供 DO `TaskRoom.alarm` 单点调用：若该 task 已 running 超窗则走 `settleTimedOutGenerateTask`。
+ */
 export async function failTimedOutGenerateTaskIfNeeded(
   env: AppBindings,
   taskId: string,
@@ -339,6 +408,7 @@ export async function failTimedOutGenerateTaskIfNeeded(
   return settleTimedOutGenerateTask(env, row, notify);
 }
 
+/** scheduled/cron 批量：找出所有超时的 running 任务并逐条结算 */
 async function sweepTimedOutGenerateTasks(
   env: AppBindings,
   input: {
@@ -385,6 +455,9 @@ async function sweepTimedOutGenerateTasks(
   return { failedTaskIds, recoveredTaskIds };
 }
 
+/**
+ * 先尝试 `recoverTaskFromPersistedImages`（Worker 已写 R2 但无终态时）；否则按超时失败并通知。
+ */
 async function settleTimedOutGenerateTask(
   env: AppBindings,
   row: TimedOutTaskRow,
@@ -422,6 +495,10 @@ async function settleTimedOutGenerateTask(
   return "failed";
 }
 
+/**
+ * 创建生图任务（同步路径）：插入会话（若新会话）、用户消息、助手消息、任务行，并扣配额。
+ * 不调用第三方、不持锁等待；真正生图在 `startGenerateTask` → `runGenerateTask`。
+ */
 export async function createGenerateTask(
   env: AppBindings,
   input: {
@@ -602,6 +679,11 @@ export async function createGenerateTask(
   };
 }
 
+/**
+ * 执行生图：单 Worker 内可能长时间运行；应仅由 Workflow.step 或 `waitUntil` 调用。
+ * - 使用 `started_at` 作为「这一代执行」的租约，防止重复启动或旧实例覆盖新实例（`assertTaskClaimCurrent` / `TaskClaimLostError`）。
+ * - 多图 `params.n`：并发度 `resolveParallelGenerationsForRole`，每张一次 provider 调用 + 落库 + 事件。
+ */
 export async function runGenerateTask(
   env: AppBindings,
   taskId: string,
@@ -628,6 +710,7 @@ export async function runGenerateTask(
     logWarn("task.run.task_missing", { taskId, startedAt });
     return;
   }
+  // --- 以下：解析 params、用户角色、并行度；`parallelGenerations` 仅影响墙钟，不改变 `params.n` 总张数 ---
   const params = parseJson<GenerateParams>(task.params, {
     prompt: "",
     mode: "text2image",
@@ -656,13 +739,16 @@ export async function runGenerateTask(
     ...promptSummary(params.prompt)
   });
   const send = (event: TaskEvent) => notifyTaskEvent(taskId, notify, event);
+  // --- 长任务过程中心跳：防外部误判僵尸；`finally` 里 stop 避免泄漏 interval ---
   const stopHeartbeat = startTaskHeartbeat(env, taskId, startedAt);
 
   try {
+    // --- 2a. 优先崩溃恢复：若 R2/DB 已有足量生成图，直接终态+WS，不调 provider ---
     if (await recoverTaskFromPersistedImages(env, { task, params, startedAt, notify: send })) {
       logInfo("task.run.recovered_from_persisted_images", baseLogFields);
       return;
     }
+    // --- 2b. 真跑：助手消息、任务更新为 running，并推首帧进度 ---
     await db.update(messages).set({ status: "running" }).where(eq(messages.id, task.messageId));
     logInfo("task.message.status_running", baseLogFields);
     await send({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
@@ -711,6 +797,7 @@ export async function runGenerateTask(
       missingReferenceImageCount: referenceImageIds.length - referenceImages.length,
       referenceImageBytes
     });
+    // --- 2c. 对话模式：拼多轮 user/assistant + 已生成图 URL 摘要（见 buildChatMessages） ---
     const chatMessages =
       params.mode === "chat"
         ? await buildChatMessages(env, task.sessionId, params.prompt)
@@ -722,6 +809,7 @@ export async function runGenerateTask(
         contentChars: chatMessages.reduce((sum, message) => sum + message.content.length, 0)
       });
     }
+    // --- 3. 多图累加器：`images` 为全任务最终附件；`queueMessageAttachmentUpdate` 串行写 messages.attachments 防竞态 ---
     const images: TaskImageAttachment[] = [];
     const rawResponses: unknown[] = [];
     const requestIds: string[] = [];
@@ -747,6 +835,7 @@ export async function runGenerateTask(
         });
       return messageAttachmentUpdate;
     };
+    // --- 3b. 单张槽位：调 adapter.generate → 可选 persist 多张（单张 persist 失败记入 persistenceFailures 不整槽失败）---
     const generateOne = async (index: number): Promise<GenerationResult> => {
       const generationStartedAt = Date.now();
       logInfo("task.generation.started", {
@@ -894,6 +983,7 @@ export async function runGenerateTask(
       };
     };
 
+    // --- 4. 多槽并发：每 index 调 generateOne，provider 异常在槽内转 `ok: false`+failure，再汇总；与 Promise.all 不同见 `mapWithConcurrency` 注释 ---
     const settledGenerationResults = await mapWithConcurrency(
       Array.from({ length: params.n }, (_, index) => index),
       parallelGenerations,
@@ -929,6 +1019,7 @@ export async function runGenerateTask(
     const generationFailures = settledGenerationResults
       .filter((result): result is { ok: false; failure: GenerationFailure } => !result.ok)
       .map((result) => result.failure);
+    // --- 5. 归并各槽成功/失败、算最终图列表、部分失败时仍可能 task 级 failed（见 finalStatus）---
     logInfo("task.generation.settled", {
       ...baseLogFields,
       requestedGenerations: params.n,
@@ -963,6 +1054,7 @@ export async function runGenerateTask(
     });
     await messageAttachmentUpdate;
 
+    // 合并「整槽失败」与「单张 R2 失败」；排序后写入 provider_raw_response 供排障
     const failures = [...generationFailures, ...persistenceFailures].sort(
       (left, right) => left.index - right.index
     );
@@ -1059,16 +1151,19 @@ export async function runGenerateTask(
   }
 }
 
+/** 超过 2 分钟打 warn，便于观测慢厂商或网络 */
 function logSlowTask(taskId: string, startedAt: number, finishedAt: number): void {
   const durationMs = finishedAt - startedAt;
   if (durationMs <= 120_000) return;
   logWarn("task.slow", { taskId, durationMs });
 }
 
+/** sysadmin 可更高并发拉多图，降低总墙钟时间 */
 function resolveParallelGenerationsForRole(role: UserRole): number {
   return role === "sysadmin" ? SYSADMIN_PARALLEL_GENERATIONS : DEFAULT_PARALLEL_GENERATIONS;
 }
 
+/** 将单次 generate 或 persist 异常转为可序列化进 `provider_raw_response` 的失败项 */
 function generationFailureFromError(
   index: number,
   error: unknown,
@@ -1092,6 +1187,7 @@ function generationFailureFromError(
   };
 }
 
+/** 多图部分失败时拼成一条 assistant 可读错误文案 */
 function summarizeGenerationFailures(failures: GenerationFailure[]): string | null {
   if (failures.length === 0) return null;
   return failures
@@ -1099,6 +1195,9 @@ function summarizeGenerationFailures(failures: GenerationFailure[]): string | nu
     .join("\n");
 }
 
+/**
+ * 崩溃恢复：若 D1 已有「本 task 足够数量」的 image_objects，则直接判成功并补发 WS，避免重复调 API。
+ */
 async function recoverTaskFromPersistedImages(
   env: AppBindings,
   input: {
@@ -1197,6 +1296,7 @@ async function recoverTaskFromPersistedImages(
   return true;
 }
 
+/** 列出本任务已落库的非参考图（按 created_at） */
 async function loadTaskGeneratedImages(
   env: AppBindings,
   taskId: string,
@@ -1244,6 +1344,7 @@ async function loadTaskGeneratedImages(
   }));
 }
 
+/** 恢复成功后软删多写的中间图，仅保留 `keepImageIds` */
 async function cleanupTaskGeneratedImagesExcept(
   env: AppBindings,
   taskId: string,
@@ -1270,6 +1371,9 @@ async function cleanupTaskGeneratedImagesExcept(
   });
 }
 
+/**
+ * 以「running + 当前 started_at」为条件更新终态，防止旧 worker 覆盖新执行结果（changes=0 即丢租约）。
+ */
 async function finishRunningTaskIfCurrent(
   env: AppBindings,
   input: {
@@ -1310,6 +1414,7 @@ async function finishRunningTaskIfCurrent(
   return (result.meta.changes ?? 0) > 0;
 }
 
+/** 当前是否仍为同一轮 `startedAt` 的 running（用于长步骤中反复校验） */
 async function isTaskClaimCurrent(
   env: AppBindings,
   taskId: string,
@@ -1321,6 +1426,7 @@ async function isTaskClaimCurrent(
   return row?.status === "running" && row.started_at === startedAt;
 }
 
+/** 不成立则抛 `TaskClaimLostError`，在持久化/下载途中尽早止损 */
 async function assertTaskClaimCurrent(
   env: AppBindings,
   taskId: string,
@@ -1343,6 +1449,10 @@ type FailureContext = {
   expectedStartedAt?: number;
 };
 
+/**
+ * 将任务与助手消息标为失败，清理由本任务产生但未展示的生成图，必要时**退还配额**（非 PROVIDER_ERROR 类系统失败）。
+ * 并下发 `task.failed` 给 DO，前端 `applyTaskEvent` 可展示重试。
+ */
 export async function failGenerateTask(
   env: AppBindings,
   taskId: string,
@@ -1420,6 +1530,9 @@ export async function failGenerateTask(
   });
 }
 
+/**
+ * 无 expectedStartedAt 时允许结束 queued（罕见）；有则只结束匹配 running 的该轮。
+ */
 async function markGenerateTaskFailed(
   env: AppBindings,
   input: {
@@ -1453,6 +1566,7 @@ async function markGenerateTaskFailed(
   return (result.meta.changes ?? 0) > 0;
 }
 
+/** 包装 `notify`：单次失败不影响主流程，但打 error 日志 */
 async function notifyTaskEvent(
   taskId: string,
   notify: (event: TaskEvent) => Promise<void>,
@@ -1466,6 +1580,7 @@ async function notifyTaskEvent(
   }
 }
 
+/** 仅当 status=queued 时改为 running 并写 started_at/heartbeat，返回是否抢到 */
 async function claimGenerateTask(
   env: AppBindings,
   taskId: string,
@@ -1487,6 +1602,7 @@ async function claimGenerateTask(
   return (result.meta.changes ?? 0) > 0;
 }
 
+/** 任务失败时软删本任务下所有**生成图**（非参考图） */
 async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<number> {
   const result = await env.DB.prepare(
     `UPDATE image_objects
@@ -1500,6 +1616,9 @@ async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Pro
   return deletedImageCount;
 }
 
+/**
+ * 定时节拍更新 `tasks.heartbeat_at`，便于外部判断 Worker 是否仍存活；`stop` 在 finally 里调用。
+ */
 function startTaskHeartbeat(
   env: AppBindings,
   taskId: string,
@@ -1525,6 +1644,7 @@ function startTaskHeartbeat(
   };
 }
 
+/** 与当前 started_at 绑定，防并发实例乱写 */
 async function touchTaskHeartbeat(
   env: AppBindings,
   taskId: string,
@@ -1537,6 +1657,7 @@ async function touchTaskHeartbeat(
     .run();
 }
 
+/** 使用 KV 固定窗口，避免多请求同时扫全表 recovery */
 async function claimRecoveryWindow(env: AppBindings): Promise<boolean> {
   try {
     const active = await env.KV.get(TASK_RECOVERY_THROTTLE_KEY);
@@ -1551,6 +1672,9 @@ async function claimRecoveryWindow(env: AppBindings): Promise<boolean> {
   }
 }
 
+/**
+ * 将任务事件推送到「该 taskId 专属」Durable Object，由 `TaskRoom.updateStatus` 落 storage + 广播 WebSocket。
+ */
 export async function broadcastTaskEvent(
   env: AppBindings,
   taskId: string,
@@ -1566,6 +1690,9 @@ export async function broadcastTaskEvent(
   logInfo("task.broadcast.sent", { taskId, ...taskEventSummary(event) });
 }
 
+/**
+ * 创建或复用 Workflow 实例：pause 则 resume；终态则 restart。失败抛给 `startGenerateTask` 的 catch 走内联执行。
+ */
 async function startWorkflowGenerateTask(env: AppBindings, taskId: string): Promise<void> {
   const workflow = env.GEN_WORKFLOW;
   if (!workflow) return;
@@ -1594,6 +1721,9 @@ async function startWorkflowGenerateTask(env: AppBindings, taskId: string): Prom
   }
 }
 
+/**
+ * 受控并发池：多图 index 并行时**首个**未捕获错误会传回主流程（与 Promise.all 行为区分）。
+ */
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -1620,6 +1750,9 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+/**
+ * 对话模式：从当前会话取最近消息拼成多轮 `messages`（带生成图 URL 摘要），条数/长度受截断保护。
+ */
 async function buildChatMessages(
   env: AppBindings,
   sessionId: string,
@@ -1658,6 +1791,9 @@ async function buildChatMessages(
     });
 }
 
+/**
+ * 将 provider 返回的 url/base64/bytes 统一 `putImage` 入库，并返回带 `/api/i/:id` 的 `ImageAttachment`。
+ */
 async function persistProviderImage(
   env: AppBindings,
   input: { image: ProviderImage; ownerUserId: string; sessionId: string; taskId: string }
@@ -1730,6 +1866,9 @@ type DownloadedProviderImage = {
   latencyMs: number;
 };
 
+/**
+ * 供应商直链 URL 拉图：带超时、可重试状态码与指数退避，避免拖死整 task。
+ */
 async function downloadProviderImageWithRetry(
   url: string,
   logFields: Record<string, unknown>
@@ -1848,10 +1987,12 @@ async function downloadProviderImageWithRetry(
   );
 }
 
+/** 简单策略：4xx/5xx 均可能重试（亦可能快速失败，由 attempt 上限约束） */
 function isRetryableDownloadStatus(status: number): boolean {
   return status >= 400;
 }
 
+/** 结合随机抖动，降低惊群 */
 function downloadBackoffDelayMs(attempt: number): number | null {
   if (attempt >= PROVIDER_IMAGE_DOWNLOAD_MAX_ATTEMPTS) return null;
   const baseDelay = PROVIDER_IMAGE_DOWNLOAD_BACKOFF_MS[attempt - 1] ?? 16_000;
@@ -1862,6 +2003,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** 将用户上传的参考图行打上 sessionId/taskId，便于联查与权限 */
 async function attachReferenceImagesToTask(
   env: AppBindings,
   input: {
@@ -1893,6 +2035,7 @@ async function attachReferenceImagesToTask(
   });
 }
 
+/** 建任务前：参考图须属于本人且 is_reference=1 未删 */
 async function assertReferenceImagesAccessible(
   env: AppBindings,
   input: { ownerUserId: string; referenceImageIds: string[] }
@@ -1918,6 +2061,9 @@ async function assertReferenceImagesAccessible(
   throw appError("VALIDATION_ERROR", "Reference image not found or inaccessible");
 }
 
+/**
+ * 从 R2 拉取参考图字节，顺序与 `imageIds` 一致（供 provider 多模态入参）。
+ */
 async function loadReferenceImages(env: AppBindings, imageIds: string[], ownerUserId: string) {
   if (imageIds.length === 0) return [];
   logInfo("task.reference_images.load_started", {
@@ -1967,6 +2113,7 @@ async function loadReferenceImages(env: AppBindings, imageIds: string[], ownerUs
   return images;
 }
 
+/** 将 DB 查询结果重排为调用方给定的 id 顺序 */
 export function orderRowsByImageIds<T extends { id: string }>(rows: T[], imageIds: string[]): T[] {
   const rowsById = new Map(rows.map((row) => [row.id, row]));
   return imageIds.flatMap((imageId) => {
@@ -1975,6 +2122,7 @@ export function orderRowsByImageIds<T extends { id: string }>(rows: T[], imageId
   });
 }
 
+/** 超大 raw JSON 不整包写入 DB，只记长度/截断标记 */
 function redactProviderResponse(raw: unknown): unknown {
   if (!raw || typeof raw !== "object") return raw;
   const json = JSON.stringify(raw);
@@ -1982,6 +2130,7 @@ function redactProviderResponse(raw: unknown): unknown {
   return { truncated: true, length: json.length };
 }
 
+/** 日志用：统计一批 provider 返回里 url/base64/bytes 数量 */
 function providerImageKindCounts(images: ProviderImage[]): Record<string, number> {
   return images.reduce<Record<string, number>>((counts, image) => {
     counts[image.kind] = (counts[image.kind] ?? 0) + 1;
@@ -1989,6 +2138,7 @@ function providerImageKindCounts(images: ProviderImage[]): Record<string, number
   }, {});
 }
 
+/** 多 index 并发完成后按 generationIndex、再按 id 稳定排序落库 */
 function sortTaskImages(images: TaskImageAttachment[]): TaskImageAttachment[] {
   return [...images].sort((left, right) => {
     const leftIndex = left.generationIndex ?? Number.MAX_SAFE_INTEGER;
@@ -1998,6 +2148,7 @@ function sortTaskImages(images: TaskImageAttachment[]): TaskImageAttachment[] {
   });
 }
 
+/** 避免把 URL/大段 base64 打进日志 */
 function providerImageSummary(image: ProviderImage): Record<string, unknown> {
   if (image.kind === "url") {
     return { kind: image.kind, url: urlSummary(image.url) };
@@ -2016,6 +2167,7 @@ function providerImageSummary(image: ProviderImage): Record<string, unknown> {
   };
 }
 
+/** 缩减 WS 广播事件用于 `task.notify`/`broadcast` 旁路日志，避免贴全量图片对象 */
 function taskEventSummary(event: TaskEvent): Record<string, unknown> {
   if (event.type === "task.image") {
     return {

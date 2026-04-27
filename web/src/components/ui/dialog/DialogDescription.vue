@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 辅助说明：次要文字色、小号，用于 `aria-describedby`。
+ */
 import type { DialogDescriptionProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";

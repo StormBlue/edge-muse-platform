@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 404：`path: '/:pathMatch(.*)*'` 捕获所有未匹配路径；`meta.public` 允许未登录访问（如分享坏链）。
+ */
 import { useI18n } from "vue-i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
 

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 水平条形对比图：三列网格（标签 | 条 | 数值），条宽 = value/max*100%，最小 4% 以免全 0 时不可见。
+ */
 import { computed } from "vue";
 
 const props = defineProps<{
@@ -6,6 +9,7 @@ const props = defineProps<{
   items: Array<{ label: string; value: number }>;
 }>();
 
+/** 同组内最大值为 100% 宽；至少为 1 避免除零 */
 const maxValue = computed(() => Math.max(1, ...props.items.map((item) => item.value)));
 </script>
 

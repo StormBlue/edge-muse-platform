@@ -1,3 +1,6 @@
+/**
+ * 密码存储：PBKDF2-SHA256 + 随机盐，串内嵌参数；`verifyPassword` 使用 `timingSafeEqual` 防时序旁路。
+ */
 import { base64ToBytes, bytesToBase64, randomBytes, toArrayBuffer, utf8ToBytes } from "./encoding";
 
 const PASSWORD_ALGORITHM = "pbkdf2-sha256";
@@ -9,6 +12,7 @@ const PBKDF2_PARAMS = {
 const MAX_PBKDF2_ITERATIONS = 100_000;
 const MAX_PBKDF2_DK_LEN = 64;
 
+/** 生成可持久化的编码串，写入 `users.password_hash` */
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(PBKDF2_PARAMS.saltLength);
   const hash = await derivePbkdf2(password, salt, PBKDF2_PARAMS.iterations, PBKDF2_PARAMS.dkLen);
@@ -17,6 +21,7 @@ export async function hashPassword(password: string): Promise<string> {
   )}$${bytesToBase64(hash)}`;
 }
 
+/** 登录时比对；格式不合法或参数越界直接 false */
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   const parts = storedHash.split("$");
   if (parts.length !== 5 || parts[0] !== PASSWORD_ALGORITHM || parts[1] !== "v=1") {
@@ -85,6 +90,7 @@ function isSafePbkdf2Params(iterations?: number, dkLen?: number): boolean {
   );
 }
 
+/** 常量时间比较；JWT 签名校验等复用 */
 export function timingSafeEqual(left: Uint8Array, right: Uint8Array): boolean {
   if (left.length !== right.length) return false;
   let diff = 0;

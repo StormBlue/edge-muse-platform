@@ -1,3 +1,9 @@
+/**
+ * 系统管理员 API（`/api/sysadmin/*`）：
+ * - 全路由 `requireAuth` + `requireRole("sysadmin")`，可跨租户读配置、任意用户数据（巡查）；
+ * - 含 providers/keys、platform admins、dashboard、用户列表与按 user 的 sessions 详情、全局 preferences 等；
+ * - 密钥与敏感字段经 `encryptString`/`decryptString`，审计记 `audit(..., action: sys.*)`。
+ */
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -26,8 +32,10 @@ import type { AppEnv } from "../types";
 
 export const sysadminRoutes = new Hono<AppEnv>();
 
+// 仅 sysadmin；与 admin 路由组（租户管理员）权限模型不同
 sysadminRoutes.use("*", requireAuth, requireRole("sysadmin"));
 
+/** 巡查接口返回的附件形状：比前台多生成耗时、第几张等排障字段 */
 type AuditImageAttachment = {
   id: string;
   url: string;
@@ -45,6 +53,7 @@ type AuditImageAttachment = {
 };
 type AuditReferenceImage = AuditImageAttachment;
 
+/** 多图部分失败时聚合到消息 task 上 */
 type AuditGenerationFailure = {
   index: number;
   code: string;
@@ -53,6 +62,7 @@ type AuditGenerationFailure = {
   createdAt?: number | null;
 };
 
+/** 创建/全量更新 provider 时的校验体；`requestFormat` 与 registry 里实现名对应 */
 const providerSchema = z.object({
   name: z.string().min(1),
   baseUrl: z.string().min(1),
@@ -62,6 +72,8 @@ const providerSchema = z.object({
   enabled: z.boolean().default(true)
 });
 
+// ---------- 上游 Provider 定义（baseUrl、adapter、默认模型、软删）----------
+// 列表：未软删的 provider，时间倒序
 sysadminRoutes.get("/providers", async (c) => {
   const rows = await getDb(c.env)
     .select()
@@ -99,6 +111,7 @@ sysadminRoutes.post("/providers", zValidator("json", providerSchema), async (c) 
   return c.json({ id }, 201);
 });
 
+// 部分更新；supportedSizes 为数组时在 PATCH 体里需整体替换，由 zod partial 控制
 sysadminRoutes.patch("/providers/:id", zValidator("json", providerSchema.partial()), async (c) => {
   const body = c.req.valid("json");
   await getDb(c.env)
@@ -119,6 +132,7 @@ sysadminRoutes.patch("/providers/:id", zValidator("json", providerSchema.partial
   return c.json({ ok: true });
 });
 
+// 软删：下属密钥一并 disabled+deleted，避免仍指向已弃用上游
 sysadminRoutes.delete("/providers/:id", async (c) => {
   const providerId = c.req.param("id");
   const timestamp = now();
@@ -139,6 +153,7 @@ sysadminRoutes.delete("/providers/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/** 连通性烟测：当前实现仅 `baseUrl === "mock:"` 视为可本地假跑 */
 sysadminRoutes.post("/providers/:id/test", async (c) => {
   const provider = await getDb(c.env).query.providers.findFirst({
     where: eq(providers.id, c.req.param("id"))
@@ -147,6 +162,7 @@ sysadminRoutes.post("/providers/:id/test", async (c) => {
   return c.json({ ok: provider.baseUrl === "mock:" });
 });
 
+// ---------- Provider 密钥 CRUD / 连通性（加密存 `encrypted_key`，列表不返回密文） ----------
 const keySchema = z.object({
   providerId: z.string(),
   label: z.string().min(1),
@@ -300,6 +316,7 @@ sysadminRoutes.post("/provider-keys/:id/test", async (c) => {
   return c.json({ ok });
 });
 
+// ---------- 租户管理员（role=admin）：开通、列表、改密钥/配额/密码；可级联更新其名下用户的 user_provider_keys ----------
 sysadminRoutes.post(
   "/admins",
   zValidator(
@@ -470,6 +487,7 @@ sysadminRoutes.patch(
   }
 );
 
+// ---------- 运营看板：KV 缓存 60s，聚合用户角色数、任务状态数、30 日趋势、Top 用户、按 provider 任务量 ----------
 sysadminRoutes.get("/dashboard/stats", async (c) => {
   const cached = await c.env.KV.get("dashboard:stats");
   if (cached) return c.json(JSON.parse(cached));
@@ -515,6 +533,7 @@ sysadminRoutes.get("/dashboard/stats", async (c) => {
   return c.json(body);
 });
 
+// ---------- 全站用户搜索（限 200 条）：兼容无 username 列的旧库用 id 搜 ----------
 sysadminRoutes.get("/users", async (c) => {
   const q = c.req.query("q")?.trim();
   const hasUsername = await hasColumn(c.env, "users", "username");
@@ -561,6 +580,7 @@ sysadminRoutes.get("/users", async (c) => {
   return c.json({ items: rows.results });
 });
 
+// ---------- 按用户列会话（分页）：`id=me` 查当前 sysadmin 自己；`userId=_` 可查全站（条件配合 SQL）----------
 sysadminRoutes.get("/users/:id/sessions", async (c) => {
   const requestedUserId = c.req.param("id");
   const userId = requestedUserId === "me" ? c.get("user").id : requestedUserId;
@@ -670,6 +690,7 @@ sysadminRoutes.get("/users/:id/sessions", async (c) => {
   });
 });
 
+// ---------- 单会话深度巡查：消息 + 关联 task + 附件与参考图合并、从 image_objects 补生成耗时 ----------
 sysadminRoutes.get("/sessions/:id/detail", async (c) => {
   const sessionId = c.req.param("id");
   const sessionRows = await c.env.DB.prepare(
@@ -834,6 +855,7 @@ sysadminRoutes.get("/sessions/:id/detail", async (c) => {
   });
 });
 
+// ---------- 原始消息行（较少加工）：便于与 detail 接口对照排障 ----------
 sysadminRoutes.get("/sessions/:id/messages", async (c) => {
   const rows = await getDb(c.env)
     .select()
@@ -849,11 +871,14 @@ sysadminRoutes.get("/sessions/:id/messages", async (c) => {
   });
 });
 
+// ---------- 以下：巡查 API 专用辅助（合并 DB 里的 image_objects 与 messages.attachments JSON）----------
+
 type TaskParamsWithReferences = {
   referenceImageIds?: string[];
   [key: string]: unknown;
 };
 
+/** 从消息行上的 `reference_image_ids` 与 task_params 里 referenceImageIds 并集去重 */
 function uniqueAuditReferenceImageIds(
   rows: Array<{ reference_image_ids: string; task_params: string | null }>
 ): string[] {
@@ -867,6 +892,7 @@ function uniqueAuditReferenceImageIds(
   return [...ids];
 }
 
+/** 批量拉参考图元数据，供 `auditReferenceImagesForIds` 按消息顺序展开 */
 async function loadAuditReferenceImagesById(
   env: AppEnv["Bindings"],
   imageIds: string[]
@@ -905,6 +931,7 @@ async function loadAuditReferenceImagesById(
   );
 }
 
+/** 按 id 列表从 Map 取图并补上当前消息的 task/session/message 上下文 */
 function auditReferenceImagesForIds(
   imagesById: Map<string, AuditReferenceImage>,
   imageIds: string[],
@@ -927,6 +954,10 @@ function auditReferenceImagesForIds(
     }));
 }
 
+/**
+ * 按会话扫 `image_objects`（非参考图），按 message_id 分组；
+ * `durationCheckpointByTask`：同 task 多图时，后续图的「生成耗时」相对上一张完成时间戳。
+ */
 async function loadAuditGeneratedImagesByMessageId(
   env: AppEnv["Bindings"],
   sessionId: string
@@ -991,6 +1022,7 @@ async function loadAuditGeneratedImagesByMessageId(
   return imagesByMessageId;
 }
 
+/** 以 messages.attachments 为主序合并 `persistedImages` 中多出的行（DB 可能比 JSON 新） */
 function mergeAuditGeneratedImages(
   attachments: Array<Partial<AuditImageAttachment> & { id: string }>,
   persistedImages: AuditImageAttachment[],
@@ -1023,6 +1055,7 @@ function mergeAuditGeneratedImages(
   return merged;
 }
 
+/** 填空字段、统一 URL 与 messageId，保证巡查列表每行形状一致 */
 function normalizeAuditImageAttachment(
   image: Partial<AuditImageAttachment> & { id: string },
   context: {
@@ -1049,6 +1082,7 @@ function normalizeAuditImageAttachment(
   };
 }
 
+/** 优先解析 `provider_raw_response` 里 type=generation_failure；否则从 error_msg 多行文本兜底拆条 */
 function extractAuditGenerationFailures(
   rawResponse: string | null,
   fallbackCode: string | null,
@@ -1084,11 +1118,13 @@ function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** 迁移期兼容：运行时 `PRAGMA table_info` 判断列是否存在，再拼动态 SQL */
 async function hasColumn(env: Cloudflare.Env, table: string, column: string): Promise<boolean> {
   const rows = await env.DB.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
   return rows.results.some((row) => row.name === column);
 }
 
+// ---------- 当前登录 sysadmin 个人偏好（如默认 provider key）----------
 sysadminRoutes.patch(
   "/preferences",
   zValidator("json", z.object({ preferredProviderKeyId: z.string() })),

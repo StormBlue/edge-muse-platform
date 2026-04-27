@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 底部操作区：窄屏为反序纵排（常见「取消/确认」在上方），宽屏为右对齐横排；可选内建关闭按钮。
+ */
 import type { HTMLAttributes } from "vue";
 import { DialogClose } from "reka-ui";
 import { cn } from "@/lib/utils";

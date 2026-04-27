@@ -1,4 +1,8 @@
 <script setup lang="ts">
+/**
+ * 可滚长内容变体：遮罩层同时承担 grid 居中，内容区在 overlay 内滚动，避免小屏/长表单溢出。
+ * `pointer-down-outside` 中忽略滚动条等「伪外部」点击，避免误关。
+ */
 import type { DialogContentEmits, DialogContentProps } from "reka-ui";
 import type { HTMLAttributes } from "vue";
 import { reactiveOmit } from "@vueuse/core";
@@ -22,6 +26,7 @@ const emits = defineEmits<DialogContentEmits>();
 const delegatedProps = reactiveOmit(props, "class");
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+// @pointer-down-outside：若点击落在可滚动区外侧（如滚动条外缘），不当作「点外面关闭」
 </script>
 
 <template>

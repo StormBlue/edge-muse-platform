@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 系统管理看板：GET /api/sysadmin/dashboard/stats，汇总用户/任务/服务商分布、趋势与 Top 用户。
+ */
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppShell from "@/components/layout/AppShell.vue";
@@ -8,6 +11,7 @@ import StatLineChart from "@/components/stats/StatLineChart.vue";
 import StatPieChart from "@/components/stats/StatPieChart.vue";
 import { apiFetch } from "@/api/client";
 
+/** 按维度聚合的一行 count（用户角色 / 任务状态 / provider 名） */
 type CountRow = { count: number; role?: string; status?: string; name?: string | null };
 type TrendRow = { day: number; count: number };
 type TopUser = { id: string; email: string; nickname: string; task_count: number };
@@ -23,6 +27,7 @@ const stats = ref<DashboardStats | null>(null);
 const { t } = useI18n();
 const userTotal = computed(() => sum(stats.value?.userCounts));
 const taskTotal = computed(() => sum(stats.value?.taskCounts));
+/** 从 taskCounts 里抽 succeeded 行算成功率分子 */
 const successCount = computed(
   () => stats.value?.taskCounts.find((row) => row.status === "succeeded")?.count ?? 0
 );
@@ -53,10 +58,12 @@ const trendPoints = computed(
     })) ?? []
 );
 
+/** 多段聚合行求和，用于 KPI 卡总数 */
 function sum(rows?: CountRow[]) {
   return rows?.reduce((total, row) => total + row.count, 0) ?? 0;
 }
 
+/** 任务状态在饼图/柱图中的标签 */
 function statusLabel(status?: string) {
   if (status === "succeeded") return t("common.succeeded");
   if (status === "failed") return t("common.failed");

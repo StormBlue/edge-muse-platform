@@ -1,4 +1,7 @@
 <script setup lang="ts">
+/**
+ * 个人资料：改昵称。通过 Pinia `auth.updateProfile` 调 PATCH /api/me，与 session 中展示名、审计一致。
+ */
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
@@ -9,6 +12,7 @@ const auth = useAuthStore();
 const nickname = ref(auth.user?.nickname ?? "");
 const { t } = useI18n();
 
+/** 以当前输入覆盖服务端昵称并刷新 store */
 async function save() {
   await auth.updateProfile(nickname.value);
   toast.success(t("settings.saved"));
