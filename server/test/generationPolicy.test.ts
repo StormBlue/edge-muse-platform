@@ -8,6 +8,8 @@ import {
 describe("generation policy", () => {
   it("allows sysadmins to customize image count", () => {
     expect(resolveImageCountForRole("sysadmin", "text2image", 12)).toBe(12);
+    expect(MAX_SYSADMIN_IMAGE_COUNT).toBe(200);
+    expect(resolveImageCountForRole("sysadmin", "text2image", 200)).toBe(200);
   });
 
   it("forces chat mode to one image", () => {

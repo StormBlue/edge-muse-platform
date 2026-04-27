@@ -8,7 +8,7 @@ import type { SessionMode, UserRole } from "../types";
 /** 普通用户与 chat 模式下的固定张数 */
 export const DEFAULT_IMAGE_COUNT = 1;
 /** sysadmin 单次任务允许的最大 n（与 zod、settings 上限一致） */
-export const MAX_SYSADMIN_IMAGE_COUNT = 100;
+export const MAX_SYSADMIN_IMAGE_COUNT = 200;
 
 /** 非 sysadmin 时同一用户同时只能有一个 queued/running 任务（与 tasks 中 assertNoActiveGenerationTask 配合） */
 export function isSingleActiveGenerationRole(role: UserRole): boolean {
