@@ -207,13 +207,24 @@ sessionRoutes.get("/:id/messages", async (c) => {
     )
     .orderBy(desc(messages.createdAt))
     .limit(limit + 1);
+  const pageRows = rows.slice(0, limit).reverse();
+  const referenceImagesById = await loadReferenceImagesById(
+    c.env,
+    uniqueSessionMessageReferenceImageIds(pageRows),
+    session.userId
+  );
   return c.json({
-    items: rows
-      .slice(0, limit)
-      .reverse()
-      .map((row) => ({
+    items: pageRows.map((row) => {
+      const referenceImageIds = parseJson<string[]>(row.referenceImageIds, []);
+      return {
         ...row,
-        referenceImageIds: parseJson(row.referenceImageIds, []),
+        referenceImageIds,
+        referenceImages: referenceImagesForIds(referenceImagesById, referenceImageIds, {
+          taskId: row.taskId,
+          sessionId: row.sessionId,
+          messageId: row.id,
+          prompt: row.prompt
+        }),
         attachments: parseJson(row.attachments, []),
         error: row.taskErrorMsg
           ? {
@@ -221,7 +232,8 @@ sessionRoutes.get("/:id/messages", async (c) => {
               message: row.taskErrorMsg
             }
           : null
-      })),
+      };
+    }),
     nextCursor: rows.length > limit ? rows[limit].createdAt : null
   });
 });
@@ -540,6 +552,16 @@ type TaskParamsWithReferences = {
   referenceImageIds?: string[];
   [key: string]: unknown;
 };
+
+function uniqueSessionMessageReferenceImageIds(
+  rows: Array<{ referenceImageIds: string }>
+): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    for (const id of parseJson<string[]>(row.referenceImageIds, [])) ids.add(id);
+  }
+  return [...ids];
+}
 
 function uniqueReferenceImageIds(
   rows: Array<{ reference_image_ids: string; task_params: string | null }>

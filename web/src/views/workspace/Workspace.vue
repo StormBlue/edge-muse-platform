@@ -41,7 +41,12 @@ const draftTitle = ref(defaultSessionTitle());
 const submitting = ref(false);
 const messageList = ref<HTMLElement | null>(null);
 const topSentinel = ref<HTMLElement | null>(null);
-const allImages = computed(() => sessions.messages.flatMap((message) => message.attachments));
+const allImages = computed(() =>
+  sessions.messages.flatMap((message) => [
+    ...message.attachments,
+    ...(message.referenceImages ?? [])
+  ])
+);
 const resultImages = computed(() => {
   for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
     const message = sessions.messages[index];
@@ -135,6 +140,7 @@ const currentGenerationSettings = computed(() => ({
   n: sessions.currentSession?.settings?.n ?? 1
 }));
 const latestReferenceCount = computed(() => latestUserMessage.value?.referenceImageIds.length ?? 0);
+const latestReferenceImages = computed(() => latestUserMessage.value?.referenceImages ?? []);
 const sessionTitle = computed(() => sessions.currentSession?.title ?? draftTitle.value);
 const canEditTitle = computed(() => !sessions.currentSessionId && !hasRunningTask.value);
 const modeSelectionDisabled = computed(
@@ -311,6 +317,7 @@ async function submit(input: {
   submitting.value = true;
   try {
     let referenceImageIds: string[] = [];
+    let referenceImages: ImageAttachment[] = [];
     if (input.mode === "image2image" && input.files.length) {
       const form = new FormData();
       input.files.forEach((file) => form.append("files", file));
@@ -319,6 +326,7 @@ async function submit(input: {
         body: form
       });
       referenceImageIds = uploaded.images.map((image) => image.id);
+      referenceImages = uploaded.images;
     }
     const task = await sessions.generate({
       title: draftTitle.value.trim() || defaultSessionTitle(),
@@ -326,7 +334,8 @@ async function submit(input: {
       mode: input.mode,
       size: input.size,
       n: input.n,
-      referenceImageIds
+      referenceImageIds,
+      referenceImages
     });
     connect(task.wsUrl);
     draftTitle.value = task.title;
@@ -363,6 +372,7 @@ async function retry(message: Message) {
       role: "user",
       prompt: message.prompt,
       attachments: [],
+      referenceImages: findSourceReferenceImages(message),
       referenceImageIds: findSourceReferenceImageIds(message),
       status: "succeeded",
       createdAt
@@ -395,15 +405,23 @@ async function retry(message: Message) {
 }
 
 function findSourceReferenceImageIds(message: Message) {
+  return findSourceUserMessage(message)?.referenceImageIds ?? [];
+}
+
+function findSourceReferenceImages(message: Message) {
+  return findSourceUserMessage(message)?.referenceImages ?? [];
+}
+
+function findSourceUserMessage(message: Message) {
   const messageIndex = sessions.messages.findIndex((item) => item.id === message.id);
   const endIndex = messageIndex >= 0 ? messageIndex - 1 : sessions.messages.length - 1;
   for (let index = endIndex; index >= 0; index -= 1) {
     const candidate = sessions.messages[index];
     if (candidate?.sessionId === message.sessionId && candidate.role === "user") {
-      return candidate.referenceImageIds;
+      return candidate;
     }
   }
-  return [];
+  return null;
 }
 
 function activeGenerationFromError(error: unknown): ActiveGeneration | null {
@@ -893,6 +911,8 @@ function padDatePart(value: number) {
               :allow-custom-count="auth.isSysadmin"
               :read-only="oneShotTaskLocked"
               :reference-count="latestReferenceCount"
+              :reference-images="latestReferenceImages"
+              @open-reference="openImage"
               @submit="submit"
             />
           </aside>
