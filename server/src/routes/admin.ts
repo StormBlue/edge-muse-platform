@@ -56,6 +56,17 @@ const usernameSchema = z.preprocess((value) => {
   return value.trim();
 }, z.string().min(1).max(40));
 
+/** 列表页分页参数来自 URL，统一收敛到正整数并限制 pageSize，避免异常 query 触发大查询。 */
+function parsePositiveInt(
+  value: string | undefined,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER
+) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(Math.max(Math.floor(numeric), 1), max);
+}
+
 // ---------- 下属用户列表：非 sysadmin 仅 `createdBy = 自己`；sysadmin 可按 ?role= 筛 admin|user ----------
 /**
  * 多表 join 聚合 `generationCount` / `lastGenerationAt`；where 随 `actor.role` 分支。
@@ -63,9 +74,11 @@ const usernameSchema = z.preprocess((value) => {
  */
 adminRoutes.get("/users", async (c) => {
   const actor = c.get("user");
-  const q = c.req.query("q");
+  const q = c.req.query("q")?.trim();
   const status = c.req.query("status");
   const requestedRole = c.req.query("role");
+  const page = parsePositiveInt(c.req.query("page"), 1);
+  const pageSize = parsePositiveInt(c.req.query("pageSize"), 20, 100);
   // sysadmin 显式要某一类；否则全站两类；普通 admin 的 role 在下方固定为 "user"（通过三元）
   const role =
     actor.role === "sysadmin" && (requestedRole === "admin" || requestedRole === "user")
@@ -73,6 +86,23 @@ adminRoutes.get("/users", async (c) => {
       : actor.role === "sysadmin"
         ? null
         : "user";
+  const userFilters = and(
+    actor.role === "sysadmin" ? undefined : eq(users.createdBy, actor.id),
+    actor.role === "sysadmin" && !role ? inArray(users.role, ["admin", "user"]) : undefined,
+    role ? eq(users.role, role as "admin" | "user") : undefined,
+    status ? eq(users.status, status as "active" | "disabled") : undefined,
+    q
+      ? or(
+          like(users.email, `%${q}%`),
+          like(users.username, `%${q}%`),
+          like(users.nickname, `%${q}%`)
+        )
+      : undefined
+  );
+  const totalRows = await getDb(c.env)
+    .select({ count: sql<number>`count(*)` })
+    .from(users)
+    .where(userFilters);
   const rows = await getDb(c.env)
     .select({
       id: users.id,
@@ -95,25 +125,12 @@ adminRoutes.get("/users", async (c) => {
     .leftJoin(quotas, eq(quotas.userId, users.id))
     .leftJoin(userProviderKeys, eq(userProviderKeys.userId, users.id))
     .leftJoin(tasks, eq(tasks.userId, users.id))
-    .where(
-      and(
-        actor.role === "sysadmin" ? undefined : eq(users.createdBy, actor.id),
-        actor.role === "sysadmin" && !role ? inArray(users.role, ["admin", "user"]) : undefined,
-        role ? eq(users.role, role as "admin" | "user") : undefined,
-        status ? eq(users.status, status as "active" | "disabled") : undefined,
-        q
-          ? or(
-              like(users.email, `%${q}%`),
-              like(users.username, `%${q}%`),
-              like(users.nickname, `%${q}%`)
-            )
-          : undefined
-      )
-    )
+    .where(userFilters)
     .groupBy(users.id)
     .orderBy(desc(users.createdAt))
-    .limit(100);
-  return c.json({ items: rows });
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
+  return c.json({ items: rows, page, pageSize, total: totalRows[0]?.count ?? 0 });
 });
 
 // ---------- 可选的 Provider 密钥（下拉用）：不返回 `encryptedKey`；sysadmin 看全部启用，admin 仅「绑到自己 user_id」的 key ----------

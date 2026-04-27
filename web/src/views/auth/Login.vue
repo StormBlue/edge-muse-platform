@@ -3,7 +3,7 @@
  * 登录页：
  * - 先 GET `/api/config` 读 `turnstileSiteKey`；无 key 则不调起人机，直接可登录（开发/内网场景）。
  * - 有 key 时异步加载 Turnstile 脚本、`render` 到占位 div，token 经 `auth.login` 带给后端 `verifyTurnstile`。
- * - 成功：`router.push(redirect || /workspace)`；失败：toast + `resetTurnstile` 让用户重试。
+ * - 成功：尊重 redirect；无 redirect 时 sysadmin 进系统看板，其它角色进图像生成。
  * - 顶栏语言切换走 `ui.setLocale`，与全站 i18n 一致。
  */
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
@@ -39,9 +39,7 @@ async function submit() {
   loading.value = true;
   try {
     await auth.login(email.value, password.value, turnstileToken.value || undefined);
-    await router.push(
-      typeof route.query.redirect === "string" ? route.query.redirect : "/workspace"
-    );
+    await router.push(typeof route.query.redirect === "string" ? route.query.redirect : homePath());
   } catch (error) {
     const message =
       error && typeof error === "object" && "error" in error
@@ -52,6 +50,10 @@ async function submit() {
     loading.value = false;
     resetTurnstile();
   }
+}
+
+function homePath() {
+  return auth.isSysadmin ? "/sysadmin/dashboard" : "/workspace";
 }
 
 /** 拉配置 → 按需插脚本 → nextTick 后 render 一次，防重复用 turnstileWidgetId 判断 */
