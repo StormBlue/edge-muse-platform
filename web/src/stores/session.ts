@@ -20,6 +20,7 @@ export type Message = {
   role: "user" | "assistant" | "system";
   prompt?: string | null;
   attachments: ImageAttachment[];
+  referenceImages?: ImageAttachment[];
   referenceImageIds: string[];
   taskId?: string | null;
   status: string;
@@ -146,6 +147,7 @@ export const useSessionStore = defineStore("sessions", {
       size: string;
       n: number;
       referenceImageIds?: string[];
+      referenceImages?: ImageAttachment[];
     }) {
       this.loading = true;
       try {
@@ -186,6 +188,7 @@ export const useSessionStore = defineStore("sessions", {
           role: "user",
           prompt: input.prompt,
           attachments: [],
+          referenceImages: input.referenceImages ?? [],
           referenceImageIds: input.referenceImageIds ?? [],
           status: "succeeded",
           createdAt
@@ -265,6 +268,13 @@ export const useSessionStore = defineStore("sessions", {
 function normalizeMessageAttachments(message: Message): Message {
   return {
     ...message,
+    referenceImages: (message.referenceImages ?? []).map((image) => ({
+      ...image,
+      taskId: image.taskId ?? message.taskId ?? null,
+      sessionId: image.sessionId ?? message.sessionId,
+      messageId: image.messageId ?? message.id,
+      prompt: image.prompt ?? message.prompt ?? null
+    })),
     attachments: message.attachments.map((image) => ({
       ...image,
       taskId: image.taskId ?? message.taskId ?? null,

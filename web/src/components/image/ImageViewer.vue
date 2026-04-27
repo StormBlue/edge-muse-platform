@@ -94,15 +94,17 @@ function formatBytes(bytes: number) {
 <template>
   <div
     v-if="image"
-    class="fixed inset-0 z-50 grid grid-rows-[auto_minmax(0,1fr)_auto] bg-black/90 text-white"
+    class="image-viewer fixed inset-0 z-50 grid bg-black/90 text-white"
     @click.self="emit('close')"
   >
-    <header class="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-4">
+    <header
+      class="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 sm:px-4"
+    >
       <div class="min-w-0">
         <p class="truncate text-sm font-semibold">{{ image.id }}</p>
         <p class="truncate text-xs text-white/65">{{ metadata }}</p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <button
           class="viewer-button"
           type="button"
@@ -164,7 +166,7 @@ function formatBytes(bytes: number) {
       </div>
     </header>
 
-    <main class="relative min-h-0 overflow-auto p-4" @click.self="emit('close')">
+    <main class="relative min-h-0 overflow-auto p-2 sm:p-4" @click.self="emit('close')">
       <button
         v-if="hasPrevious"
         class="viewer-nav left-4"
@@ -176,7 +178,7 @@ function formatBytes(bytes: number) {
       </button>
       <div class="flex min-h-full items-center justify-center">
         <img
-          class="max-h-[78vh] max-w-[92vw] rounded-lg object-contain shadow-2xl shadow-black/50 transition-transform"
+          class="viewer-image rounded-lg object-contain shadow-2xl shadow-black/50 transition-transform"
           :src="image.url"
           alt=""
           :style="{ transform: `scale(${scale})` }"
@@ -193,13 +195,22 @@ function formatBytes(bytes: number) {
       </button>
     </main>
 
-    <footer class="border-t border-white/10 px-4 py-3">
+    <footer class="border-t border-white/10 px-3 py-2 sm:px-4 sm:py-3">
       <p class="line-clamp-2 text-xs text-white/70">{{ image.prompt }}</p>
     </footer>
   </div>
 </template>
 
 <style scoped>
+.image-viewer {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.viewer-image {
+  max-width: min(100%, 92vw);
+  max-height: min(100%, 78vh);
+}
+
 .viewer-button {
   display: inline-flex;
   height: 2.25rem;
@@ -228,5 +239,30 @@ function formatBytes(bytes: number) {
   border-radius: 999px;
   background: rgb(255 255 255 / 0.12);
   color: white;
+}
+
+@media (max-width: 640px) {
+  .image-viewer {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .viewer-image {
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 8.75rem);
+  }
+
+  .viewer-button {
+    height: 2rem;
+    width: 2rem;
+  }
+
+  .viewer-nav {
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+
+  footer {
+    display: none;
+  }
 }
 </style>

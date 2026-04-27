@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Loader2, Send, Upload, X } from "lucide-vue-next";
-import type { SessionMode } from "@/stores/session";
+import type { ImageAttachment, SessionMode } from "@/stores/session";
 
 const props = defineProps<{
   loading?: boolean;
@@ -13,11 +13,13 @@ const props = defineProps<{
   initialCount?: number;
   allowCustomCount?: boolean;
   referenceCount?: number;
+  referenceImages?: ImageAttachment[];
   variant?: "task" | "chat";
 }>();
 
 const emit = defineEmits<{
   submit: [value: { prompt: string; mode: SessionMode; size: string; n: number; files: File[] }];
+  "open-reference": [image: ImageAttachment];
 }>();
 
 const { t } = useI18n();
@@ -72,6 +74,7 @@ const visibleCountOptions = computed(() => {
   return [1];
 });
 const displayedReferenceCount = computed(() => props.referenceCount ?? files.value.length);
+const readonlyReferenceImages = computed(() => props.referenceImages ?? []);
 const uploaderLabel = computed(() => {
   if (isReadOnly.value && isImageToImage.value) {
     return t("workspace.referenceImages", { count: displayedReferenceCount.value });
@@ -339,7 +342,7 @@ async function compressImage(file: File): Promise<File> {
       </label>
 
       <div
-        v-if="previews.length"
+        v-if="previews.length || readonlyReferenceImages.length"
         class="thin-scrollbar mt-3 grid max-h-36 grid-cols-3 gap-2 overflow-y-auto"
       >
         <div
@@ -357,6 +360,16 @@ async function compressImage(file: File): Promise<File> {
             <X class="h-3.5 w-3.5" />
           </button>
         </div>
+        <button
+          v-for="image in readonlyReferenceImages"
+          :key="image.id"
+          class="aspect-square overflow-hidden rounded-lg border border-border bg-muted"
+          type="button"
+          :title="t('workspace.openPreview')"
+          @click="emit('open-reference', image)"
+        >
+          <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
+        </button>
       </div>
     </div>
 
