@@ -5,6 +5,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
+import { Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
@@ -93,6 +94,10 @@ const passwordOpen = ref(false);
 const selectedUser = ref<AdminUser | null>(null);
 const editingUser = ref<AdminUser | null>(null);
 const passwordUser = ref<AdminUser | null>(null);
+const createSaving = ref(false);
+const editSaving = ref(false);
+const quotaSaving = ref(false);
+const passwordSaving = ref(false);
 const quota = ref<QuotaSnapshot | null>(null);
 const transactions = ref<QuotaTransaction[]>([]);
 const transactionsNextCursor = ref<number | null>(null);
@@ -111,6 +116,8 @@ const quotaPercent = computed(() => {
 });
 const statusItems = computed(() => aggregateUsage("status"));
 const modeItems = computed(() => aggregateUsage("mode"));
+/** 当前用户列表接口未分页；后续接入 page/pageSize 时只需替换这里的起始偏移。 */
+const userListOffset = computed(() => 0);
 const trendPoints = computed(
   () =>
     usage.value?.trend.map((point) => ({
@@ -164,8 +171,25 @@ function defaultEditForm() {
   };
 }
 
+function setCreateOpen(open: boolean) {
+  if (!createSaving.value) createOpen.value = open;
+}
+
+function setEditOpen(open: boolean) {
+  if (!editSaving.value) editOpen.value = open;
+}
+
+function setQuotaOpen(open: boolean) {
+  if (!quotaSaving.value) quotaOpen.value = open;
+}
+
+function setPasswordOpen(open: boolean) {
+  if (!passwordSaving.value) passwordOpen.value = open;
+}
+
 /** 打开创建弹层并确保 keys 已加载供下拉使用 */
 function openCreateDialog() {
+  createSaving.value = false;
   form.value = defaultCreateForm();
   createOpen.value = true;
   if (!keys.value.length) void loadKeys();
@@ -173,17 +197,25 @@ function openCreateDialog() {
 
 /** POST 创建后 toast、关弹层、刷新表 */
 async function createUser() {
-  await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
-  toast.success(
-    form.value.role === "admin" ? t("adminUsers.adminCreated") : t("adminUsers.userCreated")
-  );
-  createOpen.value = false;
-  form.value = defaultCreateForm();
-  await load();
+  if (createSaving.value) return;
+  createSaving.value = true;
+  const createdRole = form.value.role;
+  try {
+    await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
+    toast.success(
+      createdRole === "admin" ? t("adminUsers.adminCreated") : t("adminUsers.userCreated")
+    );
+    createOpen.value = false;
+    form.value = defaultCreateForm();
+    await load();
+  } finally {
+    createSaving.value = false;
+  }
 }
 
 /** 将行数据灌入 `editForm` 并拉 keys（若空） */
 function openEditDialog(user: AdminUser) {
+  editSaving.value = false;
   editingUser.value = user;
   editForm.value = {
     nickname: user.nickname,
@@ -198,7 +230,9 @@ function openEditDialog(user: AdminUser) {
 
 /** 仅提交与初始行有差异的字段，空 diff 则直接关层 */
 async function saveEdit() {
-  if (!editingUser.value) return;
+  if (!editingUser.value || editSaving.value) return;
+  editSaving.value = true;
+  const user = editingUser.value;
   const payload: {
     nickname?: string;
     status?: "active" | "disabled";
@@ -206,32 +240,36 @@ async function saveEdit() {
     quota?: number | null;
     password?: string;
   } = {};
-  if (editForm.value.nickname !== editingUser.value.nickname) {
+  if (editForm.value.nickname !== user.nickname) {
     payload.nickname = editForm.value.nickname;
   }
-  if (editForm.value.status !== editingUser.value.status) payload.status = editForm.value.status;
+  if (editForm.value.status !== user.status) payload.status = editForm.value.status;
   // API 上 preferred 与 providerKeyId 可能只回其一，比较时要归一成同一字段语义
-  const currentProviderKeyId =
-    editingUser.value.providerKeyId ?? editingUser.value.preferredProviderKeyId ?? "";
+  const currentProviderKeyId = user.providerKeyId ?? user.preferredProviderKeyId ?? "";
   if (editForm.value.providerKeyId && editForm.value.providerKeyId !== currentProviderKeyId) {
     payload.providerKeyId = editForm.value.providerKeyId;
   }
-  if (editForm.value.quota !== editingUser.value.allocatedQuota) {
+  if (editForm.value.quota !== user.allocatedQuota) {
     payload.quota = editForm.value.quota;
   }
   if (editForm.value.password) payload.password = editForm.value.password;
   if (!Object.keys(payload).length) {
     editOpen.value = false;
+    editSaving.value = false;
     return;
   }
-  await apiFetch(`/admin/users/${editingUser.value.id}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload)
-  });
-  toast.success(t("adminUsers.userUpdated"));
-  editOpen.value = false;
-  editingUser.value = null;
-  await load();
+  try {
+    await apiFetch(`/admin/users/${user.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    });
+    toast.success(t("adminUsers.userUpdated"));
+    editOpen.value = false;
+    editingUser.value = null;
+    await load();
+  } finally {
+    editSaving.value = false;
+  }
 }
 
 /** 选中详情用户并并行拉「配额+流水+用量图」；流水游标会重置 */
@@ -268,20 +306,26 @@ async function loadUsage(userId = selectedUser.value?.id) {
  * 成功后刷新本页列表与 auth 自身 quota
  */
 async function grantQuota() {
-  if (!selectedUser.value) return;
+  const user = selectedUser.value;
+  if (!user || quotaSaving.value) return;
   if (actorRemaining.value !== null && quotaAmount.value > actorRemaining.value) {
     toast.error(t("adminUsers.quotaTooLarge"));
     return;
   }
-  await apiFetch(`/admin/users/${selectedUser.value.id}/quota`, {
-    method: "POST",
-    body: JSON.stringify({ amount: quotaAmount.value })
-  });
-  toast.success(t("adminUsers.quotaAdjusted"));
-  quotaOpen.value = false;
-  transactions.value = [];
-  transactionsNextCursor.value = null;
-  await Promise.all([load(), loadQuota(), auth.bootstrap()]);
+  quotaSaving.value = true;
+  try {
+    await apiFetch(`/admin/users/${user.id}/quota`, {
+      method: "POST",
+      body: JSON.stringify({ amount: quotaAmount.value })
+    });
+    toast.success(t("adminUsers.quotaAdjusted"));
+    quotaOpen.value = false;
+    transactions.value = [];
+    transactionsNextCursor.value = null;
+    await Promise.all([load(), loadQuota(), auth.bootstrap()]);
+  } finally {
+    quotaSaving.value = false;
+  }
 }
 
 /** 列表行内快速启停账号；若当前侧栏正在看该用户则同步本地 `selectedUser.status` */
@@ -300,6 +344,7 @@ async function toggleStatus(user: AdminUser) {
 
 /** 超管/管理员在列表行内重置子账号密码 */
 function openPasswordDialog(user: AdminUser) {
+  passwordSaving.value = false;
   passwordUser.value = user;
   passwordForm.value = { password: "", confirmPassword: "" };
   passwordOpen.value = true;
@@ -307,23 +352,30 @@ function openPasswordDialog(user: AdminUser) {
 
 /** 两次输入一致时 POST 专用改密端点 */
 async function resetPassword() {
-  if (!passwordUser.value) return;
+  const user = passwordUser.value;
+  if (!user || passwordSaving.value) return;
   if (passwordForm.value.password !== passwordForm.value.confirmPassword) {
     toast.error(t("adminUsers.passwordMismatch"));
     return;
   }
-  await apiFetch(`/admin/users/${passwordUser.value.id}/password`, {
-    method: "POST",
-    body: JSON.stringify({ password: passwordForm.value.password })
-  });
-  toast.success(t("adminUsers.passwordResetSuccess"));
-  passwordOpen.value = false;
-  passwordUser.value = null;
-  passwordForm.value = { password: "", confirmPassword: "" };
+  passwordSaving.value = true;
+  try {
+    await apiFetch(`/admin/users/${user.id}/password`, {
+      method: "POST",
+      body: JSON.stringify({ password: passwordForm.value.password })
+    });
+    toast.success(t("adminUsers.passwordResetSuccess"));
+    passwordOpen.value = false;
+    passwordUser.value = null;
+    passwordForm.value = { password: "", confirmPassword: "" };
+  } finally {
+    passwordSaving.value = false;
+  }
 }
 
 /** 打开「追加额度」弹层；若切到不同用户会触发 `openDetails` 以刷新 quota 区 */
 function openQuotaDialog(user: AdminUser) {
+  quotaSaving.value = false;
   const previousUserId = selectedUser.value?.id;
   selectedUser.value = user;
   quotaAmount.value = 10;
@@ -386,6 +438,10 @@ function modeLabel(mode: string) {
   return mode;
 }
 
+function tableRowNumber(index: number) {
+  return userListOffset.value + index + 1;
+}
+
 onMounted(() => {
   void load();
   void loadKeys();
@@ -435,9 +491,10 @@ onMounted(() => {
     >
       <div class="panel overflow-hidden">
         <div class="thin-scrollbar max-h-[calc(100vh-10rem)] overflow-auto">
-          <table class="w-full min-w-[78rem] border-collapse text-sm">
+          <table class="w-full min-w-[82rem] border-collapse text-sm">
             <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
               <tr>
+                <th class="w-16 p-3">{{ t("common.sequence") }}</th>
                 <th class="p-3">{{ t("adminUsers.user") }}</th>
                 <th class="p-3">{{ t("adminUsers.role") }}</th>
                 <th class="p-3">{{ t("common.quota") }}</th>
@@ -449,11 +506,12 @@ onMounted(() => {
             </thead>
             <tbody>
               <tr v-if="!users.length" class="border-t border-border">
-                <td class="p-6 text-center text-muted-foreground" colspan="7">
+                <td class="p-6 text-center text-muted-foreground" colspan="8">
                   {{ t("adminUsers.noUsers") }}
                 </td>
               </tr>
-              <tr v-for="user in users" :key="user.id" class="border-t border-border">
+              <tr v-for="(user, index) in users" :key="user.id" class="border-t border-border">
+                <td class="p-3 font-mono text-muted-foreground">{{ tableRowNumber(index) }}</td>
                 <td class="p-3">
                   <button class="max-w-full text-left" type="button" @click="openDetails(user)">
                     <p class="truncate font-medium">{{ user.nickname }}</p>
@@ -601,12 +659,12 @@ onMounted(() => {
       </aside>
     </div>
 
-    <Dialog v-model:open="createOpen">
+    <Dialog :open="createOpen" @update:open="setCreateOpen">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.createUser") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="createUser">
+        <form class="flex flex-col gap-3" :aria-busy="createSaving" @submit.prevent="createUser">
           <label v-if="auth.isSysadmin" class="block text-sm font-medium">
             <span>{{ t("adminUsers.role") }}</span>
             <select v-model="form.role" class="ui-field mt-1.5 h-10 px-3">
@@ -655,11 +713,12 @@ onMounted(() => {
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button class="ui-button ui-button-secondary" type="button" :disabled="createSaving">
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
+              <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
               {{ t("common.create") }}
             </button>
           </DialogFooter>
@@ -667,12 +726,12 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="editOpen">
+    <Dialog :open="editOpen" @update:open="setEditOpen">
       <DialogContent v-if="editingUser" class="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.editUser") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="saveEdit">
+        <form class="flex flex-col gap-3" :aria-busy="editSaving" @submit.prevent="saveEdit">
           <p class="text-sm text-muted-foreground">
             {{ editingUser.username }} · {{ roleLabel(editingUser.role) }}
           </p>
@@ -716,11 +775,12 @@ onMounted(() => {
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button class="ui-button ui-button-secondary" type="button" :disabled="editSaving">
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
+              <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
               {{ t("common.save") }}
             </button>
           </DialogFooter>
@@ -728,12 +788,12 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="quotaOpen">
+    <Dialog :open="quotaOpen" @update:open="setQuotaOpen">
       <DialogContent v-if="selectedUser" class="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.adjustQuota") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="grantQuota">
+        <form class="flex flex-col gap-3" :aria-busy="quotaSaving" @submit.prevent="grantQuota">
           <p class="text-sm text-muted-foreground">
             {{
               t("adminUsers.ownRemaining", {
@@ -752,11 +812,12 @@ onMounted(() => {
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button class="ui-button ui-button-secondary" type="button" :disabled="quotaSaving">
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="quotaSaving">
+              <Loader2 v-if="quotaSaving" class="h-4 w-4 animate-spin" />
               {{ t("adminUsers.confirm") }}
             </button>
           </DialogFooter>
@@ -764,12 +825,16 @@ onMounted(() => {
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="passwordOpen">
+    <Dialog :open="passwordOpen" @update:open="setPasswordOpen">
       <DialogContent v-if="passwordUser" class="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.resetPassword") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="resetPassword">
+        <form
+          class="flex flex-col gap-3"
+          :aria-busy="passwordSaving"
+          @submit.prevent="resetPassword"
+        >
           <p class="text-sm text-muted-foreground">
             {{ passwordUser.nickname }} · {{ passwordUser.username }}
           </p>
@@ -795,11 +860,16 @@ onMounted(() => {
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button
+                class="ui-button ui-button-secondary"
+                type="button"
+                :disabled="passwordSaving"
+              >
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="passwordSaving">
+              <Loader2 v-if="passwordSaving" class="h-4 w-4 animate-spin" />
               {{ t("common.save") }}
             </button>
           </DialogFooter>

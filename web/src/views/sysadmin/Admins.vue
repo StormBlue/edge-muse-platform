@@ -5,6 +5,7 @@
  */
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import {
@@ -50,6 +51,8 @@ const { t } = useI18n();
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<AdminRow | null>(null);
+const createSaving = ref(false);
+const editSaving = ref(false);
 /** 创建管理员：初配 email/username/password、默认额度与 provider */
 const form = ref({
   email: "",
@@ -77,24 +80,44 @@ async function load() {
   keys.value = keyBody.items.filter((key) => key.enabled);
 }
 
+function setCreateOpen(open: boolean) {
+  if (!createSaving.value) createOpen.value = open;
+}
+
+function setEditOpen(open: boolean) {
+  if (!editSaving.value) editOpen.value = open;
+}
+
+function openCreate() {
+  createSaving.value = false;
+  createOpen.value = true;
+}
+
 /** 新建租户管理员账号并刷新表 */
 async function create() {
-  await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
-  toast.success(t("sysadmin.adminCreated"));
-  createOpen.value = false;
-  form.value = {
-    email: "",
-    username: "",
-    password: "",
-    nickname: "",
-    providerKeyId: "",
-    quota: 100
-  };
-  await load();
+  if (createSaving.value) return;
+  createSaving.value = true;
+  try {
+    await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
+    toast.success(t("sysadmin.adminCreated"));
+    createOpen.value = false;
+    form.value = {
+      email: "",
+      username: "",
+      password: "",
+      nickname: "",
+      providerKeyId: "",
+      quota: 100
+    };
+    await load();
+  } finally {
+    createSaving.value = false;
+  }
 }
 
 /** 编辑时 password 留空表示不改 */
 function openEdit(admin: AdminRow) {
+  editSaving.value = false;
   editing.value = admin;
   editForm.value = {
     nickname: admin.nickname,
@@ -108,30 +131,33 @@ function openEdit(admin: AdminRow) {
 
 /** 仅提交变更字段；password 非空才更新哈希 */
 async function saveEdit() {
-  if (!editing.value) return;
+  if (!editing.value || editSaving.value) return;
+  editSaving.value = true;
+  const admin = editing.value;
   const payload: AdminUpdatePayload = {};
-  if (editForm.value.nickname !== editing.value.nickname)
-    payload.nickname = editForm.value.nickname;
-  if (editForm.value.status !== editing.value.status) payload.status = editForm.value.status;
-  if (
-    editForm.value.providerKeyId &&
-    editForm.value.providerKeyId !== editing.value.providerKeyId
-  ) {
+  if (editForm.value.nickname !== admin.nickname) payload.nickname = editForm.value.nickname;
+  if (editForm.value.status !== admin.status) payload.status = editForm.value.status;
+  if (editForm.value.providerKeyId && editForm.value.providerKeyId !== admin.providerKeyId) {
     payload.providerKeyId = editForm.value.providerKeyId;
   }
-  if (editForm.value.quota !== editing.value.allocatedQuota) payload.quota = editForm.value.quota;
+  if (editForm.value.quota !== admin.allocatedQuota) payload.quota = editForm.value.quota;
   if (editForm.value.password) payload.password = editForm.value.password;
   if (Object.keys(payload).length === 0) {
     editOpen.value = false;
+    editSaving.value = false;
     return;
   }
-  await apiFetch(`/sysadmin/admins/${editing.value.id}`, {
-    method: "PATCH",
-    body: JSON.stringify(payload)
-  });
-  toast.success(t("sysadmin.adminUpdated"));
-  editOpen.value = false;
-  await load();
+  try {
+    await apiFetch(`/sysadmin/admins/${admin.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload)
+    });
+    toast.success(t("sysadmin.adminUpdated"));
+    editOpen.value = false;
+    await load();
+  } finally {
+    editSaving.value = false;
+  }
 }
 
 /** 表格中 provider 列：label + hint，未绑定时显示未分配 */
@@ -147,7 +173,7 @@ onMounted(load);
   <AppShell>
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-semibold">{{ t("sysadmin.adminsTitle") }}</h1>
-      <button class="ui-button ui-button-primary" type="button" @click="createOpen = true">
+      <button class="ui-button ui-button-primary" type="button" @click="openCreate">
         {{ t("sysadmin.createAdmin") }}
       </button>
     </div>
@@ -188,12 +214,12 @@ onMounted(load);
       </table>
     </div>
 
-    <Dialog v-model:open="createOpen">
+    <Dialog :open="createOpen" @update:open="setCreateOpen">
       <DialogContent class="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{{ t("sysadmin.createAdmin") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="create">
+        <form class="flex flex-col gap-3" :aria-busy="createSaving" @submit.prevent="create">
           <label class="block text-sm font-medium">
             <span>{{ t("auth.usernameForLogin") }}</span>
             <input v-model="form.username" class="ui-field mt-1.5 h-10 px-3" required />
@@ -231,11 +257,12 @@ onMounted(load);
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button class="ui-button ui-button-secondary" type="button" :disabled="createSaving">
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
+              <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
               {{ t("common.create") }}
             </button>
           </DialogFooter>
@@ -243,12 +270,12 @@ onMounted(load);
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="editOpen">
+    <Dialog :open="editOpen" @update:open="setEditOpen">
       <DialogContent v-if="editing" class="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{{ t("sysadmin.editAdmin") }}</DialogTitle>
         </DialogHeader>
-        <form class="flex flex-col gap-3" @submit.prevent="saveEdit">
+        <form class="flex flex-col gap-3" :aria-busy="editSaving" @submit.prevent="saveEdit">
           <label class="block text-sm font-medium">
             <span>{{ t("auth.nicknameForDisplay") }}</span>
             <input v-model="editForm.nickname" class="ui-field mt-1.5 h-10 px-3" />
@@ -288,11 +315,12 @@ onMounted(load);
           </label>
           <DialogFooter class="mt-1">
             <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button">
+              <button class="ui-button ui-button-secondary" type="button" :disabled="editSaving">
                 {{ t("common.cancel") }}
               </button>
             </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit">
+            <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
+              <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
               {{ t("common.save") }}
             </button>
           </DialogFooter>

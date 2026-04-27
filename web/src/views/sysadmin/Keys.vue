@@ -41,6 +41,8 @@ const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<KeyRow | null>(null);
 const testingKeyId = ref<string | null>(null);
+const createSaving = ref(false);
+const editSaving = ref(false);
 const form = ref({
   providerId: "",
   label: "",
@@ -62,6 +64,8 @@ const editForm = ref({
 const supportedProviders = computed(() =>
   providers.value.filter((provider) => provider.enabled && provider.builtIn)
 );
+/** 当前密钥列表接口未分页；后续接入 page/pageSize 时只需替换这里的起始偏移。 */
+const keyListOffset = computed(() => 0);
 const editProviderOptions = computed(() => {
   const current = providers.value.find((provider) => provider.id === editForm.value.providerId);
   if (!current || current.builtIn) return supportedProviders.value;
@@ -85,6 +89,7 @@ async function load() {
 
 /** 打开创建并重置表单项；默认绑第一个可用 provider */
 function openCreate() {
+  createSaving.value = false;
   const provider = supportedProviders.value[0];
   form.value = {
     providerId: provider?.id ?? "",
@@ -99,13 +104,19 @@ function openCreate() {
 
 /** POST 明文 apiKey，服务端加密落库 */
 async function create() {
-  await apiFetch("/sysadmin/provider-keys", {
-    method: "POST",
-    body: JSON.stringify(form.value)
-  });
-  toast.success(t("sysadmin.keyCreated"));
-  createOpen.value = false;
-  await load();
+  if (createSaving.value) return;
+  createSaving.value = true;
+  try {
+    await apiFetch("/sysadmin/provider-keys", {
+      method: "POST",
+      body: JSON.stringify(form.value)
+    });
+    toast.success(t("sysadmin.keyCreated"));
+    createOpen.value = false;
+    await load();
+  } finally {
+    createSaving.value = false;
+  }
 }
 
 /** 切换服务商时自动带出默认模型，仍允许 sysadmin 手动覆盖为其它兼容模型名。 */
@@ -117,6 +128,7 @@ function syncCreateModelWithProvider() {
 
 /** 编辑时 apiKey 留空表示不更换 */
 function openEdit(key: KeyRow) {
+  editSaving.value = false;
   editing.value = key;
   editForm.value = {
     providerId: key.providerId,
@@ -136,24 +148,30 @@ function syncEditModelWithProvider() {
 }
 
 async function saveEdit() {
-  if (!editing.value) return;
+  if (!editing.value || editSaving.value) return;
+  editSaving.value = true;
+  const key = editing.value;
   // 空串不传 apiKey，避免无意覆盖
-  const providerChanged = editForm.value.providerId !== editing.value.providerId;
-  await apiFetch(`/sysadmin/provider-keys/${editing.value.id}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      providerId: providerChanged ? editForm.value.providerId : undefined,
-      label: editForm.value.label,
-      model: editForm.value.model,
-      apiKey: editForm.value.apiKey || undefined,
-      allocatedQuota: editForm.value.allocatedQuota,
-      enabled: editForm.value.enabled
-    })
-  });
-  toast.success(t("sysadmin.keyUpdated"));
-  editOpen.value = false;
-  editing.value = null;
-  await load();
+  const providerChanged = editForm.value.providerId !== key.providerId;
+  try {
+    await apiFetch(`/sysadmin/provider-keys/${key.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        providerId: providerChanged ? editForm.value.providerId : undefined,
+        label: editForm.value.label,
+        model: editForm.value.model,
+        apiKey: editForm.value.apiKey || undefined,
+        allocatedQuota: editForm.value.allocatedQuota,
+        enabled: editForm.value.enabled
+      })
+    });
+    toast.success(t("sysadmin.keyUpdated"));
+    editOpen.value = false;
+    editing.value = null;
+    await load();
+  } finally {
+    editSaving.value = false;
+  }
 }
 
 /** 行内快速启停，不调弹层 */
@@ -206,6 +224,10 @@ function providerMeta(id: string) {
   return `${provider.defaultModel} · ${provider.baseUrl}`;
 }
 
+function tableRowNumber(index: number) {
+  return keyListOffset.value + index + 1;
+}
+
 onMounted(load);
 </script>
 
@@ -227,9 +249,10 @@ onMounted(load);
 
     <div class="panel overflow-hidden">
       <div class="thin-scrollbar max-h-[calc(100vh-10rem)] overflow-auto">
-        <table class="w-full min-w-[60rem] text-sm">
+        <table class="w-full min-w-[64rem] text-sm">
           <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
             <tr>
+              <th class="w-16 p-3">{{ t("common.sequence") }}</th>
               <th class="p-3">{{ t("sysadmin.label") }}</th>
               <th class="p-3">{{ t("sysadmin.provider") }}</th>
               <th class="p-3">{{ t("sysadmin.keyModel") }}</th>
@@ -241,11 +264,12 @@ onMounted(load);
           </thead>
           <tbody>
             <tr v-if="!keys.length" class="border-t border-border">
-              <td class="p-4 text-center text-muted-foreground" colspan="7">
+              <td class="p-4 text-center text-muted-foreground" colspan="8">
                 {{ t("sysadmin.noKeys") }}
               </td>
             </tr>
-            <tr v-for="key in keys" :key="key.id" class="border-t border-border">
+            <tr v-for="(key, index) in keys" :key="key.id" class="border-t border-border">
+              <td class="p-3 font-mono text-muted-foreground">{{ tableRowNumber(index) }}</td>
               <td class="p-3">
                 <p class="font-medium">{{ key.label }}</p>
                 <p class="text-xs text-muted-foreground">{{ key.id }}</p>
@@ -306,9 +330,13 @@ onMounted(load);
     <div
       v-if="createOpen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="createOpen = false"
+      @click.self="!createSaving && (createOpen = false)"
     >
-      <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="create">
+      <form
+        class="panel w-full max-w-md space-y-3 p-5"
+        :aria-busy="createSaving"
+        @submit.prevent="create"
+      >
         <h2 class="font-semibold">{{ t("sysadmin.createKey") }}</h2>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -348,10 +376,16 @@ onMounted(load);
           <input v-model="form.apiKey" class="ui-field h-10 px-3" required type="password" />
         </label>
         <div class="flex justify-end gap-2 pt-2">
-          <button class="ui-button ui-button-secondary" type="button" @click="createOpen = false">
+          <button
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="createSaving"
+            @click="createOpen = false"
+          >
             {{ t("common.cancel") }}
           </button>
-          <button class="ui-button ui-button-primary" type="submit">
+          <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
+            <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
             {{ t("common.create") }}
           </button>
         </div>
@@ -361,9 +395,13 @@ onMounted(load);
     <div
       v-if="editOpen && editing"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="editOpen = false"
+      @click.self="!editSaving && (editOpen = false)"
     >
-      <form class="panel w-full max-w-md space-y-3 p-5" @submit.prevent="saveEdit">
+      <form
+        class="panel w-full max-w-md space-y-3 p-5"
+        :aria-busy="editSaving"
+        @submit.prevent="saveEdit"
+      >
         <h2 class="font-semibold">{{ t("sysadmin.editKey") }}</h2>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -409,10 +447,16 @@ onMounted(load);
           <input v-model="editForm.apiKey" class="ui-field h-10 px-3" type="password" />
         </label>
         <div class="flex justify-end gap-2 pt-2">
-          <button class="ui-button ui-button-secondary" type="button" @click="editOpen = false">
+          <button
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="editSaving"
+            @click="editOpen = false"
+          >
             {{ t("common.cancel") }}
           </button>
-          <button class="ui-button ui-button-primary" type="submit">
+          <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
+            <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
             {{ t("common.save") }}
           </button>
         </div>
