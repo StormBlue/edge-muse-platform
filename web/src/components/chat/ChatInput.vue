@@ -75,6 +75,7 @@ const visibleCountOptions = computed(() => {
 });
 const displayedReferenceCount = computed(() => props.referenceCount ?? files.value.length);
 const readonlyReferenceImages = computed(() => props.referenceImages ?? []);
+const editablePreviews = computed(() => (isReadOnly.value ? [] : previews.value));
 const uploaderLabel = computed(() => {
   if (isReadOnly.value && isImageToImage.value) {
     return t("workspace.referenceImages", { count: displayedReferenceCount.value });
@@ -114,6 +115,13 @@ watch(
     previews.value = next.map((file) => ({ file, url: URL.createObjectURL(file) }));
   },
   { deep: false }
+);
+
+watch(
+  () => [isReadOnly.value, readonlyReferenceImages.value.length] as const,
+  ([readOnly, referenceImageCount]) => {
+    if (readOnly && referenceImageCount > 0) clearFiles();
+  }
 );
 
 onBeforeUnmount(() => {
@@ -342,11 +350,11 @@ async function compressImage(file: File): Promise<File> {
       </label>
 
       <div
-        v-if="previews.length || readonlyReferenceImages.length"
+        v-if="editablePreviews.length || readonlyReferenceImages.length"
         class="thin-scrollbar mt-3 grid max-h-36 grid-cols-3 gap-2 overflow-y-auto"
       >
         <div
-          v-for="(preview, index) in previews"
+          v-for="(preview, index) in editablePreviews"
           :key="preview.url"
           class="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
         >
