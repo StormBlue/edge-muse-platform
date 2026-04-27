@@ -1935,8 +1935,9 @@ async function loadReferenceImages(env: AppBindings, imageIds: string[], ownerUs
         isNull(imageObjects.deletedAt)
       )
     );
+  const orderedRows = orderRowsByImageIds(rows, imageIds);
   const images: Array<{ bytes: Uint8Array; mime: string }> = [];
-  for (const row of rows) {
+  for (const row of orderedRows) {
     const object = await env.R2.get(row.r2Key);
     if (object) {
       const bytes = new Uint8Array(await object.arrayBuffer());
@@ -1957,13 +1958,21 @@ async function loadReferenceImages(env: AppBindings, imageIds: string[], ownerUs
       });
     }
   }
-  if (rows.length < imageIds.length) {
+  if (orderedRows.length < imageIds.length) {
     logWarn("task.reference_images.db_missing", {
       requestedImageIds: imageIds,
       foundImageIds: rows.map((row) => row.id)
     });
   }
   return images;
+}
+
+export function orderRowsByImageIds<T extends { id: string }>(rows: T[], imageIds: string[]): T[] {
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  return imageIds.flatMap((imageId) => {
+    const row = rowsById.get(imageId);
+    return row ? [row] : [];
+  });
 }
 
 function redactProviderResponse(raw: unknown): unknown {
