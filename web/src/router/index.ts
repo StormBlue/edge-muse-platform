@@ -31,11 +31,8 @@ const router = createRouter({
       component: () => import("@/views/sysadmin/Dashboard.vue"),
       meta: { role: "sysadmin" }
     },
-    {
-      path: "/sysadmin/providers",
-      component: () => import("@/views/sysadmin/Providers.vue"),
-      meta: { role: "sysadmin" }
-    },
+    // 服务商已改为内置目录，不再提供单独管理页；旧链接统一进入密钥管理。
+    { path: "/sysadmin/providers", redirect: "/sysadmin/keys", meta: { role: "sysadmin" } },
     {
       path: "/sysadmin/keys",
       component: () => import("@/views/sysadmin/Keys.vue"),

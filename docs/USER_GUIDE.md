@@ -3,9 +3,9 @@
 ## Workspace
 
 1. Open **工作台**.
-2. Choose mode: 文生图, 图生图, or 对话.
+2. Choose an available mode. The visible modes and sizes follow the provider key assigned to your account.
 3. Enter a prompt, choose size and image count, then click **生成**.
-4. For 图生图, drag, paste, or select up to 5 reference images. Large images are compressed before upload.
+4. For 图生图, drag, paste, or select reference images. Large images are compressed before upload. Some providers have stricter limits; Cubence currently accepts one reference image for image-to-image.
 5. Click a generated image to open the viewer. The viewer supports zoom, previous/next image, download, prompt copy, and message deletion.
 
 ## History
@@ -25,4 +25,5 @@
 
 ## Sysadmin
 
-- Sysadmins can manage providers, provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference.
+- Sysadmins manage provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference. Provider types are selected directly while creating a key; there is no separate provider management page.
+- Cubence keys support 文生图 and 图生图. 对话 mode is hidden for Cubence until its image chat endpoint is confirmed.

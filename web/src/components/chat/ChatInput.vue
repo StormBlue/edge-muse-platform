@@ -8,6 +8,12 @@ import { useI18n } from "vue-i18n";
 import { Loader2, Send, Upload, X } from "lucide-vue-next";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
 
+type SizeOption = {
+  value: string;
+  ratio: string;
+  label: string;
+};
+
 const props = defineProps<{
   loading?: boolean;
   generating?: boolean;
@@ -19,6 +25,8 @@ const props = defineProps<{
   referenceCount?: number;
   referenceImages?: ImageAttachment[];
   variant?: "task" | "chat";
+  sizeOptions?: SizeOption[];
+  maxReferenceFiles?: number | null;
 }>();
 
 const emit = defineEmits<{
@@ -35,7 +43,7 @@ const files = ref<File[]>([]);
 const dragging = ref(false);
 /** 与 `files` 同步的 objectURL 预览，销毁时 revoke */
 const previews = ref<Array<{ file: File; url: string }>>([]);
-const maxReferenceFiles = 5;
+const defaultMaxReferenceFiles = 5;
 const maxCustomCount = 100;
 const isReadOnly = computed(() => Boolean(props.readOnly));
 const isImageToImage = computed(() => props.mode === "image2image");
@@ -58,16 +66,23 @@ const submitLabel = computed(() => {
   return t("workspace.generate");
 });
 
-const sizeOptions = [
+const DEFAULT_SIZE_OPTIONS: SizeOption[] = [
   { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
   { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" },
   { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
   { value: "auto", ratio: "Auto", label: "Auto" }
 ];
 
+const effectiveSizeOptions = computed(() =>
+  props.sizeOptions?.length ? props.sizeOptions : DEFAULT_SIZE_OPTIONS
+);
+const effectiveMaxReferenceFiles = computed(() => {
+  const value = props.maxReferenceFiles ?? defaultMaxReferenceFiles;
+  return Math.max(1, Math.min(defaultMaxReferenceFiles, Math.floor(value)));
+});
 const selectedSizeOption = computed(
   () =>
-    sizeOptions.find((option) => option.value === size.value) ?? {
+    effectiveSizeOptions.value.find((option) => option.value === size.value) ?? {
       value: size.value,
       ratio: size.value,
       label: size.value
@@ -75,7 +90,7 @@ const selectedSizeOption = computed(
 );
 /** 只读时只显示当前选中的尺寸，避免点选改参 */
 const visibleSizeOptions = computed(() =>
-  isReadOnly.value ? [selectedSizeOption.value] : sizeOptions
+  isReadOnly.value ? [selectedSizeOption.value] : effectiveSizeOptions.value
 );
 /** 多轮/禁自定义张数时固定为 1，只读时锁当前 n */
 const visibleCountOptions = computed(() => {
@@ -97,6 +112,17 @@ watch(
   () => props.initialSize,
   (next) => {
     if (next) size.value = next;
+  },
+  { immediate: true }
+);
+
+// provider 能力变化时，非只读输入自动落到第一个可用尺寸，避免提交后才被后端拒绝
+watch(
+  () => effectiveSizeOptions.value.map((option) => option.value).join("|"),
+  () => {
+    if (isReadOnly.value) return;
+    if (effectiveSizeOptions.value.some((option) => option.value === size.value)) return;
+    size.value = effectiveSizeOptions.value[0]?.value ?? "1024x1024";
   },
   { immediate: true }
 );
@@ -134,6 +160,13 @@ watch(
     if (readOnly && referenceImageCount > 0) clearFiles();
   }
 );
+
+// 切换到单参考图 provider 时，已选文件同步裁剪，前端展示与任务层校验保持一致
+watch(effectiveMaxReferenceFiles, (maxFiles) => {
+  if (files.value.length > maxFiles) {
+    files.value = files.value.slice(0, maxFiles);
+  }
+});
 
 onBeforeUnmount(() => {
   for (const preview of previews.value) URL.revokeObjectURL(preview.url);
@@ -178,13 +211,13 @@ async function onPaste(event: ClipboardEvent) {
   }
 }
 
-/** 只收图片 MIME，经压缩后截断为最多 5 张 */
+/** 只收图片 MIME，经压缩后按当前 provider 上限截断 */
 async function addFiles(inputFiles: File[]) {
   if (isReadOnly.value) return;
   if (!isImageToImage.value) return;
   const imageFiles = inputFiles.filter((file) => file.type.startsWith("image/"));
   const compressed = await Promise.all(imageFiles.map(compressImage));
-  files.value = [...files.value, ...compressed].slice(0, maxReferenceFiles);
+  files.value = [...files.value, ...compressed].slice(0, effectiveMaxReferenceFiles.value);
 }
 
 function removeFile(index: number) {
@@ -360,7 +393,7 @@ async function compressImage(file: File): Promise<File> {
         <input
           v-if="!isReadOnly"
           class="hidden"
-          multiple
+          :multiple="effectiveMaxReferenceFiles > 1"
           accept="image/png,image/jpeg,image/webp"
           type="file"
           @change="onFiles"

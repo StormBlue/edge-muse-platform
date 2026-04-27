@@ -50,6 +50,10 @@ export interface ImageProvider {
   id: string;
   name: string;
   supportedSizes: string[];
+  /** 可选能力声明：任务创建阶段用它提前拦截服务商不支持的模式，避免扣配额后才失败 */
+  supportedModes?: SessionMode[];
+  /** 图生图单次请求最多接收几张参考图；未声明表示沿用平台通用上限 */
+  maxReferenceImages?: number;
   health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean>;
   generate(req: GenerateRequest): Promise<GenerateResponse>;
 }

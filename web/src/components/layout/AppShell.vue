@@ -21,7 +21,6 @@ import {
   Moon,
   Settings,
   SlidersHorizontal,
-  Shield,
   Sun,
   Users
 } from "lucide-vue-next";
@@ -59,7 +58,6 @@ const nav = computed(() => [
     icon: LayoutDashboard,
     show: auth.isSysadmin
   },
-  { to: "/sysadmin/providers", label: t("nav.providers"), icon: Shield, show: auth.isSysadmin },
   { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
   {
     to: "/sysadmin/users/_/sessions",
