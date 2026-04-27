@@ -25,3 +25,9 @@ Error format:
   }
 }
 ```
+
+## Related docs
+
+- [SECURITY.md](./SECURITY.md) — auth cookies, CSRF, roles
+- [DATABASE.md](./DATABASE.md) — persisted entities behind APIs
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) — request flow

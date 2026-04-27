@@ -1,7 +1,7 @@
 /**
  * 会话与消息 Pinia Store（工作台核心状态）
  *
- * 与 docs/开发需求.md、ARCHITECTURE.md 对应：
+ * 与 docs/archive/开发需求.md、根目录 ARCHITECTURE.md 对应：
  * - 「会话」sessions：文生图 / 图生图 / 对话 的容器，含默认 size、张数 n 等 settings。
  * - 「消息」messages：用户气泡 + 助手气泡；助手消息可挂 taskId，状态由后端持久化 + WebSocket 推送增量更新。
  *
@@ -274,7 +274,7 @@ export const useSessionStore = defineStore("sessions", {
     },
     /**
      * 将 Durable Object 经 WebSocket 广播的任务事件合并进当前 messages。
-     * 事件形态见 docs/开发需求.md §6.7（task.update / task.image / task.done / task.failed）。
+     * 事件形态见 docs/archive/开发需求.md §6.7（task.update / task.image / task.done / task.failed）。
      *
      * 注意：部分推送里 payload.task 可能未带全字段，故 task.image 分支用 find(taskId) 不依赖 payload.task.id。
      */

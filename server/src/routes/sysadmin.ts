@@ -25,8 +25,15 @@ import { appError } from "../lib/errors";
 import { newId, now } from "../lib/id";
 import { parseJson, stringifyJson } from "../lib/json";
 import { hashPassword } from "../lib/password";
+import { assertAssignableProviderKey, getAssignableProviderKey } from "../lib/providerKeys";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/role";
+import {
+  ensureBuiltInProviders,
+  isBuiltInProviderId,
+  isProviderKeyAssignable,
+  PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS
+} from "../providers/catalog";
 import { getProvider } from "../providers/registry";
 import type { AppEnv } from "../types";
 
@@ -75,13 +82,18 @@ const providerSchema = z.object({
 // ---------- 上游 Provider 定义（baseUrl、adapter、默认模型、软删）----------
 // 列表：未软删的 provider，时间倒序
 sysadminRoutes.get("/providers", async (c) => {
+  await ensureBuiltInProviders(c.env);
   const rows = await getDb(c.env)
     .select()
     .from(providers)
     .where(isNull(providers.deletedAt))
     .orderBy(desc(providers.createdAt));
   return c.json({
-    items: rows.map((row) => ({ ...row, supportedSizes: parseJson(row.supportedSizes, []) }))
+    items: rows.map((row) => ({
+      ...row,
+      builtIn: isBuiltInProviderId(row.id),
+      supportedSizes: parseJson(row.supportedSizes, [])
+    }))
   });
 });
 
@@ -135,6 +147,10 @@ sysadminRoutes.patch("/providers/:id", zValidator("json", providerSchema.partial
 // 软删：下属密钥一并 disabled+deleted，避免仍指向已弃用上游
 sysadminRoutes.delete("/providers/:id", async (c) => {
   const providerId = c.req.param("id");
+  // 内置 provider 是密钥页的固定可选项，只允许改绑/停用 key，不允许删除元数据本身。
+  if (isBuiltInProviderId(providerId)) {
+    throw appError("VALIDATION_ERROR", "Built-in provider cannot be deleted");
+  }
   const timestamp = now();
   await getDb(c.env)
     .update(providerKeys)
@@ -184,11 +200,26 @@ const usernameSchema = z.preprocess((value) => {
   return value.trim();
 }, z.string().min(1).max(40));
 
+/** 偏好 key 可清空；非空时必须是当前产品允许分配的 provider key。 */
+const optionalPreferredProviderKeySchema = z.preprocess((value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}, z.string().min(1).nullable());
+
 sysadminRoutes.get("/provider-keys", async (c) => {
+  const includeUnsupported = c.req.query("includeUnsupported") === "1";
   const rows = await getDb(c.env)
     .select()
     .from(providerKeys)
-    .where(isNull(providerKeys.deletedAt))
+    .where(
+      and(
+        isNull(providerKeys.deletedAt),
+        includeUnsupported
+          ? undefined
+          : inArray(providerKeys.providerId, PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS)
+      )
+    )
     .orderBy(desc(providerKeys.createdAt));
   return c.json({
     items: rows.map(({ encryptedKey: _encryptedKey, ...row }) => row)
@@ -196,25 +227,42 @@ sysadminRoutes.get("/provider-keys", async (c) => {
 });
 
 sysadminRoutes.post("/provider-keys", zValidator("json", keySchema), async (c) => {
+  await ensureBuiltInProviders(c.env);
   const body = c.req.valid("json");
+  // 服务商页面已下线，新密钥只能归属产品明确支持的内置服务商，避免旧 provider 被继续扩散使用。
+  if (!isProviderKeyAssignable(body.providerId)) {
+    throw appError("VALIDATION_ERROR", "Unsupported provider");
+  }
+  const provider = await getDb(c.env).query.providers.findFirst({
+    where: and(
+      eq(providers.id, body.providerId),
+      eq(providers.enabled, true),
+      isNull(providers.deletedAt)
+    )
+  });
+  if (!provider) throw appError("NOT_FOUND", "Provider not found");
   const id = newId("key");
   const timestamp = now();
-  await getDb(c.env)
-    .insert(providerKeys)
-    .values({
-      id,
-      providerId: body.providerId,
-      label: body.label,
-      model: body.model,
-      encryptedKey: await encryptString(body.apiKey, c.env.KEY_ENCRYPTION_KEY),
-      keyHint: body.apiKey.slice(-4),
-      allocatedQuota: body.allocatedQuota ?? null,
-      usedQuota: 0,
-      ownerAdminId: body.ownerAdminId ?? null,
-      enabled: body.enabled,
-      createdAt: timestamp,
-      updatedAt: timestamp
-    });
+  const keyInsert = {
+    id,
+    providerId: body.providerId,
+    label: body.label,
+    model: body.model,
+    encryptedKey: await encryptString(body.apiKey, c.env.KEY_ENCRYPTION_KEY),
+    keyHint: body.apiKey.slice(-4),
+    allocatedQuota: body.allocatedQuota ?? null,
+    usedQuota: 0,
+    ownerAdminId: body.ownerAdminId ?? null,
+    enabled: body.enabled,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null
+  };
+  if (body.ownerAdminId) {
+    // 创建时若同步分配给 admin，也必须满足“可分配 key”的最终状态，避免禁用 key 被写入绑定表。
+    assertAssignableProviderKey(keyInsert);
+  }
+  await getDb(c.env).insert(providerKeys).values(keyInsert);
   if (body.ownerAdminId) {
     await getDb(c.env).insert(userProviderKeys).values({
       userId: body.ownerAdminId,
@@ -246,7 +294,34 @@ sysadminRoutes.patch(
     })
   ),
   async (c) => {
+    await ensureBuiltInProviders(c.env);
     const body = c.req.valid("json");
+    const existingKey = await getDb(c.env).query.providerKeys.findFirst({
+      where: and(eq(providerKeys.id, c.req.param("id")), isNull(providerKeys.deletedAt))
+    });
+    if (!existingKey) throw appError("NOT_FOUND", "Provider key not found");
+    if (body.providerId !== undefined) {
+      // 改绑密钥同样只能切到内置支持项；未传 providerId 时允许保留历史归属并编辑其它字段。
+      if (!isProviderKeyAssignable(body.providerId)) {
+        throw appError("VALIDATION_ERROR", "Unsupported provider");
+      }
+      const provider = await getDb(c.env).query.providers.findFirst({
+        where: and(
+          eq(providers.id, body.providerId),
+          eq(providers.enabled, true),
+          isNull(providers.deletedAt)
+        )
+      });
+      if (!provider) throw appError("NOT_FOUND", "Provider not found");
+    }
+    if (body.ownerAdminId) {
+      // 给 admin 绑定已有 key 时按补丁后的最终状态校验，禁止旧 provider key 或禁用 key 继续被分配。
+      assertAssignableProviderKey({
+        providerId: body.providerId ?? existingKey.providerId,
+        enabled: body.enabled ?? existingKey.enabled,
+        deletedAt: existingKey.deletedAt
+      });
+    }
     const { apiKey, ...patchBody } = body;
     const patch = {
       ...patchBody,
@@ -340,14 +415,7 @@ sysadminRoutes.post(
     });
     if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
 
-    const providerKey = await getDb(c.env).query.providerKeys.findFirst({
-      where: and(
-        eq(providerKeys.id, body.providerKeyId),
-        eq(providerKeys.enabled, true),
-        isNull(providerKeys.deletedAt)
-      )
-    });
-    if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+    await getAssignableProviderKey(c.env, body.providerKeyId);
 
     const id = newId("adm");
     const timestamp = now();
@@ -424,14 +492,7 @@ sysadminRoutes.patch(
     if (!admin || admin.role !== "admin") throw appError("NOT_FOUND", "Admin not found");
     let changedProviderKeyId: string | null = null;
     if (body.providerKeyId !== undefined && body.providerKeyId !== admin.preferredProviderKeyId) {
-      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
-        where: and(
-          eq(providerKeys.id, body.providerKeyId),
-          eq(providerKeys.enabled, true),
-          isNull(providerKeys.deletedAt)
-        )
-      });
-      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+      await getAssignableProviderKey(c.env, body.providerKeyId);
       changedProviderKeyId = body.providerKeyId;
     }
     const userUpdate: {
@@ -462,6 +523,12 @@ sysadminRoutes.patch(
         .select({ id: users.id })
         .from(users)
         .where(sql`${users.id} = ${adminId} OR ${users.createdBy} = ${adminId}`);
+      const managedUserIds = managed.map((row) => row.id);
+      // `resolveProviderKey` 优先读取 users.preferredProviderKeyId，改绑管理员时必须同步子用户偏好。
+      await getDb(c.env)
+        .update(users)
+        .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
+        .where(inArray(users.id, managedUserIds));
       for (const row of managed) {
         await c.env.DB.prepare(
           `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)
@@ -1127,11 +1194,15 @@ async function hasColumn(env: Cloudflare.Env, table: string, column: string): Pr
 // ---------- 当前登录 sysadmin 个人偏好（如默认 provider key）----------
 sysadminRoutes.patch(
   "/preferences",
-  zValidator("json", z.object({ preferredProviderKeyId: z.string() })),
+  zValidator("json", z.object({ preferredProviderKeyId: optionalPreferredProviderKeySchema })),
   async (c) => {
+    const preferredProviderKeyId = c.req.valid("json").preferredProviderKeyId;
+    if (preferredProviderKeyId) {
+      await getAssignableProviderKey(c.env, preferredProviderKeyId);
+    }
     await getDb(c.env)
       .update(users)
-      .set({ preferredProviderKeyId: c.req.valid("json").preferredProviderKeyId, updatedAt: now() })
+      .set({ preferredProviderKeyId, updatedAt: now() })
       .where(eq(users.id, c.get("user").id));
     return c.json({ ok: true });
   }

@@ -31,7 +31,19 @@ import {
   type Message,
   type SessionMode
 } from "@/stores/session";
-import { useAuthStore } from "@/stores/auth";
+import { useAuthStore, type ProviderCapabilities } from "@/stores/auth";
+
+type ModeOption = {
+  value: SessionMode;
+  label: string;
+  icon: typeof Type;
+};
+
+type SizeOption = {
+  value: string;
+  ratio: string;
+  label: string;
+};
 
 const route = useRoute();
 const router = useRouter();
@@ -178,11 +190,20 @@ const canEditTitle = computed(() => !sessions.currentSessionId && !hasRunningTas
 const modeSelectionDisabled = computed(
   () => submitting.value || hasRunningTask.value || oneShotTaskLocked.value
 );
-const modeOptions = computed(() => [
-  { value: "text2image" as const, label: t("workspace.text2image"), icon: Type },
-  { value: "image2image" as const, label: t("workspace.image2image"), icon: ImageIcon },
-  { value: "chat" as const, label: t("workspace.continuousChat"), icon: MessageSquare }
+const allModeOptions = computed<ModeOption[]>(() => [
+  { value: "text2image", label: t("workspace.text2image"), icon: Type },
+  { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon },
+  { value: "chat", label: t("workspace.continuousChat"), icon: MessageSquare }
 ]);
+const providerCapabilities = computed(() => auth.providerCapabilities);
+const supportedModes = computed<SessionMode[]>(
+  () => providerCapabilities.value?.supportedModes ?? ["text2image", "image2image", "chat"]
+);
+const modeOptions = computed(() =>
+  allModeOptions.value.filter((option) => supportsMode(option.value))
+);
+const providerSizeOptions = computed(() => sizeOptionsForProvider(providerCapabilities.value));
+const maxReferenceFiles = computed(() => providerCapabilities.value?.maxReferenceImages ?? 5);
 
 let messageObserver: IntersectionObserver | null = null;
 /** 防 `loadMessages` 与 `restore` 的 watch 重入互抢路由 */
@@ -242,7 +263,15 @@ watch(
   () => sessions.currentSession?.mode,
   (mode) => {
     if (mode) activeMode.value = mode;
+    normalizeActiveMode();
   },
+  { immediate: true }
+);
+
+// 当前用户 key 切换为 Cubence 等受限 provider 后，主动落到可用模式，避免提交后才报错
+watch(
+  () => [supportedModes.value.join("|"), activeMode.value, modeSelectionDisabled.value] as const,
+  () => normalizeActiveMode(),
   { immediate: true }
 );
 
@@ -318,13 +347,66 @@ function resetWorkspaceDraft() {
   activePreviewImageId.value = null;
   selectedImage.value = null;
   activeMode.value = "text2image";
+  normalizeActiveMode();
   draftTitle.value = defaultSessionTitle();
 }
 
 /** 三模式切换按钮；受 `modeSelectionDisabled` 时 no-op */
 function setActiveMode(mode: SessionMode) {
   if (modeSelectionDisabled.value) return;
+  if (!supportsMode(mode)) return;
   activeMode.value = mode;
+}
+
+function supportsMode(mode: SessionMode) {
+  return supportedModes.value.includes(mode);
+}
+
+function normalizeActiveMode() {
+  if (supportsMode(activeMode.value)) return;
+  if (modeSelectionDisabled.value) return;
+  activeMode.value = supportedModes.value[0] ?? "text2image";
+}
+
+function supportsSize(size: string) {
+  const sizes = providerCapabilities.value?.supportedSizes;
+  if (!sizes?.length || sizes.includes("*")) return true;
+  return sizes.includes(size);
+}
+
+function sizeOptionsForProvider(capabilities: ProviderCapabilities | null): SizeOption[] {
+  const sizes = capabilities?.supportedSizes ?? [];
+  if (!sizes.length || sizes.includes("*")) return defaultSizeOptions();
+  return sizes.map(sizeToOption);
+}
+
+function defaultSizeOptions(): SizeOption[] {
+  return ["1024x1024", "1024x1536", "1536x1024", "auto"].map(sizeToOption);
+}
+
+function sizeToOption(size: string): SizeOption {
+  if (size === "auto") return { value: size, ratio: "Auto", label: "Auto" };
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) return { value: size, ratio: size, label: size };
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const divisor = gcd(width, height);
+  return {
+    value: size,
+    ratio: `${width / divisor}:${height / divisor}`,
+    label: `${width} x ${height}`
+  };
+}
+
+function gcd(a: number, b: number): number {
+  let left = Math.abs(a);
+  let right = Math.abs(b);
+  while (right > 0) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left || 1;
 }
 
 /** 用于筛「进行中」消息行，与 ChatMessage 展示条件一致 */
@@ -364,9 +446,21 @@ async function submit(input: {
   files: File[];
 }) {
   if (submitting.value || hasRunningTask.value) return;
+  if (!supportsMode(input.mode)) {
+    toast.error(t("workspace.modeUnsupported"));
+    return;
+  }
+  if (!supportsSize(input.size)) {
+    toast.error(t("workspace.sizeUnsupported"));
+    return;
+  }
   if (input.mode !== "chat" && oneShotTaskLocked.value) return;
   if (input.mode === "image2image" && input.files.length === 0) {
     toast.error(t("workspace.referenceRequired"));
+    return;
+  }
+  if (input.mode === "image2image" && input.files.length > maxReferenceFiles.value) {
+    toast.error(t("workspace.referenceLimit", { count: maxReferenceFiles.value }));
     return;
   }
   submitting.value = true;
@@ -819,6 +913,8 @@ function padDatePart(value: number) {
               :generating="hasRunningTask"
               :loading="inputLoading"
               :allow-custom-count="auth.isSysadmin"
+              :size-options="providerSizeOptions"
+              :max-reference-files="maxReferenceFiles"
               variant="chat"
               @submit="submit"
             />
@@ -978,6 +1074,8 @@ function padDatePart(value: number) {
               :loading="inputLoading"
               :allow-custom-count="auth.isSysadmin"
               :read-only="oneShotTaskLocked"
+              :size-options="providerSizeOptions"
+              :max-reference-files="maxReferenceFiles"
               :reference-count="latestReferenceCount"
               :reference-images="latestReferenceImages"
               @open-reference="openImage"

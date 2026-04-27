@@ -27,6 +27,7 @@ import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
 import { logWarn } from "../lib/log";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
 import { requireAuth } from "../middleware/auth";
@@ -104,7 +105,8 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
   return c.json({
     user: publicUser(user),
     csrfToken: csrf,
-    quota: await getQuota(c.env, user.id)
+    quota: await getQuota(c.env, user.id),
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
   });
 });
 
@@ -153,7 +155,12 @@ authRoutes.post("/refresh", async (c) => {
     .update(users)
     .set({ lastLoginAt: now(), updatedAt: now() })
     .where(eq(users.id, user.id));
-  return c.json({ user: publicUser(user), csrfToken: csrf, quota: await getQuota(c.env, user.id) });
+  return c.json({
+    user: publicUser(user),
+    csrfToken: csrf,
+    quota: await getQuota(c.env, user.id),
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+  });
 });
 
 // 改密：不使旧 token 失效（若需「全端下线」可扩展为黑当前 jti 或版本号）

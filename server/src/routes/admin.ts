@@ -23,9 +23,11 @@ import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
 import { newId, now } from "../lib/id";
 import { hashPassword } from "../lib/password";
+import { getAssignableProviderKey } from "../lib/providerKeys";
 import { getQuota, grantQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
 import { requireRole } from "../middleware/role";
+import { PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS } from "../providers/catalog";
 import type { AppEnv } from "../types";
 
 export const adminRoutes = new Hono<AppEnv>();
@@ -129,7 +131,13 @@ adminRoutes.get("/provider-keys", async (c) => {
     const rows = await db
       .select(baseSelect)
       .from(providerKeys)
-      .where(and(eq(providerKeys.enabled, true), isNull(providerKeys.deletedAt)))
+      .where(
+        and(
+          eq(providerKeys.enabled, true),
+          isNull(providerKeys.deletedAt),
+          inArray(providerKeys.providerId, PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS)
+        )
+      )
       .orderBy(desc(providerKeys.createdAt));
     return c.json({ items: rows });
   }
@@ -142,7 +150,8 @@ adminRoutes.get("/provider-keys", async (c) => {
       and(
         eq(userProviderKeys.userId, actor.id),
         eq(providerKeys.enabled, true),
-        isNull(providerKeys.deletedAt)
+        isNull(providerKeys.deletedAt),
+        inArray(providerKeys.providerId, PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS)
       )
     )
     .orderBy(desc(providerKeys.createdAt));
@@ -192,14 +201,7 @@ adminRoutes.post(
     }
 
     if (providerKeyId) {
-      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
-        where: and(
-          eq(providerKeys.id, providerKeyId),
-          eq(providerKeys.enabled, true),
-          isNull(providerKeys.deletedAt)
-        )
-      });
-      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+      await getAssignableProviderKey(c.env, providerKeyId);
     }
 
     if (actor.role !== "sysadmin") {
@@ -291,14 +293,7 @@ adminRoutes.patch(
     const timestamp = now();
     let changedProviderKeyId: string | null = null;
     if (body.providerKeyId !== undefined && body.providerKeyId !== target.preferredProviderKeyId) {
-      const providerKey = await getDb(c.env).query.providerKeys.findFirst({
-        where: and(
-          eq(providerKeys.id, body.providerKeyId),
-          eq(providerKeys.enabled, true),
-          isNull(providerKeys.deletedAt)
-        )
-      });
-      if (!providerKey) throw appError("NOT_FOUND", "Provider key not found");
+      await getAssignableProviderKey(c.env, body.providerKeyId);
       changedProviderKeyId = body.providerKeyId;
     }
     const userUpdate: {
@@ -333,6 +328,12 @@ adminRoutes.patch(
               .from(users)
               .where(sql`${users.id} = ${target.id} OR ${users.createdBy} = ${target.id}`)
           : [{ id: target.id }];
+      const managedUserIds = managed.map((row) => row.id);
+      // 运行时先读 users.preferredProviderKeyId，再读 user_provider_keys；两边必须同时级联换绑。
+      await getDb(c.env)
+        .update(users)
+        .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
+        .where(inArray(users.id, managedUserIds));
       for (const row of managed) {
         await c.env.DB.prepare(
           `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)

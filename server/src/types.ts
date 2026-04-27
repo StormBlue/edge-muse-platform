@@ -4,7 +4,7 @@
  */
 import type { Context } from "hono";
 
-/** 三级角色：系统管理员 / 管理员 / 普通用户（见 docs/开发需求.md §2.1） */
+/** 三级角色：系统管理员 / 管理员 / 普通用户（见 docs/archive/开发需求.md §2.1） */
 export type UserRole = "sysadmin" | "admin" | "user";
 /** 账号是否可用；禁用后 JWT 仍可能有效但 `requireAuth` 会拒 */
 export type UserStatus = "active" | "disabled";

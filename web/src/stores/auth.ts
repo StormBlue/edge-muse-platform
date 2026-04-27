@@ -14,6 +14,16 @@ import { defineStore } from "pinia";
 import { apiFetch } from "@/api/client";
 
 export type Role = "sysadmin" | "admin" | "user";
+export type ProviderCapabilities = {
+  providerId: string;
+  providerName: string;
+  providerKeyId: string;
+  requestFormat: string;
+  model: string;
+  supportedModes: Array<"text2image" | "image2image" | "chat">;
+  supportedSizes: string[];
+  maxReferenceImages: number | null;
+};
 /** 与 GET /api/me 中 user 段一致；勿信任仅存本地持久化的字段作权限边界 */
 export type User = {
   id: string;
@@ -36,6 +46,8 @@ export const useAuthStore = defineStore("auth", {
     /** 当前用户；未登录为 null */
     user: null as User | null,
     quota: null as Quota | null,
+    /** 当前用户实际 provider/key 的能力快照；为空时前端保留通用能力，后端仍会校验 */
+    providerCapabilities: null as ProviderCapabilities | null,
     /** 是否已结束首次 bootstrap（路由守卫依赖，避免未请求就跳登录） */
     loaded: false
   }),
@@ -50,12 +62,18 @@ export const useAuthStore = defineStore("auth", {
     /** 应用挂载时调用；401/网络错误清状态，但 `loaded=true` 表示「已尝试过」 */
     async bootstrap() {
       try {
-        const body = await apiFetch<{ user: User; quota: Quota }>("/me");
+        const body = await apiFetch<{
+          user: User;
+          quota: Quota;
+          providerCapabilities: ProviderCapabilities | null;
+        }>("/me");
         this.user = body.user;
         this.quota = body.quota;
+        this.providerCapabilities = body.providerCapabilities;
       } catch {
         this.user = null;
         this.quota = null;
+        this.providerCapabilities = null;
       } finally {
         this.loaded = true;
       }
@@ -65,31 +83,42 @@ export const useAuthStore = defineStore("auth", {
      * @param turnstileToken 登录页 Turnstile 控件产出，可为空时由后端策略拒绝
      */
     async login(email: string, password: string, turnstileToken?: string) {
-      const body = await apiFetch<{ user: User; quota: Quota }>("/auth/login", {
+      const body = await apiFetch<{
+        user: User;
+        quota: Quota;
+        providerCapabilities: ProviderCapabilities | null;
+      }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password, turnstileToken })
       });
       this.user = body.user;
       this.quota = body.quota;
+      this.providerCapabilities = body.providerCapabilities;
     },
     /** 调登出接口黑 jti；`.catch` 忽略网络错误仍清本地，避免卡在已删 Cookie 态 */
     async logout() {
       await apiFetch("/auth/logout", { method: "POST" }).catch(() => undefined);
       this.user = null;
       this.quota = null;
+      this.providerCapabilities = null;
     },
     /** PATCH /api/me 改昵称，成功后覆写 user */
     async updateProfile(nickname: string) {
-      const body = await apiFetch<{ user: User; quota: Quota }>("/me", {
+      const body = await apiFetch<{
+        user: User;
+        quota: Quota;
+        providerCapabilities: ProviderCapabilities | null;
+      }>("/me", {
         method: "PATCH",
         body: JSON.stringify({ nickname })
       });
       this.user = body.user;
       this.quota = body.quota;
+      this.providerCapabilities = body.providerCapabilities;
     }
   },
   // 仅把 user/quota 写入 localStorage 减轻首屏闪烁；真正鉴权以 Cookie + 服务端为准
   persist: {
-    pick: ["user", "quota"]
+    pick: ["user", "quota", "providerCapabilities"]
   }
 });

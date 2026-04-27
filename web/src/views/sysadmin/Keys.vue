@@ -4,7 +4,7 @@
  */
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { Plus, RefreshCw } from "lucide-vue-next";
+import { Loader2, PlugZap, Plus, RefreshCw } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import { apiFetch } from "@/api/client";
@@ -14,7 +14,11 @@ type ProviderRow = {
   id: string;
   name: string;
   baseUrl: string;
+  defaultModel: string;
+  requestFormat: string;
+  supportedSizes: string[];
   enabled: boolean;
+  builtIn: boolean;
 };
 
 /** 一行密钥：明文在创建/编辑时提交，列表仅回显 keyHint 与额度用量 */
@@ -36,6 +40,7 @@ const { t } = useI18n();
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<KeyRow | null>(null);
+const testingKeyId = ref<string | null>(null);
 const form = ref({
   providerId: "",
   label: "",
@@ -53,28 +58,38 @@ const editForm = ref({
   enabled: true
 });
 
-/** 建密钥时下拉只列 enabled 的 provider */
-const activeProviders = computed(() => providers.value.filter((provider) => provider.enabled));
+/** 创建/改绑密钥只允许产品内置支持项；旧 provider 仅保留在列表里用于历史 key 展示。 */
+const supportedProviders = computed(() =>
+  providers.value.filter((provider) => provider.enabled && provider.builtIn)
+);
+const editProviderOptions = computed(() => {
+  const current = providers.value.find((provider) => provider.id === editForm.value.providerId);
+  if (!current || current.builtIn) return supportedProviders.value;
+  return [current, ...supportedProviders.value];
+});
 
 /** 并行拉密钥与 provider；首次设置默认 `form.providerId` */
 async function load() {
   const [keyBody, providerBody] = await Promise.all([
-    apiFetch<{ items: KeyRow[] }>("/sysadmin/provider-keys"),
+    // 密钥管理页需要展示历史旧 provider key；分配下拉仍使用默认接口返回的受支持 key。
+    apiFetch<{ items: KeyRow[] }>("/sysadmin/provider-keys?includeUnsupported=1"),
     apiFetch<{ items: ProviderRow[] }>("/sysadmin/providers")
   ]);
   keys.value = keyBody.items;
   providers.value = providerBody.items;
-  if (!form.value.providerId && activeProviders.value[0]) {
-    form.value.providerId = activeProviders.value[0].id;
+  if (!form.value.providerId && supportedProviders.value[0]) {
+    form.value.providerId = supportedProviders.value[0].id;
+    form.value.model = supportedProviders.value[0].defaultModel;
   }
 }
 
 /** 打开创建并重置表单项；默认绑第一个可用 provider */
 function openCreate() {
+  const provider = supportedProviders.value[0];
   form.value = {
-    providerId: activeProviders.value[0]?.id ?? "",
+    providerId: provider?.id ?? "",
     label: "",
-    model: "",
+    model: provider?.defaultModel ?? "gpt-image-2",
     apiKey: "",
     allocatedQuota: null,
     enabled: true
@@ -93,6 +108,13 @@ async function create() {
   await load();
 }
 
+/** 切换服务商时自动带出默认模型，仍允许 sysadmin 手动覆盖为其它兼容模型名。 */
+function syncCreateModelWithProvider() {
+  const provider = providers.value.find((item) => item.id === form.value.providerId);
+  if (!provider) return;
+  form.value.model = provider.defaultModel;
+}
+
 /** 编辑时 apiKey 留空表示不更换 */
 function openEdit(key: KeyRow) {
   editing.value = key;
@@ -107,13 +129,20 @@ function openEdit(key: KeyRow) {
   editOpen.value = true;
 }
 
+function syncEditModelWithProvider() {
+  const provider = providers.value.find((item) => item.id === editForm.value.providerId);
+  if (!provider) return;
+  editForm.value.model = provider.defaultModel;
+}
+
 async function saveEdit() {
   if (!editing.value) return;
   // 空串不传 apiKey，避免无意覆盖
+  const providerChanged = editForm.value.providerId !== editing.value.providerId;
   await apiFetch(`/sysadmin/provider-keys/${editing.value.id}`, {
     method: "PATCH",
     body: JSON.stringify({
-      providerId: editForm.value.providerId,
+      providerId: providerChanged ? editForm.value.providerId : undefined,
       label: editForm.value.label,
       model: editForm.value.model,
       apiKey: editForm.value.apiKey || undefined,
@@ -146,10 +175,35 @@ async function deleteKey(key: KeyRow) {
   await load();
 }
 
+/** 调后端 health 探测；Cubence 这里只验证鉴权，share group 仍需真实生图 smoke test。 */
+async function testKey(key: KeyRow) {
+  testingKeyId.value = key.id;
+  try {
+    const body = await apiFetch<{ ok: boolean }>(`/sysadmin/provider-keys/${key.id}/test`, {
+      method: "POST"
+    });
+    if (body.ok) {
+      toast.success(t("sysadmin.keyTestPassed"));
+    } else {
+      toast.error(t("sysadmin.keyTestFailed"));
+    }
+  } catch {
+    toast.error(t("sysadmin.keyTestFailed"));
+  } finally {
+    testingKeyId.value = null;
+  }
+}
+
 /** 表格中 provider 列展示名，未找到时退回 raw id */
 function providerLabel(id: string) {
   const provider = providers.value.find((item) => item.id === id);
   return provider ? provider.name : id;
+}
+
+function providerMeta(id: string) {
+  const provider = providers.value.find((item) => item.id === id);
+  if (!provider) return "";
+  return `${provider.defaultModel} · ${provider.baseUrl}`;
 }
 
 onMounted(load);
@@ -214,6 +268,16 @@ onMounted(load);
                 <button
                   class="ui-button ui-button-secondary h-8 text-xs"
                   type="button"
+                  :disabled="testingKeyId === key.id"
+                  @click="testKey(key)"
+                >
+                  <Loader2 v-if="testingKeyId === key.id" class="h-3.5 w-3.5 animate-spin" />
+                  <PlugZap v-else class="h-3.5 w-3.5" />
+                  {{ t("sysadmin.testKey") }}
+                </button>
+                <button
+                  class="ui-button ui-button-secondary h-8 text-xs"
+                  type="button"
                   @click="openEdit(key)"
                 >
                   {{ t("sysadmin.edit") }}
@@ -250,12 +314,20 @@ onMounted(load);
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
             {{ t("sysadmin.provider") }}
           </span>
-          <select v-model="form.providerId" class="ui-field h-10 px-3" required>
+          <select
+            v-model="form.providerId"
+            class="ui-field h-10 px-3"
+            required
+            @change="syncCreateModelWithProvider"
+          >
             <option value="">{{ t("sysadmin.selectProvider") }}</option>
-            <option v-for="provider in activeProviders" :key="provider.id" :value="provider.id">
+            <option v-for="provider in supportedProviders" :key="provider.id" :value="provider.id">
               {{ provider.name }}
             </option>
           </select>
+          <span v-if="form.providerId" class="mt-1 block text-xs text-muted-foreground">
+            {{ providerMeta(form.providerId) }}
+          </span>
         </label>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -297,11 +369,26 @@ onMounted(load);
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
             {{ t("sysadmin.provider") }}
           </span>
-          <select v-model="editForm.providerId" class="ui-field h-10 px-3" required>
-            <option v-for="provider in providers" :key="provider.id" :value="provider.id">
+          <select
+            v-model="editForm.providerId"
+            class="ui-field h-10 px-3"
+            required
+            @change="syncEditModelWithProvider"
+          >
+            <option
+              v-for="provider in editProviderOptions"
+              :key="provider.id"
+              :value="provider.id"
+              :disabled="
+                provider.id !== editForm.providerId && (!provider.builtIn || !provider.enabled)
+              "
+            >
               {{ provider.name }}
             </option>
           </select>
+          <span v-if="editForm.providerId" class="mt-1 block text-xs text-muted-foreground">
+            {{ providerMeta(editForm.providerId) }}
+          </span>
         </label>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">

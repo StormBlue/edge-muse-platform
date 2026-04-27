@@ -11,6 +11,7 @@ import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { now } from "../lib/id";
+import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
@@ -20,7 +21,11 @@ export const meRoutes = new Hono<AppEnv>();
 // GET：应用首屏/路由守卫调用；与 auth store `bootstrap` 对齐
 meRoutes.get("/", requireAuth, async (c) => {
   const user = c.get("user");
-  return c.json({ user, quota: await getQuota(c.env, user.id) });
+  return c.json({
+    user,
+    quota: await getQuota(c.env, user.id),
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+  });
 });
 
 // PATCH /api/me：仅改昵称；响应仍带刷新后的 quota 以便侧栏与设置页数字一致
@@ -44,7 +49,8 @@ meRoutes.patch(
     });
     return c.json({
       user: { ...user, nickname: body.nickname },
-      quota: await getQuota(c.env, user.id)
+      quota: await getQuota(c.env, user.id),
+      providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
     });
   }
 );

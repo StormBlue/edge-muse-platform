@@ -10,3 +10,9 @@
 8. Open 历史 and sort by 最近, 最早, and 任务最多.
 9. Login as sysadmin and open 会话审计 for the user ID.
 10. Review R2 private image access through `/api/i/:imageId`.
+
+## Related docs
+
+- [USER_GUIDE.md](./USER_GUIDE.md)
+- [OPERATIONS.md](./OPERATIONS.md)
+- [ACCEPTANCE.md](./ACCEPTANCE.md)

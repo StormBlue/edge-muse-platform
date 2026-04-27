@@ -1,7 +1,7 @@
 /**
  * 生图任务域：从「建任务 / 跑任务 / 广播事件 / 失败与配额 / 断线恢复」到「多并发张数 n、图生图参考图、对话上下文」
  *
- * 与产品文档的对应关系（docs/开发需求.md）：
+ * 与产品文档的对应关系（docs/archive/开发需求.md）：
  * - 配额：`tryConsumeQuota` 在 `createGenerateTask` 内按「张数 n」预扣；`failGenerateTask` 在非 PROVIDER_ERROR 时 `refundQuota`（见业务规则）。
  * - 1 个任务 1 条 assistant 消息：messages.attachments 存生成结果；image_objects 存 R2 元数据。
  * - 在线推送：`TaskEvent` 类型与文档 §6.7 一致，经 `broadcastTaskEvent` 写入 DO TaskRoom。
@@ -36,8 +36,9 @@ import {
   providers,
   sessions,
   tasks,
-  userProviderKeys,
-  users
+  users,
+  type Provider as ProviderRow,
+  type Session as SessionRow
 } from "../db/schema";
 import { decryptString } from "./crypto";
 import { base64ToBytes } from "./encoding";
@@ -49,9 +50,10 @@ import { logError, logInfo, logWarn, promptSummary, urlSummary } from "./log";
 import { putImage } from "./r2";
 import { refundQuota, tryConsumeQuota } from "./quota";
 import { defaultSessionTitle } from "./sessionTitle";
+import { resolveProviderKey } from "./providerKeys";
 import { getProvider } from "../providers/registry";
 import type { GenerateParams, ImageAttachment, AppBindings, TaskStatus, UserRole } from "../types";
-import type { GenerateRequest, ProviderImage } from "../providers/types";
+import type { GenerateRequest, ImageProvider, ProviderImage } from "../providers/types";
 
 /** 单任务从 started_at 起算的超时时间；DO alarm 与 sweep 用同一量级做兜底 */
 const GENERATION_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
@@ -166,45 +168,6 @@ class TaskAttemptTimeoutError extends Error {
     this.name = "TaskAttemptTimeoutError";
     this.cause = { taskId };
   }
-}
-
-/**
- * 为任务解析实际使用的 `provider_keys` 行：优先系统管理员偏好的 key →
- * `user_provider_keys` 绑定 → 任意启用中的 key 回退（无人配置时报错）。
- */
-export async function resolveProviderKey(env: AppBindings, userId: string) {
-  const db = getDb(env);
-  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  if (user?.preferredProviderKeyId) {
-    const preferred = await db.query.providerKeys.findFirst({
-      where: and(
-        eq(providerKeys.id, user.preferredProviderKeyId),
-        eq(providerKeys.enabled, true),
-        isNull(providerKeys.deletedAt)
-      )
-    });
-    if (preferred) return preferred;
-  }
-  const assigned = await db.query.userProviderKeys.findFirst({
-    where: eq(userProviderKeys.userId, userId)
-  });
-  const keyId = assigned?.providerKeyId;
-  if (keyId) {
-    const key = await db.query.providerKeys.findFirst({
-      where: and(
-        eq(providerKeys.id, keyId),
-        eq(providerKeys.enabled, true),
-        isNull(providerKeys.deletedAt)
-      )
-    });
-    if (key) return key;
-  }
-  const fallback = await db.query.providerKeys.findFirst({
-    where: and(eq(providerKeys.enabled, true), isNull(providerKeys.deletedAt)),
-    orderBy: desc(providerKeys.createdAt)
-  });
-  if (!fallback) throw appError("PROVIDER_ERROR", "No provider key configured");
-  return fallback;
 }
 
 /**
@@ -538,6 +501,14 @@ export async function createGenerateTask(
     referenceImageIds
   };
   const key = await resolveProviderKey(env, input.userId);
+  const provider = await db.query.providers.findFirst({
+    where: and(eq(providers.id, key.providerId), isNull(providers.deletedAt))
+  });
+  if (!provider || !provider.enabled) {
+    throw appError("PROVIDER_ERROR", "Provider disabled");
+  }
+  const providerImpl = getProvider(provider.requestFormat);
+  assertProviderSupportsGenerateParams(provider, providerImpl, params);
   const settings = stringifyJson({
     size: params.size,
     n: params.n,
@@ -551,6 +522,10 @@ export async function createGenerateTask(
         where: and(eq(sessions.id, input.sessionId), isNull(sessions.deletedAt))
       })
     : null;
+  assertReusableGenerateSession(existingSession, {
+    sessionId: input.sessionId,
+    userId: input.userId
+  });
 
   if (!existingSession) {
     await db.insert(sessions).values({
@@ -680,6 +655,19 @@ export async function createGenerateTask(
 }
 
 /**
+ * 生成任务复用会话时必须校验归属，不能只相信客户端传入的 sessionId。
+ * 否则用户可把消息、任务和 provider 设置写入他人的会话，造成跨用户数据污染。
+ */
+export function assertReusableGenerateSession(
+  session: Pick<SessionRow, "userId"> | null | undefined,
+  input: { sessionId?: string; userId: string }
+): void {
+  if (!input.sessionId) return;
+  if (!session) throw appError("NOT_FOUND", "Session not found");
+  if (session.userId !== input.userId) throw appError("FORBIDDEN", "No access");
+}
+
+/**
  * 执行生图：单 Worker 内可能长时间运行；应仅由 Workflow.step 或 `waitUntil` 调用。
  * - 使用 `started_at` 作为「这一代执行」的租约，防止重复启动或旧实例覆盖新实例（`assertTaskClaimCurrent` / `TaskClaimLostError`）。
  * - 多图 `params.n`：并发度 `resolveParallelGenerationsForRole`，每张一次 provider 调用 + 落库 + 事件。
@@ -773,6 +761,7 @@ export async function runGenerateTask(
     const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
     const providerImpl = getProvider(provider.requestFormat);
     const model = params.model ?? key.model ?? provider.defaultModel;
+    assertProviderSupportsGenerateParams(provider, providerImpl, params);
     logInfo("task.provider.resolved", {
       ...baseLogFields,
       providerId: provider.id,
@@ -1161,6 +1150,51 @@ function logSlowTask(taskId: string, startedAt: number, finishedAt: number): voi
 /** sysadmin 可更高并发拉多图，降低总墙钟时间 */
 function resolveParallelGenerationsForRole(role: UserRole): number {
   return role === "sysadmin" ? SYSADMIN_PARALLEL_GENERATIONS : DEFAULT_PARALLEL_GENERATIONS;
+}
+
+/**
+ * provider 能力校验必须尽量前置到任务创建阶段，避免「写入任务/扣配额/启动 Workflow 后」
+ * 才发现当前服务商不支持某个模式。运行阶段也会再校验一次，防止配置在排队期间被修改。
+ */
+export function assertProviderSupportsGenerateParams(
+  provider: ProviderRow,
+  providerImpl: ImageProvider,
+  params: GenerateParams
+): void {
+  if (providerImpl.supportedModes && !providerImpl.supportedModes.includes(params.mode)) {
+    throw appError(
+      "VALIDATION_ERROR",
+      `${provider.name} does not support ${modeLabel(params.mode)} mode`
+    );
+  }
+
+  const referenceCount =
+    params.mode === "image2image" ? (params.referenceImageIds?.length ?? 0) : 0;
+  if (
+    params.mode === "image2image" &&
+    providerImpl.maxReferenceImages !== undefined &&
+    referenceCount > providerImpl.maxReferenceImages
+  ) {
+    throw appError(
+      "VALIDATION_ERROR",
+      `${provider.name} accepts at most ${providerImpl.maxReferenceImages} reference image`
+    );
+  }
+
+  const supportedSizes = parseJson<string[]>(provider.supportedSizes, providerImpl.supportedSizes);
+  if (
+    supportedSizes.length > 0 &&
+    !supportedSizes.includes("*") &&
+    !supportedSizes.includes(params.size)
+  ) {
+    throw appError("VALIDATION_ERROR", `${provider.name} does not support size ${params.size}`);
+  }
+}
+
+function modeLabel(mode: GenerateParams["mode"]): string {
+  if (mode === "text2image") return "text-to-image";
+  if (mode === "image2image") return "image-to-image";
+  return "chat";
 }
 
 /** 将单次 generate 或 persist 异常转为可序列化进 `provider_raw_response` 的失败项 */

@@ -101,7 +101,7 @@ export const providerKeys = sqliteTable(
 
 /**
  * 用户与 provider key 的绑定表：主键为 `user_id`，每用户最多一行（改绑走 UPSERT/替换）。
- * 生图时 `resolveProviderKey` 在 preference / 本行 / 全局启用 key 间回退。
+ * 生图时 `resolveProviderKey` 只在 preference / 本行之间选择；未绑定用户不使用全局兜底 key。
  */
 export const userProviderKeys = sqliteTable("user_provider_keys", {
   userId: text("user_id")

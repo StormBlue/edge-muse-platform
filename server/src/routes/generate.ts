@@ -40,9 +40,21 @@ const allowedSizes = [
   "auto"
 ];
 
+/** 表单或恶意请求传空字符串时视为新会话，避免插入 id 为空的脏 session。 */
+export function normalizeOptionalSessionId(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+const optionalSessionIdSchema = z.preprocess(
+  normalizeOptionalSessionId,
+  z.string().min(1).optional()
+);
+
 /** POST 体：可选 session（无则新建）、张数经 `resolveImageCountForRole` 再压一道 */
 const generateSchema = z.object({
-  sessionId: z.string().optional(),
+  sessionId: optionalSessionIdSchema,
   title: z.string().trim().min(1).max(80).optional(),
   prompt: z.string().min(1).max(4000),
   mode: z.enum(["text2image", "image2image", "chat"]).default("text2image"),
