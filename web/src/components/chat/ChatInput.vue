@@ -44,7 +44,7 @@ const dragging = ref(false);
 /** 与 `files` 同步的 objectURL 预览，销毁时 revoke */
 const previews = ref<Array<{ file: File; url: string }>>([]);
 const defaultMaxReferenceFiles = 5;
-const maxCustomCount = 100;
+const maxCustomCount = 200;
 const isReadOnly = computed(() => Boolean(props.readOnly));
 const isImageToImage = computed(() => props.mode === "image2image");
 const isContinuousChat = computed(() => props.mode === "chat");

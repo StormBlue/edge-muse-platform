@@ -47,31 +47,38 @@ const quotaLabel = computed(() => {
   return `${Math.max(auth.quota.allocatedQuota - auth.quota.usedQuota, 0)}/${auth.quota.allocatedQuota}`;
 });
 
-/** 全量导航项；`show` 控制 admin/sysadmin 段显隐 */
-const nav = computed(() => [
-  { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
-  { to: "/history", label: t("nav.history"), icon: History, show: true },
-  { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin },
-  {
+/** 全量导航项；sysadmin 把系统看板放首位，其它角色仍从图像生成开始。 */
+const nav = computed(() => {
+  const dashboardEntry = {
     to: "/sysadmin/dashboard",
     label: t("nav.dashboard"),
     icon: LayoutDashboard,
     show: auth.isSysadmin
-  },
-  { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
-  {
-    to: "/sysadmin/users/_/sessions",
-    label: t("nav.sessionAudit"),
-    icon: MessagesSquare,
-    show: auth.isSysadmin
-  },
-  {
-    to: "/sysadmin/preferences",
-    label: t("nav.preferences"),
-    icon: SlidersHorizontal,
-    show: auth.isSysadmin
-  }
-]);
+  };
+  const sharedEntries = [
+    { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
+    { to: "/history", label: t("nav.history"), icon: History, show: true },
+    { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin }
+  ];
+  const sysadminEntries = [
+    { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
+    {
+      to: "/sysadmin/users/_/sessions",
+      label: t("nav.sessionAudit"),
+      icon: MessagesSquare,
+      show: auth.isSysadmin
+    },
+    {
+      to: "/sysadmin/preferences",
+      label: t("nav.preferences"),
+      icon: SlidersHorizontal,
+      show: auth.isSysadmin
+    }
+  ];
+  return auth.isSysadmin
+    ? [dashboardEntry, ...sharedEntries, ...sysadminEntries]
+    : [...sharedEntries, dashboardEntry, ...sysadminEntries];
+});
 
 const visibleNav = computed(() => nav.value.filter((entry) => entry.show));
 

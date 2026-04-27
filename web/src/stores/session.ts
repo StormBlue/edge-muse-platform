@@ -327,6 +327,19 @@ export const useSessionStore = defineStore("sessions", {
         if (target) {
           target.status = "failed";
           target.progress = null;
+          if (payload.images?.length) {
+            const existingIds = new Set(target.attachments.map((image) => image.id));
+            for (const image of payload.images) {
+              if (existingIds.has(image.id)) continue;
+              target.attachments.push({
+                ...image,
+                taskId: target.taskId,
+                sessionId: target.sessionId,
+                messageId: target.id
+              });
+              existingIds.add(image.id);
+            }
+          }
           target.error = payload.error
             ? {
                 code: payload.error.code ?? "PROVIDER_ERROR",
