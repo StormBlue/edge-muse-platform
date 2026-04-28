@@ -13,6 +13,7 @@ import { trackExperimentEvent } from "@/api/experiments";
 import PromptAssistantFinalPrompt from "./PromptAssistantFinalPrompt.vue";
 import PromptAssistantMessages from "./PromptAssistantMessages.vue";
 import { promptAssistantLocaleFromUiLocale } from "./promptAssistantLocale";
+import { buildAiImageAssistantStartedEvent } from "./useAiImageExperimentTracking";
 import { useUiStore } from "@/stores/ui";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
@@ -21,6 +22,7 @@ import type { AssistantMessage, AssistantResponse } from "./promptAssistantTypes
 const props = defineProps<{
   mode: PromptCaseMode;
   caseItem: PromptCase | null;
+  directAccess: boolean;
   provider: ProviderCapabilities | null;
   referenceCount: number;
   referenceContextKey: string;
@@ -87,12 +89,13 @@ async function sendTurn() {
   messages.value = nextMessages;
   loading.value = true;
   if (isFirstTurn) {
-    void trackExperimentEvent({
-      eventName: "assistant_started",
-      route: "/ai-image",
-      caseId: props.caseItem?.id,
-      metadata: { mode: props.mode }
-    });
+    void trackExperimentEvent(
+      buildAiImageAssistantStartedEvent({
+        caseId: props.caseItem?.id,
+        mode: props.mode,
+        directAccess: props.directAccess
+      })
+    );
   }
   try {
     const result = await apiFetch<AssistantResponse>("/prompt-assistant/turn", {

@@ -25,6 +25,7 @@ const props = defineProps<{
   caseItem: PromptCase | null;
   selectedCaseTitle: string;
   prompt: string;
+  directAccess: boolean;
   mode: PromptCaseMode;
   supportedModes: PromptCaseMode[];
   size: string;
@@ -193,6 +194,7 @@ function scrollToAssistant() {
       <div ref="assistantAnchor">
         <PromptAssistantPanel
           :case-item="caseItem"
+          :direct-access="directAccess"
           :mode="mode"
           :provider="provider"
           :reference-count="referenceCount"

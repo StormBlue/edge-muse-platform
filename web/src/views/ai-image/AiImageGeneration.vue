@@ -7,8 +7,6 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { trackExperimentEvent } from "@/api/experiments";
-import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import AppShell from "@/components/layout/AppShell.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
@@ -16,6 +14,7 @@ import PromptCaseGallery from "./PromptCaseGallery.vue";
 import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveAiImageRecommendedSize, type AiImageSizeFallback } from "./aiImageSizeFallback";
+import { useAiImageExperimentTracking } from "./useAiImageExperimentTracking";
 import { useAiImageCases } from "./useAiImageCases";
 import { useAiImageGenerationSubmit } from "./useAiImageGenerationSubmit";
 import type { PromptCase } from "@/types/promptCases";
@@ -24,6 +23,12 @@ const { t } = useI18n();
 const auth = useAuthStore();
 const generation = useAiImageGenerationSubmit();
 const cases = useAiImageCases({ supportedModes: generation.supportedModes });
+const {
+  directAccess,
+  trackPromptCaseSelected,
+  trackAssistantPromptFilled,
+  buildSubmitExperimentEvent
+} = useAiImageExperimentTracking(auth);
 const mobileCaseSheetOpen = ref(false);
 const sizeFallback = ref<AiImageSizeFallback | null>(null);
 
@@ -52,12 +57,7 @@ function selectCase(item: PromptCase) {
   const result = cases.selectCase(item);
   syncGenerationFromCase(item, result.mode);
   mobileCaseSheetOpen.value = shouldOpenMobileCaseSheet();
-  void trackExperimentEvent({
-    eventName: "prompt_case_selected",
-    route: "/ai-image",
-    caseId: item.id,
-    metadata: { category: item.category, sourceRepo: item.sourceRepo }
-  });
+  trackPromptCaseSelected(item);
 }
 
 function applyCase(item: PromptCase) {
@@ -108,34 +108,24 @@ function copyPrompt() {
 function fillAssistantPrompt(value: { prompt: string; recommendedSize: string }) {
   cases.setPrompt(value.prompt, "assistant");
   applyRecommendedSize(value.recommendedSize);
-  void trackExperimentEvent({
-    eventName: "assistant_prompt_filled",
-    route: "/ai-image",
-    caseId: cases.selected.value?.id,
-    metadata: { promptLength: value.prompt.length }
-  });
+  trackAssistantPromptFilled(cases.selected.value?.id, value.prompt);
 }
 
 async function submitGeneration() {
   const promptSource = cases.finalPromptSource.value ?? "unknown";
   const selected = cases.selected.value;
-  const caseId = promptSource === "case" ? selected?.id : undefined;
-  const metadata = {
+  const experimentEvent = buildSubmitExperimentEvent({
+    promptSource,
+    selectedCaseId: selected?.id,
     mode: generation.mode.value,
     size: generation.size.value,
     referenceImageCount: generation.files.value.length,
-    promptSource,
-    caseContextId: promptSource === "case" ? undefined : selected?.id,
-    directAccess: isDirectGenerationAccess("/ai-image", auth.generationExperience, auth.isSysadmin)
-  };
+    directAccess: directAccess.value
+  });
   await generation.submit(
     cases.finalPrompt.value,
     promptSource === "case" ? selected?.title : undefined,
-    {
-      route: "/ai-image",
-      caseId,
-      metadata
-    }
+    experimentEvent
   );
 }
 
@@ -249,6 +239,7 @@ watch(
         <AiImagePromptPanel
           v-model:mode="generation.mode.value"
           :case-item="cases.selected.value"
+          :direct-access="directAccess"
           :has-running-task="generation.hasRunningTask.value"
           :prompt="cases.finalPrompt.value"
           :previews="generation.previews.value"

@@ -9,6 +9,7 @@ import type { SizeOption } from "@/views/workspace/workspaceOptions";
 const mocks = vi.hoisted(() => ({
   generation: null as unknown,
   cases: null as unknown,
+  authStore: null as unknown,
   trackExperimentEvent: vi.fn()
 }));
 
@@ -23,7 +24,9 @@ vi.mock("@/components/layout/AppShell.vue", () => ({
 vi.mock("./PromptCaseGallery.vue", () => ({
   default: {
     props: ["items", "loading", "selectedId"],
-    template: '<section data-testid="gallery"></section>'
+    emits: ["select"],
+    template:
+      '<button data-testid="select-case" type="button" @click="$emit(\'select\', items[0])"></button>'
   }
 }));
 
@@ -46,7 +49,7 @@ vi.mock("./PromptCaseMobileSheet.vue", () => ({
 vi.mock("./AiImagePromptPanel.vue", () => ({
   default: {
     name: "AiImagePromptPanel",
-    props: ["mode", "size", "sizeFallbackNotice"],
+    props: ["mode", "size", "sizeFallbackNotice", "directAccess"],
     emits: [
       "addFiles",
       "clearPrompt",
@@ -58,15 +61,21 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
       "update:prompt",
       "update:size"
     ],
-    template: '<section data-testid="prompt-panel">{{ mode }}|{{ sizeFallbackNotice }}</section>'
+    template: `
+      <section data-testid="prompt-panel">
+        {{ mode }}|{{ sizeFallbackNotice }}
+        <button
+          data-testid="fill-assistant"
+          type="button"
+          @click="$emit('fillAssistant', { prompt: '助手改写 prompt', recommendedSize: '1024x1024' })"
+        ></button>
+      </section>
+    `
   }
 }));
 
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: () => ({
-    quota: { allocatedQuota: null, usedQuota: 0, remainingQuota: null },
-    providerCapabilities: null
-  })
+  useAuthStore: () => mocks.authStore
 }));
 
 vi.mock("vue-i18n", () => ({
@@ -94,8 +103,20 @@ vi.mock("./useAiImageCases", () => ({
 describe("AiImageGeneration", () => {
   beforeEach(() => {
     mocks.trackExperimentEvent.mockReset();
+    mocks.authStore = authStore();
     mocks.generation = generationState();
     mocks.cases = casesState();
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: vi.fn().mockReturnValue({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn()
+      })
+    });
   });
 
   it("syncs generation mode and size fallback when selected case context changes", async () => {
@@ -144,6 +165,48 @@ describe("AiImageGeneration", () => {
       }
     });
   });
+
+  it("tracks direct-access case selection and assistant prompt fill metadata", async () => {
+    mocks.authStore = authStore({
+      generationExperience: {
+        experimentKey: "generation_experience",
+        status: "running",
+        strategy: "ab_test",
+        variant: "A",
+        navTarget: "/workspace",
+        showLegacy: true,
+        showAi: false
+      }
+    });
+    const wrapper = mount(AiImageGeneration);
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase({ id: "case_direct", sourceRepo: "internal_repo" });
+    cases.items.value = [selected];
+    await nextTick();
+
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    expect(mocks.trackExperimentEvent).toHaveBeenNthCalledWith(1, {
+      eventName: "prompt_case_selected",
+      route: "/ai-image",
+      caseId: "case_direct",
+      metadata: {
+        category: selected.category,
+        sourceRepo: "internal_repo",
+        directAccess: true
+      }
+    });
+
+    await wrapper.get('[data-testid="fill-assistant"]').trigger("click");
+    expect(mocks.trackExperimentEvent).toHaveBeenNthCalledWith(2, {
+      eventName: "assistant_prompt_filled",
+      route: "/ai-image",
+      caseId: "case_direct",
+      metadata: {
+        promptLength: "助手改写 prompt".length,
+        directAccess: true
+      }
+    });
+  });
 });
 
 function generationState() {
@@ -188,11 +251,27 @@ function casesState() {
     selectedMode: ref<PromptCaseMode>("text2image"),
     size: ref(""),
     sizes: computed(() => []),
-    applyCasePrompt: vi.fn(),
+    applyCasePrompt: vi.fn((item: PromptCase) => {
+      selected.value = item;
+      return { prompt: item.promptTemplate, mode: item.modes[0] ?? "text2image" };
+    }),
     clearPrompt: vi.fn(),
     load: vi.fn(),
-    selectCase: vi.fn(),
+    selectCase: vi.fn((item: PromptCase) => {
+      selected.value = item;
+      return { mode: item.modes[0] ?? "text2image" };
+    }),
     setPrompt: vi.fn()
+  };
+}
+
+function authStore(overrides: Record<string, unknown> = {}) {
+  return {
+    quota: { allocatedQuota: null, usedQuota: 0, remainingQuota: null },
+    providerCapabilities: null,
+    generationExperience: null,
+    isSysadmin: false,
+    ...overrides
   };
 }
 

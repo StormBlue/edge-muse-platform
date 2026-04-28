@@ -604,6 +604,50 @@ describe("generation experiments D1 integration", () => {
     expect(metrics).toEqual([]);
   });
 
+  it("infers and excludes direct-access AI page events from default funnel metrics", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "force_legacy",
+      trafficPercent: 0,
+      scope: { userIds: ["usr_1"] }
+    });
+
+    await recordExperimentEvent(ctx.env, authUser("usr_1"), {
+      eventName: "generation_page_opened",
+      route: "/ai-image",
+      metadata: {}
+    });
+    await recordExperimentEvent(ctx.env, authUser("usr_1"), {
+      eventName: "prompt_case_selected",
+      route: "/ai-image",
+      caseId: "case_direct",
+      metadata: { category: "商品与广告" }
+    });
+    await recordExperimentEvent(ctx.env, authUser("usr_1"), {
+      eventName: "assistant_started",
+      route: "/ai-image",
+      metadata: { mode: "text2image" }
+    });
+    await recordExperimentEvent(ctx.env, authUser("usr_1"), {
+      eventName: "assistant_prompt_filled",
+      route: "/ai-image",
+      caseId: "case_direct",
+      metadata: { promptLength: 48 }
+    });
+
+    const events = await getDb(ctx.env).select().from(experimentEvents);
+    const metrics = await getGenerationExperimentMetrics(ctx.env);
+
+    expect(events).toHaveLength(4);
+    expect(events.map((event) => JSON.parse(event.metadata))).toEqual([
+      { directAccess: true },
+      { category: "商品与广告", directAccess: true },
+      { mode: "text2image", directAccess: true },
+      { promptLength: 48, directAccess: true }
+    ]);
+    expect(metrics).toEqual([]);
+  });
+
   it("does not create retry experiment metrics for continuous chat mode", async () => {
     await saveGenerationExperiment(ctx.env, "sys_1", {
       status: "running",

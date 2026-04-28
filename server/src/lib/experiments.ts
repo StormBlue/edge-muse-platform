@@ -17,6 +17,14 @@ import { isInGenerationExperimentScope } from "./experimentScope";
 import { appError } from "./errors";
 import { newId, now } from "./id";
 import { parseJson, stringifyJson } from "./json";
+import {
+  clientGenerationExperimentEventSchema,
+  generationExperimentEventSchema,
+  generationExperimentMetricEventName,
+  isDirectAccessPrimaryMetricEventName,
+  isTaskResultExperimentEventName,
+  type TaskResultExperimentEventName
+} from "./generationExperimentEvents";
 import type { AppBindings, AuthUser } from "../types";
 
 export const GENERATION_EXPERIENCE_KEY = "generation_experience";
@@ -34,29 +42,8 @@ export const experimentPatchSchema = z.object({
   scope: z.record(z.string(), z.unknown()).default({})
 });
 
-const experimentEventNames = [
-  "generation_entry_exposed",
-  "generation_page_opened",
-  "prompt_case_selected",
-  "assistant_started",
-  "assistant_prompt_filled",
-  "generate_submitted",
-  "generate_succeeded",
-  "generate_failed",
-  "variant_switched_directly"
-] as const;
-
-const clientExperimentEventNames = [
-  "generation_entry_exposed",
-  "generation_page_opened",
-  "prompt_case_selected",
-  "assistant_started",
-  "assistant_prompt_filled",
-  "variant_switched_directly"
-] as const;
-
 export const experimentEventSchema = z.object({
-  eventName: z.enum(experimentEventNames),
+  eventName: generationExperimentEventSchema,
   route: z.string().trim().max(120).optional(),
   caseId: z.string().trim().max(120).optional(),
   taskId: z.string().trim().max(120).optional(),
@@ -65,7 +52,7 @@ export const experimentEventSchema = z.object({
 
 export const clientExperimentEventSchema = z
   .object({
-    eventName: z.enum(clientExperimentEventNames),
+    eventName: clientGenerationExperimentEventSchema,
     route: z.string().trim().max(120).optional(),
     caseId: z.string().trim().max(120).optional(),
     metadata: z.record(z.string(), z.unknown()).default({})
@@ -75,10 +62,6 @@ export const clientExperimentEventSchema = z
 export type ExperimentStrategy = z.infer<typeof experimentPatchSchema>["strategy"];
 export type ExperimentStatus = z.infer<typeof experimentPatchSchema>["status"];
 export type ExperimentVariant = "A" | "B" | "parallel" | "sysadmin";
-export type TaskResultExperimentEventName = Extract<
-  z.infer<typeof experimentEventSchema>["eventName"],
-  "generate_succeeded" | "generate_failed"
->;
 export type GenerationExperimentMetric = { variant: string; eventName: string; count: number };
 export type GenerationExperimentMetricsWindow = {
   since: number;
@@ -332,10 +315,10 @@ export async function recordExperimentEvent(
   input: z.infer<typeof experimentEventSchema>,
   options: { trustedTaskResultEvent?: boolean } = {}
 ) {
-  const submitted = isTaskResultEvent(input.eventName)
+  const submitted = isTaskResultExperimentEventName(input.eventName)
     ? await findSubmittedEventSnapshot(env, user.id, input.taskId)
     : null;
-  if (isTaskResultEvent(input.eventName) && input.taskId) {
+  if (isTaskResultExperimentEventName(input.eventName) && input.taskId) {
     const existing = options.trustedTaskResultEvent
       ? await findExistingServerTaskResultEvent(env, user.id, input.taskId, input.eventName)
       : await findExistingTaskResultEvent(env, user.id, input.taskId, input.eventName);
@@ -343,7 +326,7 @@ export async function recordExperimentEvent(
   }
   const attribution = await resolveEventAttribution(env, user, input, submitted);
   const metadata =
-    isTaskResultEvent(input.eventName) && submitted
+    isTaskResultExperimentEventName(input.eventName) && submitted
       ? {
           ...submitted.metadata,
           ...input.metadata,
@@ -351,8 +334,8 @@ export async function recordExperimentEvent(
         }
       : { ...input.metadata, ...attribution.metadata };
   if (
-    input.eventName === "generate_submitted" &&
     metadata.directAccess !== true &&
+    isDirectAccessPrimaryMetricEventName(input.eventName) &&
     isDirectAccessGenerateRoute(attribution.variant, input.route)
   ) {
     metadata.directAccess = true;
@@ -476,7 +459,7 @@ async function resolveEventAttribution(
 ): Promise<{ variant: ExperimentVariant; metadata: Record<string, unknown> }> {
   if (user.role === "sysadmin") return { variant: "sysadmin", metadata: {} };
 
-  if (isTaskResultEvent(input.eventName) && submitted) {
+  if (isTaskResultExperimentEventName(input.eventName) && submitted) {
     return {
       variant: submitted.variant,
       metadata: { attributionSource: "generate_submitted" }
@@ -486,16 +469,10 @@ async function resolveEventAttribution(
   const assignment = await getGenerationExperienceForUser(env, user);
   return {
     variant: assignment.variant,
-    metadata: isTaskResultEvent(input.eventName)
+    metadata: isTaskResultExperimentEventName(input.eventName)
       ? { attributionFallback: true, attributionSource: "current_assignment" }
       : {}
   };
-}
-
-function isTaskResultEvent(
-  eventName: z.infer<typeof experimentEventSchema>["eventName"]
-): eventName is TaskResultExperimentEventName {
-  return eventName === "generate_succeeded" || eventName === "generate_failed";
 }
 
 type SubmittedEventSnapshot = {
@@ -645,7 +622,7 @@ export async function getGenerationExperimentMetrics(
 }
 
 function shouldCountMetricEvent(eventName: string, metadata: Record<string, unknown>) {
-  if (isGenerateMetricEventName(eventName) && metadata.directAccess === true) {
+  if (isDirectAccessPrimaryMetricEventName(eventName) && metadata.directAccess === true) {
     return false;
   }
   if (eventName === "generate_succeeded" || eventName === "generate_failed") {
@@ -661,28 +638,7 @@ function isDirectAccessGenerateRoute(variant: ExperimentVariant, route?: string)
 }
 
 function metricEventName(eventName: string, metadata: Record<string, unknown>) {
-  if (!isGenerateMetricEventName(eventName)) return eventName;
-  if (metadata.isRetry === true) return retryMetricName(eventName);
-  if (metadata.mode === "chat") return `chat_${eventName}`;
-  return eventName;
-}
-
-function isGenerateMetricEventName(
-  eventName: string
-): eventName is "generate_submitted" | "generate_succeeded" | "generate_failed" {
-  return (
-    eventName === "generate_submitted" ||
-    eventName === "generate_succeeded" ||
-    eventName === "generate_failed"
-  );
-}
-
-function retryMetricName(
-  eventName: "generate_submitted" | "generate_succeeded" | "generate_failed"
-) {
-  if (eventName === "generate_submitted") return "generate_retry_submitted";
-  if (eventName === "generate_succeeded") return "generate_retry_succeeded";
-  return "generate_retry_failed";
+  return generationExperimentMetricEventName(eventName, metadata);
 }
 
 function incrementMetric(
