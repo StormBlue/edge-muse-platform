@@ -8,6 +8,7 @@ import { getDb } from "../db/client";
 import { quotaTransactions, quotas, users } from "../db/schema";
 import { appError } from "./errors";
 import { newId, now } from "./id";
+import { logError } from "./log";
 import type { AppBindings } from "../types";
 
 /** GET /api/me 等返回给前端的配额视图 */
@@ -39,6 +40,7 @@ export async function tryConsumeQuota(
   taskId: string
 ): Promise<QuotaSnapshot> {
   const db = getDb(env);
+  const timestamp = now();
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!user) throw appError("UNAUTHORIZED", "User missing");
   // 系统管理员不计入「张数」配额，直接返回当前视图（与产品「无限」一致）
@@ -51,20 +53,33 @@ export async function tryConsumeQuota(
      WHERE user_id = ?3 AND (allocated_quota IS NULL OR used_quota + ?1 <= allocated_quota)
      RETURNING allocated_quota, used_quota`
   )
-    .bind(amount, now(), userId)
+    .bind(amount, timestamp, userId)
     .first<{ allocated_quota: number | null; used_quota: number }>();
 
   if (!result) throw appError("QUOTA_EXCEEDED", "Quota exceeded");
 
-  await db.insert(quotaTransactions).values({
-    id: newId("qt"),
-    userId,
-    delta: -amount,
-    reason: "task_charge",
-    operatorId: userId,
-    taskId,
-    createdAt: now()
-  });
+  try {
+    await db.insert(quotaTransactions).values({
+      id: newId("qt"),
+      userId,
+      delta: -amount,
+      reason: "task_charge",
+      operatorId: userId,
+      taskId,
+      createdAt: timestamp
+    });
+  } catch (error) {
+    try {
+      await env.DB.prepare(
+        "UPDATE quotas SET used_quota = MAX(used_quota - ?1, 0), updated_at = ?2 WHERE user_id = ?3"
+      )
+        .bind(amount, now(), userId)
+        .run();
+    } catch (rollbackError) {
+      logError("quota.consume_rollback_failed", rollbackError, { userId, taskId, amount });
+    }
+    throw error;
+  }
 
   return {
     allocatedQuota: result.allocated_quota,

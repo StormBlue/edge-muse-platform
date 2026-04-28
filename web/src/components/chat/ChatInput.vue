@@ -3,252 +3,50 @@
  * 工作台底部输入：prompt、尺寸/张数（受角色限制）、图生图时本地上传参考图（最多 5）。
  * `variant=chat` 时可隐藏部分工具条；`readOnly` 用于仅展示历史参数。
  */
-import { computed, onBeforeUnmount, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
 import { Loader2, Send, Upload, X } from "lucide-vue-next";
+import type { ImageAttachment } from "@/stores/session";
 import {
-  imageFilesFromDataTransfer,
-  imageFilesFromFileList,
-  prepareReferenceImageFiles
-} from "@/utils/referenceImageFiles";
-import type { ImageAttachment, SessionMode } from "@/stores/session";
+  useChatInputController,
+  type ChatInputProps,
+  type ChatInputSubmitValue
+} from "./useChatInputController";
 
-type SizeOption = {
-  value: string;
-  ratio: string;
-  label: string;
-};
-
-const props = defineProps<{
-  loading?: boolean;
-  generating?: boolean;
-  mode: SessionMode;
-  readOnly?: boolean;
-  initialSize?: string;
-  initialCount?: number;
-  allowCustomCount?: boolean;
-  referenceCount?: number;
-  referenceImages?: ImageAttachment[];
-  variant?: "task" | "chat";
-  sizeOptions?: SizeOption[];
-  maxReferenceFiles?: number | null;
-}>();
+const props = defineProps<ChatInputProps>();
 
 const emit = defineEmits<{
-  submit: [value: { prompt: string; mode: SessionMode; size: string; n: number; files: File[] }];
+  submit: [value: ChatInputSubmitValue];
   "open-reference": [image: ImageAttachment];
 }>();
 
-const { t } = useI18n();
-const prompt = ref("");
-const size = ref("1024x1024");
-const n = ref(1);
-/** 图生本地上传队列；提交后由父组件走上传 API，此处仅保 File */
-const files = ref<File[]>([]);
-const dragging = ref(false);
-/** 与 `files` 同步的 objectURL 预览，销毁时 revoke */
-const previews = ref<Array<{ file: File; url: string }>>([]);
-const defaultMaxReferenceFiles = 5;
-const maxCustomCount = 200;
-const isReadOnly = computed(() => Boolean(props.readOnly));
-const isImageToImage = computed(() => props.mode === "image2image");
-const isContinuousChat = computed(() => props.mode === "chat");
-const isChatVariant = computed(() => props.variant === "chat");
-const isBusy = computed(() => Boolean(props.loading || props.generating));
-const hasPrompt = computed(() => prompt.value.trim().length > 0);
-/** 只读/请求中/无 prompt/图生未选图 时不可提交 */
-const submitDisabled = computed(
-  () =>
-    isReadOnly.value ||
-    isBusy.value ||
-    !hasPrompt.value ||
-    (isImageToImage.value && files.value.length === 0)
-);
-const countSelectionDisabled = computed(() => isReadOnly.value || !props.allowCustomCount);
-const submitLabel = computed(() => {
-  if (props.loading) return t("workspace.submitting");
-  if (props.generating) return t("workspace.generationRunning");
-  return t("workspace.generate");
-});
-
-const DEFAULT_SIZE_OPTIONS: SizeOption[] = [
-  { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
-  { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" },
-  { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
-  { value: "auto", ratio: "Auto", label: "Auto" }
-];
-
-const effectiveSizeOptions = computed(() =>
-  props.sizeOptions?.length ? props.sizeOptions : DEFAULT_SIZE_OPTIONS
-);
-const effectiveMaxReferenceFiles = computed(() => {
-  const value = props.maxReferenceFiles ?? defaultMaxReferenceFiles;
-  return Math.max(1, Math.min(defaultMaxReferenceFiles, Math.floor(value)));
-});
-const selectedSizeOption = computed(
-  () =>
-    effectiveSizeOptions.value.find((option) => option.value === size.value) ?? {
-      value: size.value,
-      ratio: size.value,
-      label: size.value
-    }
-);
-/** 只读时只显示当前选中的尺寸，避免点选改参 */
-const visibleSizeOptions = computed(() =>
-  isReadOnly.value ? [selectedSizeOption.value] : effectiveSizeOptions.value
-);
-/** 多轮/禁自定义张数时固定为 1，只读时锁当前 n */
-const visibleCountOptions = computed(() => {
-  if (isReadOnly.value) return [n.value];
-  return [1];
-});
-const displayedReferenceCount = computed(() => props.referenceCount ?? files.value.length);
-const readonlyReferenceImages = computed(() => props.referenceImages ?? []);
-const editablePreviews = computed(() => (isReadOnly.value ? [] : previews.value));
-const uploaderLabel = computed(() => {
-  if (isReadOnly.value && isImageToImage.value) {
-    return t("workspace.referenceImages", { count: displayedReferenceCount.value });
-  }
-  if (files.value.length) return t("workspace.referenceImages", { count: files.value.length });
-  return t("workspace.addReferenceImage");
-});
-
-watch(
-  () => props.initialSize,
-  (next) => {
-    if (next) size.value = next;
-  },
-  { immediate: true }
-);
-
-// provider 能力变化时，非只读输入自动落到第一个可用尺寸，避免提交后才被后端拒绝
-watch(
-  () => effectiveSizeOptions.value.map((option) => option.value).join("|"),
-  () => {
-    if (isReadOnly.value) return;
-    if (effectiveSizeOptions.value.some((option) => option.value === size.value)) return;
-    size.value = effectiveSizeOptions.value[0]?.value ?? "1024x1024";
-  },
-  { immediate: true }
-);
-
-watch(
-  () => [props.initialCount, props.allowCustomCount] as const,
-  ([next]) => {
-    n.value = props.allowCustomCount && typeof next === "number" ? clampImageCount(next) : 1;
-  },
-  { immediate: true }
-);
-
-watch(
-  () => props.mode,
-  (next) => {
-    if (next !== "image2image") clearFiles();
-    if (next === "chat" || !props.allowCustomCount) n.value = 1;
-  }
-);
-
-// 文件列表变更时全量换预览 URL，防泄漏须 revoke 旧 URL
-watch(
-  files,
-  (next) => {
-    for (const preview of previews.value) URL.revokeObjectURL(preview.url);
-    previews.value = next.map((file) => ({ file, url: URL.createObjectURL(file) }));
-  },
-  { deep: false }
-);
-
-// 只读且父级已给 reference 图时，清掉本地选文件以免两套引用混淆
-watch(
-  () => [isReadOnly.value, readonlyReferenceImages.value.length] as const,
-  ([readOnly, referenceImageCount]) => {
-    if (readOnly && referenceImageCount > 0) clearFiles();
-  }
-);
-
-// 切换到单参考图 provider 时，已选文件同步裁剪，前端展示与任务层校验保持一致
-watch(effectiveMaxReferenceFiles, (maxFiles) => {
-  if (files.value.length > maxFiles) {
-    files.value = files.value.slice(0, maxFiles);
-  }
-});
-
-onBeforeUnmount(() => {
-  for (const preview of previews.value) URL.revokeObjectURL(preview.url);
-});
-
-/**
- * 提交后清空 prompt；文生/对话清参考文件，图生保留直到下次成功提交或切模式
- */
-async function submit() {
-  if (submitDisabled.value) return;
-  emit("submit", {
-    prompt: prompt.value.trim(),
-    mode: props.mode,
-    size: size.value,
-    n: isContinuousChat.value || !props.allowCustomCount ? 1 : clampImageCount(n.value),
-    files: isImageToImage.value ? files.value : []
-  });
-  prompt.value = "";
-  if (!isImageToImage.value) clearFiles();
-}
-
-async function onFiles(event: Event) {
-  if (isReadOnly.value) return;
-  const input = event.target as HTMLInputElement;
-  await addFiles(imageFilesFromFileList(input.files));
-  input.value = "";
-}
-
-async function onDrop(event: DragEvent) {
-  if (isReadOnly.value) return;
-  dragging.value = false;
-  await addFiles(imageFilesFromDataTransfer(event.dataTransfer));
-}
-
-async function onPaste(event: ClipboardEvent) {
-  if (isReadOnly.value) return;
-  if (!isImageToImage.value) return;
-  const pastedFiles = imageFilesFromDataTransfer(event.clipboardData);
-  if (pastedFiles.length) {
-    event.preventDefault();
-    await addFiles(pastedFiles);
-  }
-}
-
-/** 只收图片 MIME，经压缩后按当前 provider 上限截断 */
-async function addFiles(inputFiles: File[]) {
-  if (isReadOnly.value) return;
-  if (!isImageToImage.value) return;
-  const compressed = await prepareReferenceImageFiles(inputFiles);
-  files.value = [...files.value, ...compressed].slice(0, effectiveMaxReferenceFiles.value);
-}
-
-function removeFile(index: number) {
-  if (isReadOnly.value) return;
-  files.value = files.value.filter((_, currentIndex) => currentIndex !== index);
-}
-
-function clearFiles() {
-  files.value = [];
-}
-
-function setCount(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const value = Number(input.value);
-  if (!Number.isFinite(value)) return;
-  n.value = clampImageCount(value);
-}
-
-function normalizeCount(event: Event) {
-  const input = event.target as HTMLInputElement;
-  n.value = clampImageCount(n.value);
-  input.value = String(n.value);
-}
-
-function clampImageCount(value: number) {
-  return Math.min(maxCustomCount, Math.max(1, Math.floor(value)));
-}
+const {
+  t,
+  prompt,
+  size,
+  n,
+  dragging,
+  isReadOnly,
+  isImageToImage,
+  isContinuousChat,
+  isChatVariant,
+  isBusy,
+  maxCustomCount,
+  submitDisabled,
+  countSelectionDisabled,
+  submitLabel,
+  effectiveMaxReferenceFiles,
+  visibleSizeOptions,
+  visibleCountOptions,
+  readonlyReferenceImages,
+  editablePreviews,
+  uploaderLabel,
+  submit,
+  onFiles,
+  onDrop,
+  onPaste,
+  removeFile,
+  setCount,
+  normalizeCount
+} = useChatInputController(props, emit);
 </script>
 
 <template>

@@ -12,9 +12,9 @@ import { appError } from "../errors";
 import { isSingleActiveGenerationRole, resolveImageCountForRole } from "../generationPolicy";
 import { newId, now } from "../id";
 import { parseJson, stringifyJson } from "../json";
-import { logInfo, promptSummary } from "../log";
+import { logInfo, logWarn, promptSummary } from "../log";
 import { resolveProviderKey } from "../providerKeys";
-import { tryConsumeQuota } from "../quota";
+import { refundQuota, tryConsumeQuota } from "../quota";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
@@ -89,7 +89,7 @@ export async function assertNoActiveGenerationTask(
 }
 
 /**
- * 创建生图任务（同步路径）：插入会话（若新会话）、用户消息、助手消息、任务行，并扣配额。
+ * 创建生图任务（同步路径）：校验后先预扣配额，再插入会话（若新会话）、消息与 queued 任务行。
  * 不调用第三方、不持锁等待；真正生图在 `startGenerateTask` → `runGenerateTask`。
  */
 export async function createGenerateTask(
@@ -157,124 +157,157 @@ export async function createGenerateTask(
     userId: input.userId
   });
 
-  if (!existingSession) {
-    await db.insert(sessions).values({
-      id: sessionId,
-      userId: input.userId,
-      title,
-      mode: params.mode,
-      providerKeyId: key.id,
-      settings,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      lastMessageAt: timestamp,
-      archived: false,
-      deletedAt: null
-    });
-    logInfo("task.create.session_created", {
-      userId: input.userId,
-      sessionId,
-      providerKeyId: key.id,
-      mode: params.mode
-    });
-  } else {
-    logInfo("task.create.session_reused", {
-      userId: input.userId,
-      sessionId,
-      providerKeyId: key.id,
-      mode: params.mode
-    });
-  }
-
   const userMessageId = newId("msg");
   const assistantMessageId = newId("msg");
   const taskId = newId("tsk");
-  await db.insert(messages).values([
-    {
-      id: userMessageId,
-      sessionId,
-      role: "user",
-      prompt: params.prompt,
-      referenceImageIds: stringifyJson(referenceImageIds),
-      attachments: stringifyJson([]),
-      taskId: null,
-      status: "succeeded",
-      createdAt: timestamp,
-      deletedAt: null
-    },
-    {
-      id: assistantMessageId,
-      sessionId,
-      role: "assistant",
-      prompt: params.prompt,
-      referenceImageIds: stringifyJson([]),
-      attachments: stringifyJson([]),
-      taskId,
-      status: "queued",
-      createdAt: timestamp + 1,
-      deletedAt: null
-    }
-  ]);
-  await db.insert(tasks).values({
-    id: taskId,
-    sessionId,
-    messageId: assistantMessageId,
-    userId: input.userId,
-    providerKeyId: key.id,
-    status: "queued",
-    mode: params.mode,
-    params: stringifyJson(params),
-    errorCode: null,
-    errorMsg: null,
-    providerRequestId: null,
-    providerRawResponse: null,
-    queuedAt: timestamp,
-    startedAt: null,
-    heartbeatAt: null,
-    finishedAt: null,
-    retryOf: input.retryOf ?? null
-  });
-  await attachReferenceImagesToTask(env, {
-    ownerUserId: input.userId,
-    sessionId,
-    taskId,
-    referenceImageIds
-  });
-  logInfo("task.create.task_inserted", {
-    userId: input.userId,
-    taskId,
-    sessionId,
-    messageId: assistantMessageId,
-    providerKeyId: key.id,
-    retryOf: input.retryOf ?? null,
-    mode: params.mode,
-    size: params.size,
-    imageCount: params.n
-  });
-  await db
-    .update(sessions)
-    .set({
-      mode: params.mode,
-      providerKeyId: key.id,
-      settings,
-      updatedAt: timestamp,
-      lastMessageAt: timestamp
-    })
-    .where(eq(sessions.id, sessionId));
-  logInfo("task.create.session_updated", {
-    userId: input.userId,
-    taskId,
-    sessionId,
-    providerKeyId: key.id,
-    mode: params.mode
-  });
-
   await tryConsumeQuota(env, input.userId, params.n, taskId);
   logInfo("task.create.quota_consumed", {
     userId: input.userId,
     taskId,
     imageCount: params.n
   });
+  const shouldRefundQuotaOnCreateFailure = user.role !== "sysadmin";
+  let messagesInserted = false;
+
+  try {
+    if (!existingSession) {
+      await db.insert(sessions).values({
+        id: sessionId,
+        userId: input.userId,
+        title,
+        mode: params.mode,
+        providerKeyId: key.id,
+        settings,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        lastMessageAt: timestamp,
+        archived: false,
+        deletedAt: null
+      });
+      logInfo("task.create.session_created", {
+        userId: input.userId,
+        sessionId,
+        providerKeyId: key.id,
+        mode: params.mode
+      });
+    } else {
+      logInfo("task.create.session_reused", {
+        userId: input.userId,
+        sessionId,
+        providerKeyId: key.id,
+        mode: params.mode
+      });
+    }
+
+    await db.insert(messages).values([
+      {
+        id: userMessageId,
+        sessionId,
+        role: "user",
+        prompt: params.prompt,
+        referenceImageIds: stringifyJson(referenceImageIds),
+        attachments: stringifyJson([]),
+        taskId: null,
+        status: "succeeded",
+        createdAt: timestamp,
+        deletedAt: null
+      },
+      {
+        id: assistantMessageId,
+        sessionId,
+        role: "assistant",
+        prompt: params.prompt,
+        referenceImageIds: stringifyJson([]),
+        attachments: stringifyJson([]),
+        taskId,
+        status: "queued",
+        createdAt: timestamp + 1,
+        deletedAt: null
+      }
+    ]);
+    messagesInserted = true;
+
+    await db
+      .update(sessions)
+      .set({
+        mode: params.mode,
+        providerKeyId: key.id,
+        settings,
+        updatedAt: timestamp,
+        lastMessageAt: timestamp
+      })
+      .where(eq(sessions.id, sessionId));
+    logInfo("task.create.session_updated", {
+      userId: input.userId,
+      taskId,
+      sessionId,
+      providerKeyId: key.id,
+      mode: params.mode
+    });
+
+    await db.insert(tasks).values({
+      id: taskId,
+      sessionId,
+      messageId: assistantMessageId,
+      userId: input.userId,
+      providerKeyId: key.id,
+      status: "queued",
+      mode: params.mode,
+      params: stringifyJson(params),
+      errorCode: null,
+      errorMsg: null,
+      providerRequestId: null,
+      providerRawResponse: null,
+      queuedAt: timestamp,
+      startedAt: null,
+      heartbeatAt: null,
+      finishedAt: null,
+      retryOf: input.retryOf ?? null
+    });
+    logInfo("task.create.task_inserted", {
+      userId: input.userId,
+      taskId,
+      sessionId,
+      messageId: assistantMessageId,
+      providerKeyId: key.id,
+      retryOf: input.retryOf ?? null,
+      mode: params.mode,
+      size: params.size,
+      imageCount: params.n
+    });
+  } catch (error) {
+    if (messagesInserted) {
+      await markAssistantMessageFailedAfterCreateError(env, assistantMessageId);
+    }
+    if (shouldRefundQuotaOnCreateFailure) {
+      await refundQuotaAfterCreateError(env, input.userId, params.n, taskId);
+    }
+    logWarn("task.create.failed_after_quota", {
+      userId: input.userId,
+      taskId,
+      sessionId,
+      messageId: assistantMessageId,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+    throw error;
+  }
+
+  try {
+    await attachReferenceImagesToTask(env, {
+      ownerUserId: input.userId,
+      sessionId,
+      taskId,
+      referenceImageIds
+    });
+  } catch (error) {
+    logWarn("task.create.reference_attach_failed", {
+      userId: input.userId,
+      taskId,
+      sessionId,
+      referenceImageIds,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+  }
 
   return {
     taskId,
@@ -282,6 +315,38 @@ export async function createGenerateTask(
     messageId: assistantMessageId,
     title: existingSession?.title ?? title
   };
+}
+
+async function markAssistantMessageFailedAfterCreateError(
+  env: AppBindings,
+  messageId: string
+): Promise<void> {
+  try {
+    await getDb(env).update(messages).set({ status: "failed" }).where(eq(messages.id, messageId));
+  } catch (error) {
+    logWarn("task.create.message_rollback_failed", {
+      messageId,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+  }
+}
+
+async function refundQuotaAfterCreateError(
+  env: AppBindings,
+  userId: string,
+  amount: number,
+  taskId: string
+): Promise<void> {
+  try {
+    await refundQuota(env, userId, amount, taskId);
+  } catch (error) {
+    logWarn("task.create.quota_refund_failed", {
+      userId,
+      taskId,
+      amount,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+  }
 }
 
 /**

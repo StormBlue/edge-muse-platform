@@ -18,6 +18,11 @@ import {
   sizeOptionsForProvider,
   type ModeOption
 } from "./workspaceOptions";
+import {
+  latestAssistantResultMessage,
+  latestResultImages,
+  latestUserPromptMessage
+} from "./workspaceMessageSelectors";
 
 export function useWorkspaceController() {
   const route = useRoute();
@@ -40,13 +45,7 @@ export function useWorkspaceController() {
       ...(message.referenceImages ?? [])
     ])
   );
-  const resultImages = computed(() => {
-    for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
-      const message = sessions.messages[index];
-      if (message?.attachments.length) return message.attachments;
-    }
-    return [];
-  });
+  const resultImages = computed(() => latestResultImages(sessions.messages));
   const activePreviewImage = computed(
     () =>
       resultImages.value.find((image) => image.id === activePreviewImageId.value) ??
@@ -60,15 +59,7 @@ export function useWorkspaceController() {
     return messages[messages.length - 1] ?? null;
   });
   const hasRunningTask = computed(() => runningMessages.value.length > 0);
-  const latestResultMessage = computed(() => {
-    for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
-      const message = sessions.messages[index];
-      if (message?.role === "assistant" && (message.taskId || message.attachments.length)) {
-        return message;
-      }
-    }
-    return null;
-  });
+  const latestResultMessage = computed(() => latestAssistantResultMessage(sessions.messages));
   const activeFailedMessage = computed(() => {
     const message = latestResultMessage.value;
     if (!message || hasRunningTask.value) return null;
@@ -107,13 +98,7 @@ export function useWorkspaceController() {
       t("workspace.generationFailedHint")
   );
   const inputLoading = computed(() => submitting.value || sessions.loading);
-  const latestUserMessage = computed(() => {
-    for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
-      const message = sessions.messages[index];
-      if (message?.role === "user" && message.prompt) return message;
-    }
-    return null;
-  });
+  const latestUserMessage = computed(() => latestUserPromptMessage(sessions.messages));
   const oneShotTaskLocked = computed(
     () =>
       activeMode.value !== "chat" &&

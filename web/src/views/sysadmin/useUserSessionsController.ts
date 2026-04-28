@@ -2,12 +2,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { apiFetch } from "@/api/client";
-import {
-  isSameStringQuery,
-  queryPositiveInt,
-  queryString,
-  type StringQuery
-} from "@/lib/routeQuery";
+import { isSameStringQuery, queryString } from "@/lib/routeQuery";
 import { useAuthStore } from "@/stores/auth";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
 import {
@@ -29,6 +24,14 @@ import {
   requestedAuditImageCount,
   toAuditViewerImage
 } from "./userSessionsHelpers";
+import {
+  buildUserSessionsListQuery,
+  clampUserSessionsPageInput,
+  readUserSessionsRoutePage,
+  readUserSessionsRouteSessionId,
+  resolveUserSessionsRouteUserId,
+  sanitizeUserSessionsPage
+} from "./userSessionsRouteQuery";
 import type {
   AuditImageAttachment,
   AuditMessage,
@@ -50,7 +53,7 @@ export function useUserSessionsController() {
   const messages = ref<AuditMessage[]>([]);
   const selectedSession = ref<AuditSession | null>(null);
   const selectedImage = ref<ImageAttachment | null>(null);
-  const page = ref(readRoutePage());
+  const page = ref(readUserSessionsRoutePage(route.query));
   const pageInput = ref(String(page.value));
   const pageSize = 12;
   const total = ref(0);
@@ -59,7 +62,9 @@ export function useUserSessionsController() {
   const activeMessageIndex = ref(0);
 
   const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-  const selectedSessionId = computed(() => selectedSession.value?.id ?? getRouteSessionId());
+  const selectedSessionId = computed(
+    () => selectedSession.value?.id ?? readUserSessionsRouteSessionId(route.query)
+  );
   const resultMessages = computed(() =>
     messages.value.filter(
       (message) => message.role === "assistant" && (message.task || message.attachments.length)
@@ -106,14 +111,14 @@ export function useUserSessionsController() {
       if (syncingListRoute) return;
       userId.value = resolveRouteUserId();
       q.value = queryString(route.query.q).trim();
-      await loadSessions(readRoutePage(), { syncRoute: false });
+      await loadSessions(readUserSessionsRoutePage(route.query), { syncRoute: false });
     }
   );
 
   watch(
     () => route.query.session,
     async () => {
-      const sessionId = getRouteSessionId();
+      const sessionId = readUserSessionsRouteSessionId(route.query);
       if (sessionId) {
         await loadDetail(sessionId);
         return;
@@ -125,7 +130,7 @@ export function useUserSessionsController() {
   onMounted(async () => {
     void loadUserOptions();
     await loadSessions(page.value, { syncRoute: false });
-    const sessionId = getRouteSessionId();
+    const sessionId = readUserSessionsRouteSessionId(route.query);
     if (sessionId) await loadDetail(sessionId);
   });
 
@@ -161,7 +166,7 @@ export function useUserSessionsController() {
   async function loadSessions(nextPage = page.value, options: { syncRoute?: boolean } = {}) {
     const normalizedUserId = userId.value.trim();
     userId.value = normalizedUserId;
-    const targetPage = sanitizePage(nextPage);
+    const targetPage = sanitizeUserSessionsPage(nextPage);
     if (options.syncRoute !== false) await replaceListQuery(targetPage);
     loading.value = true;
     try {
@@ -187,7 +192,7 @@ export function useUserSessionsController() {
 
   /** 从输入框跳页，非法或与当前页相同则 no-op。 */
   async function jumpToPage() {
-    const targetPage = clampPageInput(pageInput.value);
+    const targetPage = clampUserSessionsPageInput(pageInput.value, page.value, totalPages.value);
     pageInput.value = String(targetPage);
     if (targetPage === page.value) return;
     await loadSessions(targetPage);
@@ -196,7 +201,7 @@ export function useUserSessionsController() {
   /** 点表格行：若已在该 session 的 URL 上则直接 `loadDetail`，否则 push 带 query。 */
   async function openDetail(session: AuditSession) {
     selectedSession.value = session;
-    if (getRouteSessionId() === session.id) {
+    if (readUserSessionsRouteSessionId(route.query) === session.id) {
       await loadDetail(session.id);
       return;
     }
@@ -224,10 +229,7 @@ export function useUserSessionsController() {
   }
 
   function resolveRouteUserId() {
-    const routeUserId = typeof route.params.userId === "string" ? route.params.userId : "";
-    if (routeUserId === "_") return "";
-    if (routeUserId === "me") return auth.user?.id ?? "";
-    return routeUserId;
+    return resolveUserSessionsRouteUserId(route.params.userId, auth.user?.id);
   }
 
   function clearDetail() {
@@ -237,24 +239,12 @@ export function useUserSessionsController() {
     activeMessageIndex.value = 0;
   }
 
-  function getRouteSessionId() {
-    return typeof route.query.session === "string" ? route.query.session : null;
-  }
-
-  function readRoutePage() {
-    return queryPositiveInt(route.query.page, 1);
-  }
-
-  function auditListQuery(nextPage = page.value, sessionId = getRouteSessionId()) {
-    const query: StringQuery = { page: String(sanitizePage(nextPage)) };
-    const trimmedQ = q.value.trim();
-    if (trimmedQ) query.q = trimmedQ;
-    if (sessionId) query.session = sessionId;
-    return query;
-  }
-
   async function replaceListQuery(nextPage = page.value) {
-    const query = auditListQuery(nextPage);
+    const query = buildUserSessionsListQuery({
+      page: nextPage,
+      q: q.value,
+      sessionId: readUserSessionsRouteSessionId(route.query)
+    });
     if (isSameStringQuery(query, route.query)) return;
     await replaceListRoute(route.path, nextPage);
   }
@@ -262,7 +252,7 @@ export function useUserSessionsController() {
   async function pushListRoute(
     path: string,
     nextPage = page.value,
-    sessionId = getRouteSessionId()
+    sessionId = readUserSessionsRouteSessionId(route.query)
   ) {
     await writeListRoute("push", path, nextPage, sessionId);
   }
@@ -270,7 +260,7 @@ export function useUserSessionsController() {
   async function replaceListRoute(
     path: string,
     nextPage = page.value,
-    sessionId = getRouteSessionId()
+    sessionId = readUserSessionsRouteSessionId(route.query)
   ) {
     await writeListRoute("replace", path, nextPage, sessionId);
   }
@@ -279,26 +269,15 @@ export function useUserSessionsController() {
     method: "push" | "replace",
     path: string,
     nextPage = page.value,
-    sessionId = getRouteSessionId()
+    sessionId = readUserSessionsRouteSessionId(route.query)
   ) {
-    const query = auditListQuery(nextPage, sessionId);
+    const query = buildUserSessionsListQuery({ page: nextPage, q: q.value, sessionId });
     syncingListRoute = true;
     try {
       await router[method]({ path, query });
     } finally {
       syncingListRoute = false;
     }
-  }
-
-  function sanitizePage(value: number) {
-    if (!Number.isFinite(value)) return 1;
-    return Math.max(1, Math.floor(value));
-  }
-
-  function clampPageInput(value: string) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return page.value;
-    return Math.min(Math.max(Math.floor(parsed), 1), totalPages.value);
   }
 
   function openImage(image: ImageAttachment) {

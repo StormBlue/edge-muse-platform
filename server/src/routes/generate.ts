@@ -7,7 +7,7 @@
  *
  * 生图主链路时序（符号）：
  *   Client --POST /api/generate--> Worker
- *     → createGenerateTask(D1: tasks=queued, 配额扣减)
+ *     → createGenerateTask(校验 + 配额预扣 + D1: tasks=queued)
  *     → startGenerateTask → waitUntil(workflow 或 runGenerateTask)
  *   Client <--202-- { taskId, wsUrl, ... }
  *   Client --WS /ws/task/taskId--> TaskRoom（后续事件由 Workflow/runGenerateTask → broadcastTaskEvent → DO）
@@ -152,18 +152,27 @@ generateRoutes.post(
       size: body.size,
       imageCount: body.n
     });
-    await audit(c.env, {
-      actorId: user.id,
-      action: "task.create",
-      targetType: "task",
-      targetId: result.taskId,
-      payload: { mode: body.mode, size: body.size, n: body.n }
-    });
-    logInfo("generate.task.audit_written", {
-      traceId,
-      userId: user.id,
-      taskId: result.taskId
-    });
+    try {
+      await audit(c.env, {
+        actorId: user.id,
+        action: "task.create",
+        targetType: "task",
+        targetId: result.taskId,
+        payload: { mode: body.mode, size: body.size, n: body.n }
+      });
+      logInfo("generate.task.audit_written", {
+        traceId,
+        userId: user.id,
+        taskId: result.taskId
+      });
+    } catch (error) {
+      logWarn("generate.task.audit_failed", {
+        traceId,
+        userId: user.id,
+        taskId: result.taskId,
+        message: error instanceof Error ? error.message : "unknown"
+      });
+    }
     if (experimentEvent) {
       try {
         await recordExperimentEvent(c.env, user, {

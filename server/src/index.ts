@@ -1,7 +1,7 @@
 /**
  * Cloudflare Worker 入口：Hono 挂载 REST `/api/*`，**以及** 根路径 WebSocket `GET /ws/task/:id`（与 POST /api/generate 返回的 wsUrl 一致）。
  *
- * `fetch` 导出上在特定路径会 `scheduleInterruptedTaskRecovery`：对「排队中未消费」的任务做轻量重试入口（详见 lib/tasks `recoverInterruptedGenerateTasks`）。
+ * `fetch` 导出上在特定路径会 `scheduleInterruptedTaskRecovery`：对「已预扣配额但尚未点火」的 queued 任务做中断恢复（详见 lib/tasks）。
  * `scheduled`：Cron 触发的维护任务（中断恢复、R2 清理、运维摘要等）。
  */
 import { Hono } from "hono";
@@ -17,6 +17,7 @@ import { promptCaseRoutes } from "./routes/promptCases";
 import { uploadRoutes } from "./routes/uploads";
 import { adminRoutes } from "./routes/admin";
 import { sysadminRoutes } from "./routes/sysadmin";
+import { requireAuth } from "./middleware/auth";
 import { requestLogger } from "./middleware/logger";
 import { securityHeaders } from "./middleware/security";
 import { csrf } from "./middleware/csrf";
@@ -75,7 +76,7 @@ app.route("/api/prompt-cases", promptCaseRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
 /** 浏览器 WebSocket 连接点：`wss://<host>/ws/task/<taskId>`（无前缀 /api） */
-app.get("/ws/task/:id", handleTaskWebSocket);
+app.get("/ws/task/:id", requireAuth, handleTaskWebSocket);
 
 export default {
   fetch: (request, env, ctx) => {
