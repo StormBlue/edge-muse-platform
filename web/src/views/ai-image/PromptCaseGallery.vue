@@ -4,8 +4,9 @@
  *
  * 这里不暴露 draft/hidden 状态，数据源已由后端限制为 published。
  */
-import { ImageOff, Star } from "lucide-vue-next";
+import { Star } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
+import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import type { PromptCase } from "@/types/promptCases";
 
 defineProps<{
@@ -48,15 +49,7 @@ const { t } = useI18n();
         @click="emit('select', item)"
       >
         <div class="relative h-full min-h-28 overflow-hidden rounded-md bg-muted">
-          <img
-            v-if="item.thumbnailUrl"
-            class="h-full w-full object-cover"
-            :src="item.thumbnailUrl"
-            :alt="item.title"
-          />
-          <div v-else class="flex h-full items-center justify-center text-muted-foreground">
-            <ImageOff class="h-6 w-6" />
-          </div>
+          <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-6 w-6" />
           <span
             v-if="item.featured"
             class="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-1 text-xs"

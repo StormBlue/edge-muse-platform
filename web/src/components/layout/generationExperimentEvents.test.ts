@@ -99,6 +99,58 @@ describe("generation experiment events", () => {
     ]);
   });
 
+  it("does not treat parallel entry navigation as direct switching", () => {
+    const parallelExperience: GenerationExperience = {
+      ...legacyExperience,
+      strategy: "parallel",
+      variant: "parallel",
+      navTarget: "/workspace",
+      showAi: true,
+      showLegacy: true
+    };
+
+    const events = buildGenerationRouteOpenEvents(
+      "/ai-image",
+      "/ai-image",
+      parallelExperience,
+      false,
+      new Set<string>(),
+      new Set<string>()
+    );
+
+    expect(events).toEqual([
+      {
+        eventName: "generation_page_opened",
+        route: "/ai-image",
+        metadata: { variant: "B", directAccess: false }
+      }
+    ]);
+  });
+
+  it("does not mark direct switching while the experiment is paused", () => {
+    const pausedExperience: GenerationExperience = {
+      ...legacyExperience,
+      status: "paused"
+    };
+
+    const events = buildGenerationRouteOpenEvents(
+      "/ai-image",
+      "/ai-image",
+      pausedExperience,
+      false,
+      new Set<string>(),
+      new Set<string>()
+    );
+
+    expect(events).toEqual([
+      {
+        eventName: "generation_page_opened",
+        route: "/ai-image",
+        metadata: { variant: "B", directAccess: false }
+      }
+    ]);
+  });
+
   it("deduplicates opened and direct events for the same full path and assignment", () => {
     const openedKeys = new Set<string>();
     const directKeys = new Set<string>();

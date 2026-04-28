@@ -7,6 +7,7 @@ import {
   experimentPatchSchema,
   getGenerationExperiment,
   getGenerationExperimentMetrics,
+  getGenerationExperimentMetricsWindow,
   saveGenerationExperiment
 } from "../../lib/experiments";
 import type { SysadminRouter } from "./common";
@@ -14,8 +15,9 @@ import type { SysadminRouter } from "./common";
 export function registerSysadminGenerationExperimentRoutes(sysadminRoutes: SysadminRouter) {
   sysadminRoutes.get("/experiments/generation", async (c) => {
     const experiment = await getGenerationExperiment(c.env);
-    const metrics = await getGenerationExperimentMetrics(c.env);
-    return c.json({ experiment, metrics });
+    const metricsWindow = getGenerationExperimentMetricsWindow();
+    const metrics = await getGenerationExperimentMetrics(c.env, { window: metricsWindow });
+    return c.json({ experiment, metrics, metricsWindow });
   });
 
   sysadminRoutes.patch(

@@ -7,13 +7,23 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
-import { trackExperimentEvent } from "@/api/experiments";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import { useSessionStore, type ImageAttachment } from "@/stores/session";
 import { imageFilesFromFileList, prepareReferenceImageFiles } from "@/utils/referenceImageFiles";
+import { imagesForAiImageActiveResult } from "./aiImageResultScope";
+import {
+  getAiImageSubmitBlockReason,
+  type AiImageSubmitBlockReason
+} from "./aiImageSubmitValidation";
 import { defaultSessionTitle, sizeOptionsForProvider } from "@/views/workspace/workspaceOptions";
 import type { PromptCaseMode } from "@/types/promptCases";
+
+export type AiImageSubmitExperimentEvent = {
+  route?: string;
+  caseId?: string;
+  metadata?: Record<string, unknown>;
+};
 
 export function useAiImageGenerationSubmit() {
   const { t } = useI18n();
@@ -24,6 +34,8 @@ export function useAiImageGenerationSubmit() {
   const files = ref<File[]>([]);
   const previews = ref<Array<{ file: File; url: string }>>([]);
   const submitting = ref(false);
+  const activeTaskId = ref<string | null>(null);
+  const activeSessionId = ref<string | null>(null);
 
   const sizeOptions = computed(() => sizeOptionsForProvider(auth.providerCapabilities));
   const supportedModes = computed(() =>
@@ -38,32 +50,21 @@ export function useAiImageGenerationSubmit() {
     )
   );
   const hasRunningTask = computed(() => runningMessages.value.length > 0);
-  const resultImages = computed(() => {
-    for (let index = sessions.messages.length - 1; index >= 0; index -= 1) {
-      const message = sessions.messages[index];
-      if (message?.attachments.length) return message.attachments;
-    }
-    return [];
-  });
+  const resultImages = computed(() =>
+    imagesForAiImageActiveResult(sessions.messages, {
+      taskId: activeTaskId.value,
+      sessionId: activeSessionId.value
+    })
+  );
 
   const { status, connect, disconnect } = useTaskWebSocket((payload) => {
     sessions.applyTaskEvent(payload);
     const type = payload && typeof payload === "object" ? (payload as { type?: string }).type : "";
     if (type === "task.done") {
-      const taskId =
-        payload && typeof payload === "object"
-          ? (payload as { task?: { id?: string } }).task?.id
-          : undefined;
-      void trackExperimentEvent({ eventName: "generate_succeeded", route: "/ai-image", taskId });
       void auth.bootstrap();
       disconnect();
     }
     if (type === "task.failed") {
-      const taskId =
-        payload && typeof payload === "object"
-          ? (payload as { task?: { id?: string } }).task?.id
-          : undefined;
-      void trackExperimentEvent({ eventName: "generate_failed", route: "/ai-image", taskId });
       toast.error(t("workspace.generationFailedHint"));
       disconnect();
     }
@@ -105,23 +106,30 @@ export function useAiImageGenerationSubmit() {
     files.value = [];
   }
 
-  async function submit(prompt: string, title?: string) {
+  async function submit(
+    prompt: string,
+    title?: string,
+    experimentEvent?: AiImageSubmitExperimentEvent
+  ) {
     const trimmed = prompt.trim();
-    if (!trimmed || submitting.value || hasRunningTask.value) return;
-    if (!supportedModes.value.includes(mode.value)) {
-      toast.error(t("workspace.modeUnsupported"));
-      return;
-    }
-    if (!sizeOptions.value.some((option) => option.value === size.value)) {
-      toast.error(t("workspace.sizeUnsupported"));
-      return;
-    }
-    if (mode.value === "image2image" && !files.value.length) {
-      toast.error(t("workspace.referenceRequired"));
-      return;
+    const blockReason = getAiImageSubmitBlockReason({
+      prompt: trimmed,
+      submitting: submitting.value,
+      hasRunningTask: hasRunningTask.value,
+      mode: mode.value,
+      supportedModes: supportedModes.value,
+      size: size.value,
+      sizeOptions: sizeOptions.value,
+      referenceImageCount: files.value.length
+    });
+    if (blockReason) {
+      toast.error(submitBlockMessage(blockReason));
+      return { submitted: false as const, reason: blockReason };
     }
 
     submitting.value = true;
+    activeTaskId.value = null;
+    activeSessionId.value = null;
     try {
       const uploaded = await uploadReferencesIfNeeded();
       // AI 图像生成页每次提交独立创建会话，避免误写入用户刚才在专业工作台打开的会话。
@@ -133,17 +141,22 @@ export function useAiImageGenerationSubmit() {
         size: size.value,
         n: 1,
         referenceImageIds: uploaded.referenceImageIds,
-        referenceImages: uploaded.referenceImages
+        referenceImages: uploaded.referenceImages,
+        experimentEvent
       });
+      activeTaskId.value = task.taskId;
+      activeSessionId.value = task.sessionId;
       connect(task.wsUrl);
       toast.success(t("aiImage.submitted"));
       if (mode.value === "image2image") clearFiles();
+      return { submitted: true as const, taskId: task.taskId };
     } catch (error) {
       const message =
         error && typeof error === "object" && "error" in error
           ? (error as { error: { message: string } }).error.message
           : t("workspace.submitFailed");
       toast.error(message);
+      return { submitted: false as const, reason: "request_failed" as const };
     } finally {
       submitting.value = false;
     }
@@ -163,6 +176,15 @@ export function useAiImageGenerationSubmit() {
       referenceImageIds: body.images.map((image) => image.id),
       referenceImages: body.images
     };
+  }
+
+  function submitBlockMessage(reason: AiImageSubmitBlockReason) {
+    if (reason === "empty_prompt") return t("workspace.emptyPrompt");
+    if (reason === "mode_unsupported") return t("workspace.modeUnsupported");
+    if (reason === "size_unsupported") return t("workspace.sizeUnsupported");
+    if (reason === "reference_required") return t("workspace.referenceRequired");
+    if (reason === "submitting") return t("workspace.submitting");
+    return t("workspace.generationRunning");
   }
 
   return {

@@ -9,6 +9,7 @@ import { computed, ref } from "vue";
 import { Copy, ImagePlus, Sparkles, Trash2, WandSparkles, X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import PromptAssistantPanel from "./PromptAssistantPanel.vue";
+import { getAiImageSubmitBlockReason } from "./aiImageSubmitValidation";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
@@ -27,6 +28,7 @@ const props = defineProps<{
   mode: PromptCaseMode;
   supportedModes: PromptCaseMode[];
   size: string;
+  sizeFallbackNotice: string;
   sizeOptions: SizeOption[];
   provider: ProviderCapabilities | null;
   referenceCount: number;
@@ -55,6 +57,25 @@ const dragging = ref(false);
 const hasPrompt = computed(() => props.prompt.trim().length > 0);
 const canAcceptReferenceFiles = computed(
   () => props.mode === "image2image" && !props.submitting && !props.hasRunningTask
+);
+const submitDisabled = computed(() =>
+  Boolean(
+    getAiImageSubmitBlockReason({
+      prompt: props.prompt,
+      submitting: props.submitting,
+      hasRunningTask: props.hasRunningTask,
+      mode: props.mode,
+      supportedModes: props.supportedModes,
+      size: props.size,
+      sizeOptions: props.sizeOptions,
+      referenceImageCount: props.referenceCount
+    })
+  )
+);
+const referenceContextKey = computed(() =>
+  props.previews
+    .map(({ file }) => `${file.name}:${file.type}:${file.size}:${file.lastModified}`)
+    .join("|")
 );
 
 function onFiles(event: Event) {
@@ -128,6 +149,12 @@ function scrollToAssistant() {
             {{ t(`workspace.${item}`) }}
           </button>
         </div>
+        <p
+          v-if="sizeFallbackNotice"
+          class="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          {{ sizeFallbackNotice }}
+        </p>
       </div>
 
       <div>
@@ -169,6 +196,7 @@ function scrollToAssistant() {
           :mode="mode"
           :provider="provider"
           :reference-count="referenceCount"
+          :reference-context-key="referenceContextKey"
           @fill="(value) => emit('fillAssistant', value)"
         />
       </div>
@@ -241,7 +269,7 @@ function scrollToAssistant() {
       <button
         class="ui-button ui-button-primary"
         type="button"
-        :disabled="submitting || hasRunningTask"
+        :disabled="submitDisabled"
         @click="emit('submit')"
       >
         <Sparkles class="h-4 w-4" />

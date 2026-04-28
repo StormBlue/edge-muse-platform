@@ -5,8 +5,9 @@
  */
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { experimentEventSchema, recordExperimentEvent } from "../lib/experiments";
+import { clientExperimentEventSchema, recordExperimentEvent } from "../lib/experiments";
 import { requireAuth } from "../middleware/auth";
+import { consumeRateLimit } from "../middleware/rateLimit";
 import type { AppEnv } from "../types";
 
 export const experimentRoutes = new Hono<AppEnv>();
@@ -14,8 +15,13 @@ export const experimentRoutes = new Hono<AppEnv>();
 experimentRoutes.post(
   "/events",
   requireAuth,
-  zValidator("json", experimentEventSchema),
+  zValidator("json", clientExperimentEventSchema),
   async (c) => {
+    await consumeRateLimit(c, {
+      prefix: "experiment-events",
+      limit: 60,
+      windowSeconds: 60
+    });
     await recordExperimentEvent(c.env, c.get("user"), c.req.valid("json"));
     return c.body(null, 204);
   }

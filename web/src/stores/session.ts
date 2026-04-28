@@ -207,6 +207,12 @@ export const useSessionStore = defineStore("sessions", {
       n: number;
       referenceImageIds?: string[];
       referenceImages?: ImageAttachment[];
+      /** AI 图像生成页的实验提交事件。随 /generate 同步写入，避免结果事件先到。 */
+      experimentEvent?: {
+        route?: string;
+        caseId?: string;
+        metadata?: Record<string, unknown>;
+      };
     }) {
       this.loading = true;
       try {

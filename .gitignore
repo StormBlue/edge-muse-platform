@@ -35,3 +35,4 @@ temp/
 # Local generated uploads and binaries
 uploads/
 
+.test-artifacts/

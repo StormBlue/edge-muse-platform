@@ -12,6 +12,8 @@ import { apiFetch } from "@/api/client";
 import { trackExperimentEvent } from "@/api/experiments";
 import PromptAssistantFinalPrompt from "./PromptAssistantFinalPrompt.vue";
 import PromptAssistantMessages from "./PromptAssistantMessages.vue";
+import { promptAssistantLocaleFromUiLocale } from "./promptAssistantLocale";
+import { useUiStore } from "@/stores/ui";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
 import type { AssistantMessage, AssistantResponse } from "./promptAssistantTypes";
@@ -21,6 +23,7 @@ const props = defineProps<{
   caseItem: PromptCase | null;
   provider: ProviderCapabilities | null;
   referenceCount: number;
+  referenceContextKey: string;
 }>();
 
 const emit = defineEmits<{
@@ -28,12 +31,14 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const ui = useUiStore();
 const MAX_ASSISTANT_TURNS = 8;
 const messages = ref<AssistantMessage[]>([]);
 const input = ref("");
 const loading = ref(false);
 const latest = ref<AssistantResponse | null>(null);
 const editableFinalPrompt = ref("");
+let requestSeq = 0;
 
 const completedAssistantReplies = computed(
   () => messages.value.filter((message) => message.role === "assistant").length
@@ -49,13 +54,30 @@ const limitReached = computed(
   () =>
     !loading.value && !finalPrompt.value && completedAssistantReplies.value >= MAX_ASSISTANT_TURNS
 );
+const contextKey = computed(() =>
+  [
+    props.caseItem?.id ?? "",
+    props.mode,
+    props.provider?.model ?? "",
+    props.provider?.supportedSizes?.join("|") ?? "",
+    props.provider?.maxReferenceImages ?? "",
+    // 图生图参考图会影响追问策略；同数量替换图片也必须重开上下文。
+    props.referenceContextKey
+  ].join("::")
+);
 
 watch(finalPrompt, (value) => {
   editableFinalPrompt.value = value;
 });
 
+watch(contextKey, () => {
+  reset();
+});
+
 async function sendTurn() {
   if (!canSend.value) return;
+  const currentSeq = ++requestSeq;
+  const currentContextKey = contextKey.value;
   const isFirstTurn = messages.value.length === 0;
   const nextMessages: AssistantMessage[] = [
     ...messages.value,
@@ -77,7 +99,7 @@ async function sendTurn() {
       method: "POST",
       body: JSON.stringify({
         mode: props.mode,
-        locale: "zh-CN",
+        locale: promptAssistantLocaleFromUiLocale(ui.locale),
         turnIndex: completedAssistantReplies.value,
         caseId: props.caseItem?.id,
         caseTitle: props.caseItem?.title,
@@ -96,16 +118,18 @@ async function sendTurn() {
         messages: nextMessages
       })
     });
+    if (currentSeq !== requestSeq || currentContextKey !== contextKey.value) return;
     latest.value = result;
     messages.value = [...nextMessages, { role: "assistant", content: result.assistantMessage }];
   } catch (error) {
+    if (currentSeq !== requestSeq || currentContextKey !== contextKey.value) return;
     const message =
       error && typeof error === "object" && "error" in error
         ? (error as { error: { message: string } }).error.message
         : t("aiImage.assistantFailed");
     toast.error(message);
   } finally {
-    loading.value = false;
+    if (currentSeq === requestSeq) loading.value = false;
   }
 }
 
@@ -127,10 +151,12 @@ function copyFinalPrompt() {
 }
 
 function reset() {
+  requestSeq += 1;
   messages.value = [];
   input.value = "";
   latest.value = null;
   editableFinalPrompt.value = "";
+  loading.value = false;
 }
 </script>
 

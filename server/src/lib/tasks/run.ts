@@ -4,6 +4,7 @@ import { messages, providerKeys, providers, tasks, users } from "../../db/schema
 import { getProvider } from "../../providers/registry";
 import { decryptString } from "../crypto";
 import { appError } from "../errors";
+import { recordTaskResultExperimentEvent } from "../experiments";
 import { now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn, promptSummary, urlSummary } from "../log";
@@ -480,6 +481,30 @@ export async function runGenerateTask(
       imageCount: finalImages.length,
       textResponseCount: textResponses.length
     });
+    try {
+      await recordTaskResultExperimentEvent(env, {
+        userId: task.userId,
+        taskId,
+        eventName: finalStatus === "succeeded" ? "generate_succeeded" : "generate_failed",
+        metadata: {
+          imageCount: finalImages.length,
+          failureCount: failures.length,
+          providerImageCount
+        }
+      });
+      logInfo("task.finish.experiment_result_written", {
+        ...baseLogFields,
+        finalStatus,
+        imageCount: finalImages.length
+      });
+    } catch (error) {
+      // 实验事件不能影响任务终态；失败由日志暴露，指标侧会缺少该结果事件。
+      logWarn("task.finish.experiment_result_failed", {
+        ...baseLogFields,
+        finalStatus,
+        message: error instanceof Error ? error.message : "unknown"
+      });
+    }
     if (finalStatus === "succeeded") {
       await send({
         type: "task.done",

@@ -4,6 +4,7 @@
  * AppShell 负责读取路由和导航，具体判断放在这里，便于单测覆盖 A/B 漏斗边界。
  */
 import type { GenerationExperience } from "@/stores/auth";
+import type { ClientExperimentEventName } from "@/api/experiments";
 
 export type GenerationNavEntry = {
   to: string;
@@ -11,7 +12,7 @@ export type GenerationNavEntry = {
 };
 
 export type GenerationExperimentEventDraft = {
-  eventName: string;
+  eventName: ClientExperimentEventName;
   route?: string;
   metadata?: Record<string, unknown>;
 };
@@ -57,7 +58,14 @@ export function buildGenerationRouteOpenEvents(
 
   const events: GenerationExperimentEventDraft[] = [];
   const assignedTarget = experience?.navTarget;
-  const directAccess = Boolean(!isSysadmin && assignedTarget && assignedTarget !== targetRoute);
+  const directTrackingEnabled =
+    !isSysadmin &&
+    experience?.status === "running" &&
+    experience.variant !== "parallel" &&
+    ["ab_test", "force_ai", "force_legacy"].includes(experience.strategy);
+  const directAccess = Boolean(
+    directTrackingEnabled && assignedTarget && assignedTarget !== targetRoute
+  );
   const openedKey = `${fullPath}:${experience?.variant ?? "unknown"}`;
   if (!openedKeys.has(openedKey)) {
     openedKeys.add(openedKey);

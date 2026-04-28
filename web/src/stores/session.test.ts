@@ -1,10 +1,18 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
+import { apiFetch } from "@/api/client";
 import { useSessionStore, type Message } from "./session";
+
+vi.mock("@/api/client", () => ({
+  apiFetch: vi.fn()
+}));
+
+const mockedApiFetch = vi.mocked(apiFetch);
 
 describe("session store task events", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    mockedApiFetch.mockReset();
   });
 
   it("keeps partial images from failed task events", () => {
@@ -50,6 +58,39 @@ describe("session store task events", () => {
       taskId: "tsk_1",
       sessionId: "ses_1",
       messageId: "msg_1"
+    });
+  });
+
+  it("sends AI image experiment submission metadata with generate requests", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      taskId: "tsk_1",
+      sessionId: "ses_1",
+      messageId: "msg_1",
+      wsUrl: "ws://localhost/ws/task/tsk_1",
+      title: "AI image"
+    });
+    const sessions = useSessionStore();
+
+    await sessions.generate({
+      title: "AI image",
+      prompt: "生成一张产品图",
+      mode: "text2image",
+      size: "1024x1024",
+      n: 1,
+      experimentEvent: {
+        route: "/ai-image",
+        caseId: "case_1",
+        metadata: { mode: "text2image" }
+      }
+    });
+
+    const request = mockedApiFetch.mock.calls[0]?.[1] as { body: string };
+    expect(JSON.parse(request.body)).toMatchObject({
+      experimentEvent: {
+        route: "/ai-image",
+        caseId: "case_1",
+        metadata: { mode: "text2image" }
+      }
     });
   });
 });

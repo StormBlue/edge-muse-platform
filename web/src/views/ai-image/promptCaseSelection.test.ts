@@ -75,6 +75,28 @@ describe("prompt case selection", () => {
     expect(filtered.map((item) => item.id)).toEqual(["case_b"]);
   });
 
+  it("filters cases by provider supported modes before user filters", () => {
+    expect(
+      filterPromptCases(cases, {
+        category: "",
+        mode: "",
+        size: "",
+        search: "",
+        supportedModes: ["image2image"]
+      }).map((item) => item.id)
+    ).toEqual(["case_b"]);
+
+    expect(
+      filterPromptCases(cases, {
+        category: "",
+        mode: "",
+        size: "",
+        search: "",
+        supportedModes: []
+      })
+    ).toEqual([]);
+  });
+
   it("keeps current mode when applying a case and falls back to the case default", () => {
     expect(promptCaseApplyResult(cases[1], "text2image")).toEqual({
       prompt: "保留参考图轮廓，生成角色设定",
@@ -83,6 +105,14 @@ describe("prompt case selection", () => {
     expect(promptCaseApplyResult(cases[1], "")).toEqual({
       prompt: "保留参考图轮廓，生成角色设定",
       mode: "image2image"
+    });
+    expect(promptCaseApplyResult(cases[0], "image2image")).toEqual({
+      prompt: "专业棚拍产品图",
+      mode: "text2image"
+    });
+    expect(promptCaseApplyResult(cases[1], "image2image", ["text2image"])).toEqual({
+      prompt: "保留参考图轮廓，生成角色设定",
+      mode: "text2image"
     });
   });
 });

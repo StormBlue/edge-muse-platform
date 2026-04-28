@@ -10,6 +10,7 @@ export type PromptCaseSelectionFilters = {
   mode: "" | PromptCaseMode;
   size: string;
   search: string;
+  supportedModes?: PromptCaseMode[];
 };
 
 export type PromptCaseApplyResult = {
@@ -28,6 +29,12 @@ export function promptCaseSizes(items: PromptCase[]) {
 export function filterPromptCases(items: PromptCase[], filters: PromptCaseSelectionFilters) {
   const keyword = filters.search.trim().toLowerCase();
   return items.filter((item) => {
+    // Provider 可能只开放文生图或图生图，先排除无法提交的案例，避免用户选中后才失败。
+    if (filters.supportedModes) {
+      if (filters.mode && !filters.supportedModes.includes(filters.mode)) return false;
+      const hasSupportedMode = item.modes.some((mode) => filters.supportedModes?.includes(mode));
+      if (!hasSupportedMode) return false;
+    }
     if (filters.category && item.category !== filters.category) return false;
     if (filters.mode && !item.modes.includes(filters.mode)) return false;
     if (filters.size && item.recommendedSize !== filters.size) return false;
@@ -48,11 +55,17 @@ export function filterPromptCases(items: PromptCase[], filters: PromptCaseSelect
 
 export function promptCaseApplyResult(
   item: PromptCase,
-  currentMode: "" | PromptCaseMode
+  currentMode: "" | PromptCaseMode,
+  supportedModes?: PromptCaseMode[]
 ): PromptCaseApplyResult {
+  const itemSupportedModes = supportedModes
+    ? item.modes.filter((mode) => supportedModes.includes(mode))
+    : item.modes;
+  const supportedMode =
+    currentMode && itemSupportedModes.includes(currentMode) ? currentMode : null;
   return {
     prompt: item.promptTemplate,
-    mode: currentMode || item.modes[0] || "text2image"
+    mode: supportedMode || itemSupportedModes[0] || "text2image"
   };
 }
 

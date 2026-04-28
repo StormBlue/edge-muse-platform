@@ -12,6 +12,7 @@ import {
   getGenerationExperiment,
   saveGenerationExperiment,
   type ExperimentMetric,
+  type ExperimentMetricsWindow,
   type GenerationExperiment
 } from "@/api/experiments";
 import {
@@ -26,6 +27,7 @@ const { t } = useI18n();
 const loading = ref(false);
 const saving = ref(false);
 const metrics = ref<ExperimentMetric[]>([]);
+const metricsWindow = ref<ExperimentMetricsWindow | null>(null);
 const scopeText = ref("{}");
 const form = ref({
   status: "draft" as GenerationExperiment["status"],
@@ -47,6 +49,9 @@ const presetButtons = computed(() =>
   }))
 );
 const riskSummary = computed(() => generationExperimentRiskSummary(form.value, scopeText.value));
+const metricsWindowText = computed(() =>
+  metricsWindow.value ? t("experiments.metricsWindow", { days: metricsWindow.value.days }) : ""
+);
 const riskClass = computed(() => {
   if (riskSummary.value.level === "danger") {
     return "border-destructive/45 bg-destructive/10 text-destructive";
@@ -69,6 +74,7 @@ async function load() {
     };
     scopeText.value = JSON.stringify(body.experiment.scope, null, 2);
     metrics.value = body.metrics;
+    metricsWindow.value = body.metricsWindow;
   } finally {
     loading.value = false;
   }
@@ -195,6 +201,9 @@ onMounted(load);
       <section class="panel overflow-hidden">
         <div class="border-b border-border p-4">
           <h2 class="font-semibold">{{ t("experiments.metrics") }}</h2>
+          <p v-if="metricsWindowText" class="mt-1 text-xs text-muted-foreground">
+            {{ metricsWindowText }}
+          </p>
         </div>
         <div class="thin-scrollbar max-h-[calc(100vh-12rem)] overflow-auto">
           <table class="w-full min-w-[42rem] text-sm">

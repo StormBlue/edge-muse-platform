@@ -154,6 +154,7 @@
     "searchCases": "搜索案例、标签或用途",
     "sendAssistantMessage": "发送",
     "fillFinalPrompt": "使用到提示词框",
+    "sizeFallback": "案例推荐尺寸 {recommended} 当前服务商不支持，已使用 {size}。",
     "submitted": "生成任务已提交",
     "subtitle": "先选场景案例，再改成自己的需求，最后提交生成。",
     "useCasePrompt": "使用这个案例"
@@ -327,6 +328,7 @@
     "count": "数量",
     "eventName": "事件",
     "metrics": "指标",
+    "metricsWindow": "当前仅统计最近 {days} 天的普通用户事件。",
     "noMetrics": "暂无指标",
     "presetAb25": "25% B 变体",
     "presetAb25Hint": "启动 A/B 测试，让 25% 命中用户进入 AI 图像生成入口。",

@@ -20,10 +20,33 @@ export type ExperimentMetric = {
   count: number;
 };
 
+export type ExperimentMetricsWindow = {
+  since: number;
+  until: number;
+  days: number;
+};
+
+export type ClientExperimentEventName =
+  | "generation_entry_exposed"
+  | "generation_page_opened"
+  | "prompt_case_selected"
+  | "assistant_started"
+  | "assistant_prompt_filled"
+  | "variant_switched_directly";
+
+export type ClientExperimentEventInput = {
+  eventName: ClientExperimentEventName;
+  route?: string;
+  caseId?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export async function getGenerationExperiment() {
-  return apiFetch<{ experiment: GenerationExperiment; metrics: ExperimentMetric[] }>(
-    "/sysadmin/experiments/generation"
-  );
+  return apiFetch<{
+    experiment: GenerationExperiment;
+    metrics: ExperimentMetric[];
+    metricsWindow: ExperimentMetricsWindow;
+  }>("/sysadmin/experiments/generation");
 }
 
 export async function saveGenerationExperiment(input: {
@@ -42,13 +65,7 @@ export async function saveGenerationExperiment(input: {
   return body.experiment;
 }
 
-export async function trackExperimentEvent(input: {
-  eventName: string;
-  route?: string;
-  caseId?: string;
-  taskId?: string;
-  metadata?: Record<string, unknown>;
-}) {
+export async function trackExperimentEvent(input: ClientExperimentEventInput) {
   await apiFetch("/experiments/events", {
     method: "POST",
     body: JSON.stringify(input)

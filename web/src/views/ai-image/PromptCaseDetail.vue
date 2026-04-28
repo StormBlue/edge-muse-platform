@@ -3,8 +3,9 @@
  * 案例详情：展示用户决策所需信息，并明确来源归因。
  */
 import { computed } from "vue";
-import { ExternalLink, ImageOff, WandSparkles } from "lucide-vue-next";
+import { ExternalLink, WandSparkles } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
+import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import type { PromptCase } from "@/types/promptCases";
 
 const props = withDefaults(
@@ -44,15 +45,7 @@ const bodyClass = computed(() =>
     </div>
     <div v-else :class="bodyClass">
       <div class="aspect-[4/3] overflow-hidden rounded-lg border border-border bg-muted">
-        <img
-          v-if="item.thumbnailUrl"
-          class="h-full w-full object-cover"
-          :src="item.thumbnailUrl"
-          :alt="item.title"
-        />
-        <div v-else class="flex h-full items-center justify-center text-muted-foreground">
-          <ImageOff class="h-8 w-8" />
-        </div>
+        <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-8 w-8" />
       </div>
 
       <div class="mt-4">

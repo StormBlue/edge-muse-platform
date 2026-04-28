@@ -33,6 +33,12 @@
 | [design-docs/index.md](./design-docs/index.md)                                       | 设计决策索引                 |
 | [exec-plans/README.md](./exec-plans/README.md)                                       | 活跃开发计划与任务清单       |
 | [reviews/ai-image-generation-audit-01.md](./reviews/ai-image-generation-audit-01.md) | AI 图像生成开发审核报告 01   |
+| [reviews/ai-image-generation-audit-02.md](./reviews/ai-image-generation-audit-02.md) | AI 图像生成开发审核报告 02   |
+| [reviews/ai-image-generation-audit-03.md](./reviews/ai-image-generation-audit-03.md) | AI 图像生成开发审核报告 03   |
+| [reviews/ai-image-generation-audit-04.md](./reviews/ai-image-generation-audit-04.md) | AI 图像生成开发审核报告 04   |
+| [reviews/ai-image-generation-audit-05.md](./reviews/ai-image-generation-audit-05.md) | AI 图像生成开发审核报告 05   |
+| [reviews/ai-image-generation-audit-06.md](./reviews/ai-image-generation-audit-06.md) | AI 图像生成开发审核报告 06   |
+| [reviews/ai-image-generation-audit-07.md](./reviews/ai-image-generation-audit-07.md) | AI 图像生成开发审核报告 07   |
 | [archive/README.md](./archive/README.md)                                             | 已归档 PRD、Cubence 任务全书 |
 
 ## 已合并 / 迁移说明

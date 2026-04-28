@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { experimentEventSchema, sanitizeExperimentEventMetadata } from "../src/lib/experiments";
+import {
+  clientExperimentEventSchema,
+  experimentEventSchema,
+  sanitizeExperimentEventMetadata
+} from "../src/lib/experiments";
 import { isInGenerationExperimentScope } from "../src/lib/experimentScope";
 
 describe("generation experiment events", () => {
@@ -16,6 +20,46 @@ describe("generation experiment events", () => {
       route: "/ai-image",
       caseId: "pcase_1"
     });
+  });
+
+  it("rejects unknown generation funnel event names", () => {
+    expect(() =>
+      experimentEventSchema.parse({
+        eventName: "custom_metric_name",
+        route: "/ai-image",
+        metadata: {}
+      })
+    ).toThrow();
+  });
+
+  it("keeps browser-tracked events away from task lifecycle events", () => {
+    expect(
+      clientExperimentEventSchema.parse({
+        eventName: "assistant_started",
+        route: "/ai-image",
+        metadata: { mode: "text2image" }
+      })
+    ).toMatchObject({ eventName: "assistant_started" });
+
+    for (const eventName of ["generate_submitted", "generate_succeeded", "generate_failed"]) {
+      expect(() =>
+        clientExperimentEventSchema.parse({
+          eventName,
+          route: "/ai-image",
+          taskId: "task_1",
+          metadata: {}
+        })
+      ).toThrow();
+    }
+
+    expect(() =>
+      clientExperimentEventSchema.parse({
+        eventName: "assistant_started",
+        route: "/ai-image",
+        taskId: "task_1",
+        metadata: {}
+      })
+    ).toThrow();
   });
 
   it("removes prompts, keys, and reference image payloads from event metadata", () => {

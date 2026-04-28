@@ -154,6 +154,7 @@
     "searchCases": "Search cases, tags, or use cases",
     "sendAssistantMessage": "Send",
     "fillFinalPrompt": "Apply to prompt field",
+    "sizeFallback": "The case recommends {recommended}, which this provider does not support. Using {size} instead.",
     "submitted": "Generation task submitted",
     "subtitle": "Start from a scene case, adapt it, then submit generation.",
     "useCasePrompt": "Use this case"
@@ -327,6 +328,7 @@
     "count": "Count",
     "eventName": "Event",
     "metrics": "Metrics",
+    "metricsWindow": "Currently showing regular-user events from the last {days} days.",
     "noMetrics": "No metrics",
     "presetAb25": "25% B variant",
     "presetAb25Hint": "Start A/B testing with 25% of scoped users on the AI image entry.",

@@ -23,7 +23,7 @@ pnpm -F web build && pnpm -F server build
 ## 范围
 
 - **服务端**：单元/集成测试在 [`server/test/`](../server/test/)，覆盖 provider 协议形态、任务校验、回归场景（如 Cubence 相关 `cubenceRegression.test.ts`）。
-- **前端**：[`web/src/stores/session.test.ts`](../web/src/stores/session.test.ts) 等；随功能增量补充。
+- **前端**：[`web/src/stores/session.test.ts`](../web/src/stores/session.test.ts) 等；组件/组合函数测试使用 Vitest，涉及 Vue 组件渲染时使用 `@vue/test-utils`，需要 DOM 的用例在文件头声明 `// @vitest-environment happy-dom`。
 
 ## 限制
 

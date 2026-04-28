@@ -103,7 +103,8 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
         size: input.size,
         n: input.n,
         referenceImageIds,
-        referenceImages
+        referenceImages,
+        ...workspaceGenerationExperimentEvent(input, referenceImageIds.length)
       });
       connect(task.wsUrl);
       draftTitle.value = task.title;
@@ -130,7 +131,15 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     try {
       const body = await apiFetch<{ taskId: string; sessionId: string; messageId: string }>(
         `/tasks/${message.taskId}/retry`,
-        { method: "POST" }
+        {
+          method: "POST",
+          body: JSON.stringify({
+            experimentEvent: {
+              route: "/workspace",
+              metadata: { isRetry: true, retryTrigger: "workspace" }
+            }
+          })
+        }
       );
       const createdAt = Date.now();
       sessions.messages.push({
@@ -211,6 +220,26 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       if (candidate?.sessionId === message.sessionId && candidate.role === "user") return candidate;
     }
     return null;
+  }
+
+  function workspaceGenerationExperimentEvent(
+    input: { mode: SessionMode; size: string; n: number },
+    referenceImageCount: number
+  ) {
+    // AI 图像生成 A/B 只比较文生图、图生图；连续对话另行聚合，避免污染 A 变体口径。
+    if (input.mode === "chat") return {};
+    return {
+      experimentEvent: {
+        route: "/workspace",
+        metadata: {
+          mode: input.mode,
+          size: input.size,
+          n: input.n,
+          referenceImageCount,
+          promptSource: "user"
+        }
+      }
+    };
   }
 
   function activeGenerationFromError(error: unknown): ActiveGeneration | null {

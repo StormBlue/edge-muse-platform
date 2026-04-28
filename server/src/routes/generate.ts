@@ -21,6 +21,7 @@ import { tasks } from "../db/schema";
 import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
+import { recordExperimentEvent, recordRetrySubmittedExperimentEvent } from "../lib/experiments";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
 import { logInfo, logWarn, promptSummary } from "../lib/log";
 import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
@@ -52,6 +53,14 @@ const optionalSessionIdSchema = z.preprocess(
   z.string().min(1).optional()
 );
 
+const generateExperimentEventSchema = z
+  .object({
+    route: z.string().trim().max(120).optional(),
+    caseId: z.string().trim().max(120).optional(),
+    metadata: z.record(z.string(), z.unknown()).default({})
+  })
+  .optional();
+
 /** POST 体：可选 session（无则新建）、张数经 `resolveImageCountForRole` 再压一道 */
 const generateSchema = z.object({
   sessionId: optionalSessionIdSchema,
@@ -64,7 +73,13 @@ const generateSchema = z.object({
     .default("1024x1024"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional(),
-  referenceImageIds: z.array(z.string()).max(5).optional()
+  referenceImageIds: z.array(z.string()).max(5).optional(),
+  /** AI 图像生成页的提交事件由服务端在任务启动前写入，避免 WS 结果事件先到导致归因回退。 */
+  experimentEvent: generateExperimentEventSchema
+});
+
+const retrySchema = z.object({
+  experimentEvent: generateExperimentEventSchema
 });
 
 export const generateRoutes = new Hono<AppEnv>();
@@ -79,35 +94,36 @@ generateRoutes.post(
   async (c) => {
     const user = c.get("user");
     const rawBody = c.req.valid("json");
+    const { experimentEvent, ...generateBody } = rawBody;
     const traceId = c.get("traceId");
     logInfo("generate.request.received", {
       traceId,
       userId: user.id,
       role: user.role,
-      sessionId: rawBody.sessionId ?? null,
-      mode: rawBody.mode,
-      size: rawBody.size,
-      requestedImageCount: rawBody.n,
-      model: rawBody.model ?? null,
-      referenceImageCount: rawBody.referenceImageIds?.length ?? 0,
-      ...promptSummary(rawBody.prompt)
+      sessionId: generateBody.sessionId ?? null,
+      mode: generateBody.mode,
+      size: generateBody.size,
+      requestedImageCount: generateBody.n,
+      model: generateBody.model ?? null,
+      referenceImageCount: generateBody.referenceImageIds?.length ?? 0,
+      ...promptSummary(generateBody.prompt)
     });
     // 图生图：去重参考图 id；文生/对话不传 reference
     const referenceImageIds =
-      rawBody.mode === "image2image" ? [...new Set(rawBody.referenceImageIds ?? [])] : [];
-    if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
+      generateBody.mode === "image2image" ? [...new Set(generateBody.referenceImageIds ?? [])] : [];
+    if (generateBody.mode === "image2image" && referenceImageIds.length === 0) {
       logWarn("generate.request.rejected", {
         traceId,
         userId: user.id,
-        mode: rawBody.mode,
+        mode: generateBody.mode,
         reason: "missing_reference_image"
       });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
     // 非 sysadmin 的 n 可能被压到 1（多轮 chat 等策略见 lib/generationPolicy）
     const body = {
-      ...rawBody,
-      n: resolveImageCountForRole(user.role, rawBody.mode, rawBody.n),
+      ...generateBody,
+      n: resolveImageCountForRole(user.role, generateBody.mode, generateBody.n),
       referenceImageIds
     };
     logInfo("generate.request.normalized", {
@@ -147,6 +163,33 @@ generateRoutes.post(
       userId: user.id,
       taskId: result.taskId
     });
+    if (experimentEvent) {
+      try {
+        await recordExperimentEvent(c.env, user, {
+          eventName: "generate_submitted",
+          route: experimentEvent.route,
+          caseId: experimentEvent.caseId,
+          taskId: result.taskId,
+          metadata: {
+            ...experimentEvent.metadata,
+            submitEventSource: "server_generate"
+          }
+        });
+        logInfo("generate.experiment_submitted_written", {
+          traceId,
+          userId: user.id,
+          taskId: result.taskId
+        });
+      } catch (error) {
+        // 事件不应阻断已创建的任务；失败会让后续结果事件带 attributionFallback，便于排查。
+        logWarn("generate.experiment_submitted_failed", {
+          traceId,
+          userId: user.id,
+          taskId: result.taskId,
+          message: error instanceof Error ? error.message : "unknown"
+        });
+      }
+    }
     // `startGenerateTask` 仅 `waitUntil` 子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
     startGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
@@ -195,19 +238,56 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
 // ---------- 失败任务用原 params 再建一条任务（`retryOf` 记血缘），不重复用旧 message 行 ----------
 generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   const user = c.get("user");
+  const retryBody = await c.req.json().catch(() => ({}));
+  const parsedRetry = retrySchema.safeParse(retryBody);
+  if (!parsedRetry.success) {
+    throw appError("VALIDATION_ERROR", "Invalid retry payload", parsedRetry.error.flatten());
+  }
   const task = await assertTaskAccess(c.env, c.req.param("id"), user);
   if (task.status !== "failed")
     throw appError("VALIDATION_ERROR", "Only failed tasks can be retried");
   const params = generateSchema.parse(JSON.parse(task.params));
+  const retryParams = {
+    ...params,
+    n: resolveImageCountForRole(user.role, params.mode, params.n)
+  };
   const result = await createGenerateTask(c.env, {
     userId: user.id,
     sessionId: task.sessionId,
-    params: {
-      ...params,
-      n: resolveImageCountForRole(user.role, params.mode, params.n)
-    },
+    params: retryParams,
     retryOf: task.id
   });
+  try {
+    await recordRetrySubmittedExperimentEvent(c.env, {
+      userId: user.id,
+      sourceTaskId: task.id,
+      taskId: result.taskId,
+      route: parsedRetry.data.experimentEvent?.route,
+      caseId: parsedRetry.data.experimentEvent?.caseId,
+      metadata: {
+        ...parsedRetry.data.experimentEvent?.metadata,
+        mode: retryParams.mode,
+        size: retryParams.size,
+        n: retryParams.n,
+        referenceImageCount: retryParams.referenceImageIds?.length ?? 0
+      }
+    });
+    logInfo("task.retry.experiment_submitted_written", {
+      traceId: c.get("traceId"),
+      userId: user.id,
+      retryOf: task.id,
+      taskId: result.taskId
+    });
+  } catch (error) {
+    // 重试任务已经创建，指标写入失败不能影响用户继续接收任务结果。
+    logWarn("task.retry.experiment_submitted_failed", {
+      traceId: c.get("traceId"),
+      userId: user.id,
+      retryOf: task.id,
+      taskId: result.taskId,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+  }
   startGenerateTask(c.env, c.executionCtx, result.taskId);
   logInfo("task.retry.created", {
     traceId: c.get("traceId"),

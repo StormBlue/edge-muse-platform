@@ -4,7 +4,7 @@
  *
  * 页面把“选案例、改 Prompt、提交生成”串成一个轻量流程；真实生图仍复用现有任务链路。
  */
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { trackExperimentEvent } from "@/api/experiments";
@@ -14,15 +14,17 @@ import PromptCaseDetail from "./PromptCaseDetail.vue";
 import PromptCaseGallery from "./PromptCaseGallery.vue";
 import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
 import { useAuthStore } from "@/stores/auth";
+import { resolveAiImageRecommendedSize, type AiImageSizeFallback } from "./aiImageSizeFallback";
 import { useAiImageCases } from "./useAiImageCases";
 import { useAiImageGenerationSubmit } from "./useAiImageGenerationSubmit";
 import type { PromptCase } from "@/types/promptCases";
 
 const { t } = useI18n();
 const auth = useAuthStore();
-const cases = useAiImageCases();
 const generation = useAiImageGenerationSubmit();
+const cases = useAiImageCases({ supportedModes: generation.supportedModes });
 const mobileCaseSheetOpen = ref(false);
+const sizeFallback = ref<AiImageSizeFallback | null>(null);
 
 const quotaLabel = computed(() => {
   if (!auth.quota) return "--";
@@ -31,6 +33,14 @@ const quotaLabel = computed(() => {
 });
 
 const selectedCaseTitle = computed(() => cases.selected.value?.title ?? t("aiImage.blankCase"));
+const sizeFallbackNotice = computed(() =>
+  sizeFallback.value
+    ? t("aiImage.sizeFallback", {
+        recommended: sizeFallback.value.recommendedSize,
+        size: sizeFallback.value.actualSize
+      })
+    : ""
+);
 const providerLabel = computed(() => {
   const capabilities = auth.providerCapabilities;
   if (!capabilities) return t("aiImage.providerUnknown");
@@ -38,8 +48,8 @@ const providerLabel = computed(() => {
 });
 
 function selectCase(item: PromptCase) {
-  cases.selectCase(item);
-  syncGenerationFromCase(item);
+  const result = cases.selectCase(item);
+  syncGenerationFromCase(item, result.mode);
   mobileCaseSheetOpen.value = shouldOpenMobileCaseSheet();
   void trackExperimentEvent({
     eventName: "prompt_case_selected",
@@ -50,16 +60,42 @@ function selectCase(item: PromptCase) {
 }
 
 function applyCase(item: PromptCase) {
-  cases.applyCasePrompt(item);
-  syncGenerationFromCase(item);
+  const result = cases.applyCasePrompt(item);
+  syncGenerationFromCase(item, result.mode);
   mobileCaseSheetOpen.value = false;
 }
 
-function syncGenerationFromCase(item: PromptCase) {
-  generation.mode.value = item.modes[0] ?? "text2image";
-  if (generation.sizeOptions.value.some((option) => option.value === item.recommendedSize)) {
-    generation.size.value = item.recommendedSize;
+function syncGenerationFromCase(item: PromptCase, mode: PromptCase["modes"][number]) {
+  generation.mode.value = mode;
+  applyRecommendedSize(item.recommendedSize);
+}
+
+function syncCurrentCaseToGeneration() {
+  const item = cases.selected.value;
+  if (!item) {
+    const fallbackMode = generation.supportedModes.value[0];
+    if (fallbackMode && !generation.supportedModes.value.includes(generation.mode.value)) {
+      generation.mode.value = fallbackMode;
+    }
+    sizeFallback.value = null;
+    return;
   }
+  syncGenerationFromCase(item, cases.selectedMode.value);
+}
+
+function applyRecommendedSize(recommendedSize: string) {
+  const result = resolveAiImageRecommendedSize(
+    recommendedSize,
+    generation.sizeOptions.value,
+    generation.size.value
+  );
+  generation.size.value = result.size;
+  sizeFallback.value = result.fallback;
+}
+
+function setGenerationSize(value: string) {
+  generation.size.value = value;
+  sizeFallback.value = null;
 }
 
 function copyPrompt() {
@@ -69,10 +105,8 @@ function copyPrompt() {
 }
 
 function fillAssistantPrompt(value: { prompt: string; recommendedSize: string }) {
-  cases.finalPrompt.value = value.prompt;
-  if (generation.sizeOptions.value.some((option) => option.value === value.recommendedSize)) {
-    generation.size.value = value.recommendedSize;
-  }
+  cases.setPrompt(value.prompt, "assistant");
+  applyRecommendedSize(value.recommendedSize);
   void trackExperimentEvent({
     eventName: "assistant_prompt_filled",
     route: "/ai-image",
@@ -82,17 +116,25 @@ function fillAssistantPrompt(value: { prompt: string; recommendedSize: string })
 }
 
 async function submitGeneration() {
-  void trackExperimentEvent({
-    eventName: "generate_submitted",
-    route: "/ai-image",
-    caseId: cases.selected.value?.id,
-    metadata: {
-      mode: generation.mode.value,
-      size: generation.size.value,
-      referenceImageCount: generation.files.value.length
+  const promptSource = cases.finalPromptSource.value ?? "unknown";
+  const selected = cases.selected.value;
+  const caseId = promptSource === "case" ? selected?.id : undefined;
+  const metadata = {
+    mode: generation.mode.value,
+    size: generation.size.value,
+    referenceImageCount: generation.files.value.length,
+    promptSource,
+    caseContextId: promptSource === "case" ? undefined : selected?.id
+  };
+  await generation.submit(
+    cases.finalPrompt.value,
+    promptSource === "case" ? selected?.title : undefined,
+    {
+      route: "/ai-image",
+      caseId,
+      metadata
     }
-  });
-  await generation.submit(cases.finalPrompt.value, selectedCaseTitle.value);
+  );
 }
 
 function shouldOpenMobileCaseSheet() {
@@ -102,6 +144,17 @@ function shouldOpenMobileCaseSheet() {
 onMounted(async () => {
   await cases.load();
 });
+
+watch(
+  () => [
+    cases.selected.value?.id ?? "",
+    cases.selectedMode.value,
+    generation.supportedModes.value.join("|"),
+    generation.sizeOptions.value.map((option) => option.value).join("|")
+  ],
+  () => syncCurrentCaseToGeneration(),
+  { flush: "post" }
+);
 </script>
 
 <template>
@@ -156,10 +209,20 @@ onMounted(async () => {
             class="ui-field h-10 px-3 text-sm"
             :placeholder="t('aiImage.searchCases')"
           />
-          <select v-model="cases.mode.value" class="ui-field h-10 px-3 text-sm">
+          <select v-model="cases.filterMode.value" class="ui-field h-10 px-3 text-sm">
             <option value="">{{ t("promptCases.allModes") }}</option>
-            <option value="text2image">{{ t("workspace.text2image") }}</option>
-            <option value="image2image">{{ t("workspace.image2image") }}</option>
+            <option
+              v-if="generation.supportedModes.value.includes('text2image')"
+              value="text2image"
+            >
+              {{ t("workspace.text2image") }}
+            </option>
+            <option
+              v-if="generation.supportedModes.value.includes('image2image')"
+              value="image2image"
+            >
+              {{ t("workspace.image2image") }}
+            </option>
           </select>
           <select v-model="cases.size.value" class="ui-field h-10 px-3 text-sm">
             <option value="">{{ t("aiImage.allSizes") }}</option>
@@ -183,15 +246,16 @@ onMounted(async () => {
 
         <AiImagePromptPanel
           v-model:mode="generation.mode.value"
-          v-model:prompt="cases.finalPrompt.value"
-          v-model:size="generation.size.value"
           :case-item="cases.selected.value"
           :has-running-task="generation.hasRunningTask.value"
+          :prompt="cases.finalPrompt.value"
           :previews="generation.previews.value"
           :provider="auth.providerCapabilities"
           :reference-count="generation.files.value.length"
           :result-images="generation.resultImages.value"
           :selected-case-title="selectedCaseTitle"
+          :size="generation.size.value"
+          :size-fallback-notice="sizeFallbackNotice"
           :size-options="generation.sizeOptions.value"
           :submitting="generation.submitting.value"
           :supported-modes="generation.supportedModes.value"
@@ -199,6 +263,8 @@ onMounted(async () => {
           @clear-prompt="cases.clearPrompt"
           @copy-prompt="copyPrompt"
           @fill-assistant="fillAssistantPrompt"
+          @update:prompt="(value) => cases.setPrompt(value, 'user')"
+          @update:size="setGenerationSize"
           @remove-file="generation.removeFile"
           @submit="submitGeneration"
         />
