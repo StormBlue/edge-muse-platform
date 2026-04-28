@@ -24,7 +24,7 @@ const { t } = useI18n();
     <div class="border-b border-border p-4">
       <h3 class="text-sm font-semibold">{{ t("experiments.funnelSummary") }}</h3>
       <div class="mt-3 overflow-auto rounded-lg border border-border">
-        <table class="w-full min-w-[76rem] text-sm">
+        <table class="w-full min-w-[96rem] text-sm">
           <thead class="bg-muted text-left text-muted-foreground">
             <tr>
               <th class="p-3">{{ t("experiments.variant") }}</th>
@@ -32,11 +32,15 @@ const { t } = useI18n();
               <th class="p-3 text-right">{{ t("experiments.pageOpened") }}</th>
               <th class="p-3 text-right">{{ t("experiments.openRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.assistantStarted") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.assistantTurns") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.assistantDegradedRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.promptFilled") }}</th>
               <th class="p-3 text-right">{{ t("experiments.promptFillRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.submitted") }}</th>
               <th class="p-3 text-right">{{ t("experiments.submitRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.successRate") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.historyReturned") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.historyReturnRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.failed") }}</th>
               <th class="p-3 text-right">{{ t("experiments.retrySubmitted") }}</th>
               <th class="p-3 text-right">{{ t("experiments.retryRate") }}</th>
@@ -47,12 +51,12 @@ const { t } = useI18n();
           </thead>
           <tbody>
             <tr v-if="loading" class="border-t border-border">
-              <td class="p-4 text-center text-muted-foreground" colspan="16">
+              <td class="p-4 text-center text-muted-foreground" colspan="20">
                 {{ t("common.loading") }}
               </td>
             </tr>
             <tr v-else-if="!metricSummaryRows.length" class="border-t border-border">
-              <td class="p-4 text-center text-muted-foreground" colspan="16">
+              <td class="p-4 text-center text-muted-foreground" colspan="20">
                 {{ t("experiments.noMetrics") }}
               </td>
             </tr>
@@ -67,11 +71,15 @@ const { t } = useI18n();
               <td class="p-3 text-right font-mono">{{ row.opened }}</td>
               <td class="p-3 text-right font-mono">{{ row.openRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.assistantStarted }}</td>
+              <td class="p-3 text-right font-mono">{{ row.assistantTurns }}</td>
+              <td class="p-3 text-right font-mono">{{ row.assistantDegradedRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.promptFilled }}</td>
               <td class="p-3 text-right font-mono">{{ row.promptFillRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.submitted }}</td>
               <td class="p-3 text-right font-mono">{{ row.submitRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.successRate }}</td>
+              <td class="p-3 text-right font-mono">{{ row.historyReturned }}</td>
+              <td class="p-3 text-right font-mono">{{ row.historyReturnRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.failed }}</td>
               <td class="p-3 text-right font-mono">{{ row.retrySubmitted }}</td>
               <td class="p-3 text-right font-mono">{{ row.retryRate }}</td>

@@ -32,6 +32,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { trackExperimentEvent } from "@/api/experiments";
 import {
   buildGenerationEntryExposureEvents,
+  buildGenerationHistoryReturnEvents,
   buildGenerationRouteOpenEvents
 } from "@/components/layout/generationExperimentEvents";
 import { useAuthStore } from "@/stores/auth";
@@ -51,6 +52,7 @@ let stopSidebarModeSync: (() => void) | null = null;
 const exposedGenerationEntries = new Set<string>();
 const openedGenerationRoutes = new Set<string>();
 const directGenerationRoutes = new Set<string>();
+const returnedHistoryRoutes = new Set<string>();
 
 const quotaLabel = computed(() => {
   if (!auth.quota) return "--";
@@ -194,6 +196,20 @@ function trackGenerationRouteOpen() {
   for (const event of events) void trackExperimentEvent(event);
 }
 
+function trackGenerationHistoryReturn(previous: { path: string; fullPath: string } | undefined) {
+  if (!previous) return;
+  const events = buildGenerationHistoryReturnEvents(
+    previous.path,
+    previous.fullPath,
+    route.path,
+    route.fullPath,
+    auth.generationExperience,
+    auth.isSysadmin,
+    returnedHistoryRoutes
+  );
+  for (const event of events) void trackExperimentEvent(event);
+}
+
 async function logout() {
   await auth.logout();
   await router.push("/login");
@@ -208,9 +224,10 @@ function closeThemeMenu(event: PointerEvent) {
 
 // 换页后收起移动侧栏，避免挡内容
 watch(
-  () => route.fullPath,
-  () => {
+  () => ({ path: route.path, fullPath: route.fullPath }),
+  (_current, previous) => {
     closeMobileSidebar();
+    trackGenerationHistoryReturn(previous);
     trackGenerationEntryExposure();
     trackGenerationRouteOpen();
   }

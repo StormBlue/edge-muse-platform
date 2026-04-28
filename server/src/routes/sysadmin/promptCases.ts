@@ -7,12 +7,14 @@ import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { audit } from "../../lib/audit";
 import {
+  bulkUpdatePromptCases,
   createPromptCase,
   importPromptCases,
   listPromptCases,
   PROMPT_CASE_LOCALES,
   PROMPT_CASE_MODES,
   PROMPT_CASE_STATUSES,
+  promptCaseBulkUpdateSchema,
   promptCaseCreateSchema,
   promptCaseImportSchema,
   promptCasePatchSchema,
@@ -65,6 +67,27 @@ export function registerSysadminPromptCaseRoutes(sysadminRoutes: SysadminRouter)
     });
     return c.json({ item }, 201);
   });
+
+  sysadminRoutes.post(
+    "/prompt-cases/bulk",
+    zValidator("json", promptCaseBulkUpdateSchema),
+    async (c) => {
+      const user = c.get("user");
+      const body = c.req.valid("json");
+      const items = await bulkUpdatePromptCases(c.env, user.id, body);
+      await audit(c.env, {
+        actorId: user.id,
+        action: "sys.prompt_case_bulk_update",
+        targetType: "prompt_case",
+        targetId: "bulk",
+        payload: {
+          count: body.ids.length,
+          patch: body.patch
+        }
+      });
+      return c.json({ items });
+    }
+  );
 
   sysadminRoutes.patch(
     "/prompt-cases/:id",

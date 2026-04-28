@@ -39,7 +39,7 @@ const quotaLabel = computed(() => {
   return auth.quota.remainingQuota;
 });
 
-const selectedCaseTitle = computed(() => cases.selected.value?.title ?? t("aiImage.blankCase"));
+const selectedCaseTitle = computed(() => cases.caseContext.value?.title ?? t("aiImage.blankCase"));
 const sizeFallbackNotice = computed(() =>
   sizeFallback.value
     ? t("aiImage.sizeFallback", {
@@ -55,7 +55,7 @@ const providerLabel = computed(() => {
 });
 
 function selectCase(item: PromptCase) {
-  cases.previewCase(item);
+  cases.previewCase(item, { userSelected: true });
   mobileCaseSheetOpen.value = shouldOpenMobileCaseSheet();
   trackPromptCaseSelected(item);
 }
@@ -114,7 +114,7 @@ function fillAssistantPrompt(value: {
   cases.setPrompt(value.prompt, "assistant");
   applyRecommendedSize(value.recommendedSize);
   trackAssistantPromptFilled({
-    caseId: cases.selected.value?.id,
+    caseId: cases.caseContext.value?.id,
     prompt: value.prompt,
     turnCount: value.turnCount
   });
@@ -122,7 +122,7 @@ function fillAssistantPrompt(value: {
 
 function openAssistant() {
   trackAssistantStarted({
-    caseId: cases.selected.value?.id,
+    caseId: cases.caseContext.value?.id,
     mode: generation.mode.value
   });
 }
@@ -130,9 +130,10 @@ function openAssistant() {
 async function submitGeneration() {
   const experimentEvent = currentSubmitExperimentEvent();
   const promptSource = cases.finalPromptSource.value ?? "unknown";
+  const caseContext = cases.caseContext.value;
   await generation.submit(
     cases.finalPrompt.value,
-    promptSource === "case" ? cases.selected.value?.title : undefined,
+    promptSource === "case" ? caseContext?.title : undefined,
     experimentEvent
   );
 }
@@ -151,10 +152,10 @@ async function retryFailedGeneration() {
 
 function currentSubmitExperimentEvent() {
   const promptSource = cases.finalPromptSource.value ?? "unknown";
-  const selected = cases.selected.value;
+  const caseContext = cases.caseContext.value;
   return buildSubmitExperimentEvent({
     promptSource,
-    selectedCaseId: selected?.id,
+    selectedCaseId: caseContext?.id,
     mode: generation.mode.value,
     size: generation.size.value,
     n: 1,
@@ -274,7 +275,8 @@ watch(
         <AiImagePromptPanel
           v-model:mode="generation.mode.value"
           :active-failed="generation.activeFailed.value"
-          :case-item="cases.selected.value"
+          :assistant-enabled="auth.promptAssistantEnabled"
+          :case-item="cases.caseContext.value"
           :failed-message="generation.failedMessage.value"
           :failed-title="generation.failedTitle.value"
           :has-running-task="generation.hasRunningTask.value"

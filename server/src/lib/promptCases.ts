@@ -6,7 +6,7 @@
  * - 外部案例发布前必须补齐来源、作者、许可证，避免归因缺失。
  * - 用户端只读 `published`，sysadmin 才能创建、编辑、导入和上下线。
  */
-import { and, asc, desc, eq, like, ne, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, like, ne, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client";
 import { promptCaseImports, promptCases, type PromptCase } from "../db/schema";
@@ -95,6 +95,23 @@ export const promptCasePatchSchema = promptCaseCreateSchema
   .partial()
   .refine((value) => Object.keys(value).length > 0, "Patch body cannot be empty");
 
+export const promptCaseBulkPatchSchema = z
+  .object({
+    category: shortTextSchema.optional(),
+    status: z.enum(PROMPT_CASE_STATUSES).optional(),
+    featured: z.boolean().optional()
+  })
+  .refine((value) => Object.keys(value).length > 0, "Bulk patch body cannot be empty");
+
+export const promptCaseBulkUpdateSchema = z.object({
+  ids: z
+    .array(z.string().trim().min(1).max(80))
+    .min(1)
+    .max(100)
+    .transform((ids) => [...new Set(ids)]),
+  patch: promptCaseBulkPatchSchema
+});
+
 export const promptCaseImportSchema = z.object({
   source: z.string().trim().min(1).max(80).default("manual"),
   sourceUrl: optionalTextSchema.optional(),
@@ -103,6 +120,7 @@ export const promptCaseImportSchema = z.object({
 
 export type PromptCaseCreateInput = z.infer<typeof promptCaseCreateSchema>;
 export type PromptCasePatchInput = z.infer<typeof promptCasePatchSchema>;
+export type PromptCaseBulkUpdateInput = z.infer<typeof promptCaseBulkUpdateSchema>;
 
 export type PromptCaseListFilters = {
   category?: string;
@@ -211,6 +229,39 @@ export async function updatePromptCase(
   });
   if (!updated) throw appError("NOT_FOUND", "Prompt case not found");
   return promptCaseToDto(updated);
+}
+
+export async function bulkUpdatePromptCases(
+  env: AppBindings,
+  actorId: string,
+  input: PromptCaseBulkUpdateInput
+): Promise<PromptCaseDto[]> {
+  const rows = await getDb(env)
+    .select()
+    .from(promptCases)
+    .where(inArray(promptCases.id, input.ids));
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  const missingIds = input.ids.filter((id) => !rowsById.has(id));
+  if (missingIds.length) {
+    throw appError("NOT_FOUND", "Prompt cases not found", { missingIds });
+  }
+
+  for (const row of rows) {
+    assertPublishable({ ...promptCaseToDto(row), ...input.patch });
+  }
+
+  await getDb(env)
+    .update(promptCases)
+    .set(toPromptCasePatch(input.patch, actorId))
+    .where(inArray(promptCases.id, input.ids));
+  const updatedRows = await getDb(env)
+    .select()
+    .from(promptCases)
+    .where(inArray(promptCases.id, input.ids));
+  const updatedById = new Map(updatedRows.map((row) => [row.id, promptCaseToDto(row)]));
+  return input.ids
+    .map((id) => updatedById.get(id))
+    .filter((item): item is PromptCaseDto => Boolean(item));
 }
 
 export async function importPromptCases(

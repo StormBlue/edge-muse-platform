@@ -25,7 +25,10 @@ watch(
 </script>
 
 <template>
-  <div class="thin-scrollbar max-h-72 space-y-3 overflow-y-auto p-3" aria-live="polite">
+  <div
+    class="prompt-assistant-messages thin-scrollbar max-h-72 space-y-3 overflow-y-auto p-3"
+    aria-live="polite"
+  >
     <div v-if="!messages.length" class="flex justify-start">
       <div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-muted px-3 py-2">
         <p class="mb-1 text-xs font-medium text-muted-foreground">

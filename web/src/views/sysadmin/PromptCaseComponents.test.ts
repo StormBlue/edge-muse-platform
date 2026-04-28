@@ -87,16 +87,19 @@ describe("PromptCaseTable", () => {
       props: {
         items: [first, second],
         loading: false,
-        selectedId: "pcase_2"
+        selectedId: "pcase_2",
+        selectedIds: new Set(["pcase_2"])
       }
     });
 
     await wrapper.findAll("tbody tr")[0].trigger("click");
+    await wrapper.findAll('input[type="checkbox"]')[1].setValue(true);
     await buttonByText(wrapper, "sysadmin.edit").trigger("click");
     await buttonByText(wrapper, "promptCases.feature").trigger("click");
     await buttonByText(wrapper, "promptCases.publish").trigger("click");
 
     expect(wrapper.emitted("update:selectedId")?.[0]).toEqual(["pcase_1"]);
+    expect(wrapper.emitted("toggleSelected")?.[0]).toEqual(["pcase_1", true]);
     expect(wrapper.emitted("edit")?.[0]).toEqual([first]);
     expect(wrapper.emitted("toggleFeatured")?.[0]).toEqual([first]);
     expect(wrapper.emitted("changeStatus")?.[0]).toEqual([first, "published"]);

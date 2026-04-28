@@ -28,6 +28,7 @@ import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
 import { logWarn } from "../lib/log";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
@@ -108,7 +109,8 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
-    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user))
+    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user)),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 
@@ -162,7 +164,8 @@ authRoutes.post("/refresh", async (c) => {
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
-    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user))
+    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user)),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 

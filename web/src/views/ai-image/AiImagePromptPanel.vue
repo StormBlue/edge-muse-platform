@@ -6,7 +6,7 @@
  * 外层页面只负责案例选择和实验事件，避免页面组件继续膨胀。
  */
 import { computed, ref } from "vue";
-import { Copy, Sparkles, Trash2, WandSparkles } from "lucide-vue-next";
+import { Copy, Sparkles, Trash2, WandSparkles, X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import AiImageFailurePanel from "./AiImageFailurePanel.vue";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
@@ -25,6 +25,7 @@ type PreviewImage = {
 
 const props = defineProps<{
   caseItem: PromptCase | null;
+  assistantEnabled: boolean;
   selectedCaseTitle: string;
   prompt: string;
   mode: PromptCaseMode;
@@ -59,8 +60,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const assistantAnchor = ref<HTMLElement | null>(null);
+const assistantFullscreenOpen = ref(false);
 const referenceDescription = ref("");
-const assistantOpenTracked = ref(false);
+const assistantOpenTrackedKeys = new Set<string>();
 
 const hasPrompt = computed(() => props.prompt.trim().length > 0);
 const canAcceptReferenceFiles = computed(
@@ -88,6 +90,9 @@ const referenceContextKey = computed(() =>
     referenceDescription.value.trim()
   ].join("::")
 );
+const assistantOpenKey = computed(() =>
+  [props.caseItem?.id ?? "", props.mode, referenceContextKey.value].join("::")
+);
 
 function onPromptInput(event: Event) {
   emit("update:prompt", (event.target as HTMLTextAreaElement).value);
@@ -106,15 +111,34 @@ function addReferenceFiles(files: File[]) {
   emit("addFiles", files);
 }
 
-function scrollToAssistant() {
+function openAssistantView() {
+  if (!props.assistantEnabled) return;
   trackAssistantOpen();
+  if (isMobileAssistantViewport()) {
+    assistantFullscreenOpen.value = true;
+    return;
+  }
   assistantAnchor.value?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function trackAssistantOpen() {
-  if (assistantOpenTracked.value) return;
-  assistantOpenTracked.value = true;
+  const key = assistantOpenKey.value;
+  if (assistantOpenTrackedKeys.has(key)) return;
+  assistantOpenTrackedKeys.add(key);
   emit("openAssistant");
+}
+
+function fillAssistantPrompt(value: {
+  prompt: string;
+  recommendedSize: string;
+  turnCount: number;
+}) {
+  emit("fillAssistant", value);
+  assistantFullscreenOpen.value = false;
+}
+
+function isMobileAssistantViewport() {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 }
 </script>
 
@@ -131,13 +155,17 @@ function trackAssistantOpen() {
           {{ t("aiImage.emptyGuideBody") }}
         </p>
         <button
+          v-if="assistantEnabled"
           class="ui-button ui-button-secondary mt-3 h-8 text-xs"
           type="button"
-          @click="scrollToAssistant"
+          @click="openAssistantView"
         >
           <WandSparkles class="h-3.5 w-3.5" />
           {{ t("aiImage.openAssistant") }}
         </button>
+        <p v-else class="mt-2 text-xs leading-5 text-muted-foreground">
+          {{ t("aiImage.assistantDisabled") }}
+        </p>
       </div>
 
       <div>
@@ -197,6 +225,16 @@ function trackAssistantOpen() {
         />
       </label>
 
+      <button
+        v-if="assistantEnabled && hasPrompt"
+        class="ui-button ui-button-secondary h-9 text-xs md:hidden"
+        type="button"
+        @click="openAssistantView"
+      >
+        <WandSparkles class="h-3.5 w-3.5" />
+        {{ t("aiImage.openAssistant") }}
+      </button>
+
       <AiImageReferenceInput
         v-if="mode === 'image2image'"
         v-model:description="referenceDescription"
@@ -206,7 +244,26 @@ function trackAssistantOpen() {
         @remove-file="(index) => emit('removeFile', index)"
       />
 
-      <div ref="assistantAnchor">
+      <div
+        v-if="assistantEnabled"
+        ref="assistantAnchor"
+        class="assistant-shell"
+        :class="{ 'assistant-shell--fullscreen': assistantFullscreenOpen }"
+      >
+        <div class="assistant-mobile-header">
+          <div>
+            <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
+            <p class="text-xs text-muted-foreground">{{ t("aiImage.assistantSubtitle") }}</p>
+          </div>
+          <button
+            class="ui-button ui-button-secondary h-9 w-9 p-0"
+            type="button"
+            :aria-label="t('viewer.close')"
+            @click="assistantFullscreenOpen = false"
+          >
+            <X class="h-4 w-4" />
+          </button>
+        </div>
         <PromptAssistantPanel
           :case-item="caseItem"
           :mode="mode"
@@ -214,7 +271,7 @@ function trackAssistantOpen() {
           :reference-count="referenceCount"
           :reference-description="referenceDescription"
           :reference-context-key="referenceContextKey"
-          @fill="(value) => emit('fillAssistant', value)"
+          @fill="fillAssistantPrompt"
           @open="trackAssistantOpen"
         />
       </div>
@@ -260,3 +317,49 @@ function trackAssistantOpen() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.assistant-mobile-header {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .assistant-shell {
+    display: none;
+  }
+
+  .assistant-shell--fullscreen {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+    background: var(--background);
+  }
+
+  .assistant-shell--fullscreen .assistant-mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1rem;
+  }
+
+  .assistant-shell--fullscreen :deep(.prompt-assistant-panel) {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .assistant-shell--fullscreen :deep(.prompt-assistant-messages) {
+    max-height: none;
+    min-height: 0;
+    flex: 1;
+  }
+}
+</style>

@@ -4,6 +4,7 @@
  *
  * 表格只负责展示与行级动作派发；实际保存、状态流转和错误处理仍由 usePromptCasesAdmin 统一收口。
  */
+import { computed } from "vue";
 import { Archive, EyeOff, Star, WandSparkles } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import type { PromptCase, PromptCaseStatus } from "@/types/promptCases";
@@ -12,16 +13,25 @@ const props = defineProps<{
   items: PromptCase[];
   loading: boolean;
   selectedId: string | null;
+  selectedIds: Set<string>;
 }>();
 
 const emit = defineEmits<{
   changeStatus: [item: PromptCase, status: PromptCaseStatus];
   edit: [item: PromptCase];
+  toggleAllVisible: [checked: boolean];
   toggleFeatured: [item: PromptCase];
+  toggleSelected: [id: string, checked: boolean];
   "update:selectedId": [value: string | null];
 }>();
 
 const { t } = useI18n();
+const allVisibleSelected = computed(
+  () => props.items.length > 0 && props.items.every((item) => props.selectedIds.has(item.id))
+);
+const someVisibleSelected = computed(
+  () => props.items.some((item) => props.selectedIds.has(item.id)) && !allVisibleSelected.value
+);
 
 function rowClass(item: PromptCase) {
   return item.id === props.selectedId ? "bg-muted/60" : "";
@@ -41,6 +51,15 @@ function statusTone(status: PromptCase["status"]) {
       <table class="w-full min-w-[72rem] text-sm">
         <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
           <tr>
+            <th class="w-10 p-3">
+              <input
+                :checked="allVisibleSelected"
+                :disabled="loading || !items.length"
+                :indeterminate="someVisibleSelected"
+                type="checkbox"
+                @change="emit('toggleAllVisible', ($event.target as HTMLInputElement).checked)"
+              />
+            </th>
             <th class="p-3">{{ t("promptCases.case") }}</th>
             <th class="p-3">{{ t("promptCases.category") }}</th>
             <th class="p-3">{{ t("promptCases.modes") }}</th>
@@ -53,12 +72,12 @@ function statusTone(status: PromptCase["status"]) {
         </thead>
         <tbody>
           <tr v-if="loading" class="border-t border-border">
-            <td class="p-4 text-center text-muted-foreground" colspan="8">
+            <td class="p-4 text-center text-muted-foreground" colspan="9">
               {{ t("common.loading") }}
             </td>
           </tr>
           <tr v-else-if="!items.length" class="border-t border-border">
-            <td class="p-4 text-center text-muted-foreground" colspan="8">
+            <td class="p-4 text-center text-muted-foreground" colspan="9">
               {{ t("promptCases.noCases") }}
             </td>
           </tr>
@@ -70,6 +89,15 @@ function statusTone(status: PromptCase["status"]) {
               :class="rowClass(item)"
               @click="emit('update:selectedId', item.id)"
             >
+              <td class="p-3" @click.stop>
+                <input
+                  :checked="selectedIds.has(item.id)"
+                  type="checkbox"
+                  @change="
+                    emit('toggleSelected', item.id, ($event.target as HTMLInputElement).checked)
+                  "
+                />
+              </td>
               <td class="max-w-sm p-3">
                 <div class="flex items-start gap-3">
                   <div

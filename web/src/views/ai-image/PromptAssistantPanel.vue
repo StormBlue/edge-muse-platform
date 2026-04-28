@@ -166,7 +166,11 @@ function reset() {
 </script>
 
 <template>
-  <div class="rounded-lg border border-border" @focusin="notifyOpen" @click="notifyOpen">
+  <div
+    class="prompt-assistant-panel rounded-lg border border-border"
+    @focusin="notifyOpen"
+    @click="notifyOpen"
+  >
     <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
       <div>
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>

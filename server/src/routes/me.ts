@@ -12,6 +12,7 @@ import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { getGenerationExperienceForUser } from "../lib/experiments";
 import { now } from "../lib/id";
+import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
@@ -26,7 +27,8 @@ meRoutes.get("/", requireAuth, async (c) => {
     user,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
-    generationExperience: await getGenerationExperienceForUser(c.env, user)
+    generationExperience: await getGenerationExperienceForUser(c.env, user),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 
@@ -53,7 +55,8 @@ meRoutes.patch(
       user: { ...user, nickname: body.nickname },
       quota: await getQuota(c.env, user.id),
       providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
-      generationExperience: await getGenerationExperienceForUser(c.env, user)
+      generationExperience: await getGenerationExperienceForUser(c.env, user),
+      promptAssistantEnabled: isPromptAssistantEnabled(c.env)
     });
   }
 );

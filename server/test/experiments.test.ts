@@ -39,11 +39,11 @@ describe("generation experiment events", () => {
   it("keeps browser-tracked events away from task lifecycle events", () => {
     expect(
       clientExperimentEventSchema.parse({
-        eventName: "assistant_started",
+        eventName: "generation_history_returned",
         route: "/ai-image",
-        metadata: { mode: "text2image" }
+        metadata: { fromRoute: "/ai-image" }
       })
-    ).toMatchObject({ eventName: "assistant_started" });
+    ).toMatchObject({ eventName: "generation_history_returned" });
 
     for (const eventName of ["generate_submitted", "generate_succeeded", "generate_failed"]) {
       expect(() =>

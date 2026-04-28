@@ -74,6 +74,12 @@ export type PromptCaseFormInput = {
   locale: PromptCaseLocale;
 };
 
+export type PromptCaseBulkPatchInput = {
+  category?: string;
+  status?: PromptCaseStatus;
+  featured?: boolean;
+};
+
 export function emptyPromptCaseForm(): PromptCaseFormInput {
   return {
     title: "",

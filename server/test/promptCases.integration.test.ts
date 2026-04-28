@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "../src/db/client";
 import { promptCaseImports, users } from "../src/db/schema";
 import {
+  bulkUpdatePromptCases,
   createPromptCase,
   importPromptCases,
   listPromptCases,
@@ -94,6 +95,44 @@ describe("prompt cases D1 integration", () => {
         status: "completed"
       }
     ]);
+  });
+
+  it("bulk updates status, category, and featured without touching prompt content", async () => {
+    const first = await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "草稿一", status: "draft" })
+    );
+    const second = await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "草稿二", status: "hidden" })
+    );
+
+    const updated = await bulkUpdatePromptCases(ctx.env, "sys_1", {
+      ids: [first.id, second.id],
+      patch: { status: "published", category: "品牌营销", featured: true }
+    });
+
+    expect(updated.map((item) => item.id)).toEqual([first.id, second.id]);
+    expect(updated).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: first.id,
+          status: "published",
+          category: "品牌营销",
+          featured: true,
+          promptTemplate: first.promptTemplate
+        }),
+        expect.objectContaining({
+          id: second.id,
+          status: "published",
+          category: "品牌营销",
+          featured: true,
+          promptTemplate: second.promptTemplate
+        })
+      ])
+    );
   });
 });
 

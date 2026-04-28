@@ -43,6 +43,24 @@ const GENERATION_EXPERIMENT_EVENT_CATALOG = {
     taskResult: false,
     excludeDirectAccessFromPrimaryMetrics: true
   },
+  assistant_turn_requested: {
+    client: false,
+    generateMetric: false,
+    taskResult: false,
+    excludeDirectAccessFromPrimaryMetrics: true
+  },
+  assistant_turn_degraded: {
+    client: false,
+    generateMetric: false,
+    taskResult: false,
+    excludeDirectAccessFromPrimaryMetrics: true
+  },
+  generation_history_returned: {
+    client: true,
+    generateMetric: false,
+    taskResult: false,
+    excludeDirectAccessFromPrimaryMetrics: true
+  },
   generate_submitted: {
     client: false,
     generateMetric: true,

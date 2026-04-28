@@ -84,6 +84,38 @@ export function buildGenerationRouteOpenEvents(
   return events;
 }
 
+export function buildGenerationHistoryReturnEvents(
+  fromPath: string,
+  fromFullPath: string,
+  toPath: string,
+  toFullPath: string,
+  experience: GenerationExperience | null,
+  isSysadmin: boolean,
+  returnedKeys: Set<string>
+) {
+  if (!toPath.startsWith("/history")) return [];
+  const fromRoute = generationTargetForPath(fromPath);
+  const variant = fromRoute ? generationVariantForPath(fromRoute) : null;
+  if (!fromRoute || !variant) return [];
+
+  const key = `${fromFullPath}->${toFullPath}:${experience?.variant ?? "unknown"}`;
+  if (returnedKeys.has(key)) return [];
+  returnedKeys.add(key);
+
+  return [
+    {
+      eventName: "generation_history_returned" as const,
+      route: fromRoute,
+      metadata: {
+        variant,
+        fromRoute,
+        historyRoute: "/history",
+        directAccess: isDirectGenerationAccess(fromRoute, experience, isSysadmin)
+      }
+    }
+  ];
+}
+
 export function isDirectGenerationAccess(
   targetRoute: "/workspace" | "/ai-image",
   experience: GenerationExperience | null | undefined,

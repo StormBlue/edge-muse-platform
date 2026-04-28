@@ -35,6 +35,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   const search = ref("");
   const finalPrompt = ref("");
   const finalPromptSource = ref<AiImagePromptSource>(null);
+  const caseContextId = ref<string | null>(null);
   const loading = ref(false);
   const loaded = ref(false);
   let loadSeq = 0;
@@ -57,6 +58,9 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       availableItems.value.find((item) => item.id === selectedId.value) ??
       availableItems.value[0] ??
       null
+  );
+  const caseContext = computed(
+    () => availableItems.value.find((item) => item.id === caseContextId.value) ?? null
   );
   const categories = computed(() => promptCaseCategories(availableItems.value));
   const sizes = computed(() => promptCaseSizes(availableItems.value));
@@ -103,6 +107,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   function selectCase(item: PromptCase) {
     const result = promptCaseApplyResult(item, filterMode.value, supportedModes.value);
     selectedId.value = item.id;
+    caseContextId.value = item.id;
     finalPrompt.value = result.prompt;
     finalPromptSource.value = "case";
     selectedMode.value = result.mode;
@@ -129,9 +134,17 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     const available = availableItems.value;
     if (!available.length) {
       selectedId.value = null;
+      caseContextId.value = null;
       if (finalPromptSource.value === "case") clearPrompt();
       selectedMode.value = supportedModes.value[0] ?? "text2image";
       return;
+    }
+    const contextAvailable = caseContextId.value
+      ? available.some((item) => item.id === caseContextId.value)
+      : false;
+    if (!contextAvailable) {
+      caseContextId.value = null;
+      if (finalPromptSource.value === "case") clearPrompt();
     }
     const selectedAvailable = selectedId.value
       ? available.some((item) => item.id === selectedId.value)
@@ -149,15 +162,18 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     }
   }
 
-  function previewCase(item: PromptCase) {
+  function previewCase(item: PromptCase, options: { userSelected?: boolean } = {}) {
     const result = promptCaseApplyResult(item, filterMode.value, supportedModes.value);
     selectedId.value = item.id;
     selectedMode.value = result.mode;
+    if (options.userSelected) caseContextId.value = item.id;
     if (finalPromptSource.value === "case") clearPrompt();
   }
 
   return {
     availableItems,
+    caseContext,
+    caseContextId,
     categories,
     category,
     filteredItems,

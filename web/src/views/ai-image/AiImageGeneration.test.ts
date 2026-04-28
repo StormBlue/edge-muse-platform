@@ -169,7 +169,7 @@ describe("AiImageGeneration", () => {
         n: 1,
         referenceImageCount: 0,
         promptSource: "user",
-        caseContextId: "case_user_context",
+        caseContextId: undefined,
         directAccess: false
       }
     });
@@ -222,7 +222,7 @@ describe("AiImageGeneration", () => {
     const wrapper = mount(AiImageGeneration);
     const generation = mocks.generation as ReturnType<typeof generationState>;
     const cases = mocks.cases as ReturnType<typeof casesState>;
-    cases.selected.value = promptCase({ id: "case_open" });
+    cases.caseContext.value = promptCase({ id: "case_open" });
     generation.mode.value = "image2image";
 
     await wrapper.get('[data-testid="open-assistant"]').trigger("click");
@@ -269,11 +269,14 @@ function generationState() {
 
 function casesState() {
   const selected = ref<PromptCase | null>(null);
+  const caseContext = ref<PromptCase | null>(null);
   const items = ref<PromptCase[]>([]);
   const finalPrompt = ref("");
   const finalPromptSource = ref<"case" | "assistant" | "user" | null>(null);
   return {
     availableItems: computed(() => items.value),
+    caseContext,
+    caseContextId: computed(() => caseContext.value?.id ?? null),
     categories: computed(() => []),
     category: ref(""),
     filteredItems: computed(() => items.value),
@@ -290,18 +293,21 @@ function casesState() {
     sizes: computed(() => []),
     applyCasePrompt: vi.fn((item: PromptCase) => {
       selected.value = item;
+      caseContext.value = item;
       finalPrompt.value = item.promptTemplate;
       finalPromptSource.value = "case";
       return { prompt: item.promptTemplate, mode: item.modes[0] ?? "text2image" };
     }),
     clearPrompt: vi.fn(),
     load: vi.fn(),
-    previewCase: vi.fn((item: PromptCase) => {
+    previewCase: vi.fn((item: PromptCase, options?: { userSelected?: boolean }) => {
       selected.value = item;
+      if (options?.userSelected) caseContext.value = item;
       return { mode: item.modes[0] ?? "text2image" };
     }),
     selectCase: vi.fn((item: PromptCase) => {
       selected.value = item;
+      caseContext.value = item;
       finalPrompt.value = item.promptTemplate;
       finalPromptSource.value = "case";
       return { mode: item.modes[0] ?? "text2image" };
@@ -315,6 +321,7 @@ function authStore(overrides: Record<string, unknown> = {}) {
     quota: { allocatedQuota: null, usedQuota: 0, remainingQuota: null },
     providerCapabilities: null,
     generationExperience: null,
+    promptAssistantEnabled: true,
     isSysadmin: false,
     ...overrides
   };

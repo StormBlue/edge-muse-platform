@@ -10,6 +10,17 @@ pnpm -F server db:migrate:remote
 
 Review generated SQL before applying remote migrations.
 
+## Prompt Case Seeds
+
+The AI image entry depends on the curated prompt-case library. After applying prompt-case migrations in a new local or remote environment, seed the curated cases explicitly:
+
+```bash
+pnpm -F server prompt-cases:seed:local
+pnpm -F server prompt-cases:seed:remote
+```
+
+The seed script is idempotent and currently loads 28 curated cases from `server/scripts/prompt-cases.seed.json` across the 7 MVP categories. Run it after migration for fresh environments, then verify `/api/prompt-cases` returns published cases for `zh-CN`.
+
 ## Secret Rotation
 
 ```bash

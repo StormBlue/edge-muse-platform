@@ -82,6 +82,11 @@ const aiResultSchema = z.object({
 
 const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct";
 
+export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
+  const value = env.PROMPT_ASSISTANT_ENABLED?.trim().toLowerCase();
+  return value !== "0" && value !== "false" && value !== "disabled" && value !== "off";
+}
+
 export async function runPromptAssistantTurn(
   env: AppBindings,
   input: PromptAssistantTurnInput

@@ -43,6 +43,7 @@ export type ClientExperimentEventName =
   | "prompt_case_selected"
   | "assistant_started"
   | "assistant_prompt_filled"
+  | "generation_history_returned"
   | "variant_switched_directly";
 
 export type ClientExperimentEventInput = {

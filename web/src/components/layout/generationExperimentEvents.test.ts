@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GenerationExperience } from "@/stores/auth";
 import {
   buildGenerationEntryExposureEvents,
+  buildGenerationHistoryReturnEvents,
   buildGenerationRouteOpenEvents,
   generationTargetForPath,
   generationVariantForPath,
@@ -188,5 +189,42 @@ describe("generation experiment events", () => {
     );
 
     expect(events).toEqual([]);
+  });
+
+  it("tracks returning to history from a generation route once per navigation pair", () => {
+    const returnedKeys = new Set<string>();
+    const events = buildGenerationHistoryReturnEvents(
+      "/ai-image",
+      "/ai-image",
+      "/history",
+      "/history?session=abc",
+      legacyExperience,
+      false,
+      returnedKeys
+    );
+
+    expect(events).toEqual([
+      {
+        eventName: "generation_history_returned",
+        route: "/ai-image",
+        metadata: {
+          variant: "B",
+          fromRoute: "/ai-image",
+          historyRoute: "/history",
+          directAccess: true
+        }
+      }
+    ]);
+    expect(
+      buildGenerationHistoryReturnEvents(
+        "/ai-image",
+        "/ai-image",
+        "/history",
+        "/history?session=abc",
+        legacyExperience,
+        false,
+        returnedKeys
+      )
+    ).toEqual([]);
   });
 });

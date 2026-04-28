@@ -56,6 +56,7 @@ describe("useAiImageCases", () => {
 
     expect(cases.selectedId.value).toBe("txt");
     expect(cases.selectedMode.value).toBe("text2image");
+    expect(cases.caseContext.value).toBeNull();
     expect(cases.finalPrompt.value).toBe("");
     expect(cases.finalPromptSource.value).toBeNull();
     expect(cases.filterMode.value).toBe("");
@@ -130,6 +131,21 @@ describe("useAiImageCases", () => {
     expect(result.mode).toBe("text2image");
     expect(cases.selectedMode.value).toBe("text2image");
     expect(cases.filterMode.value).toBe("text2image");
+  });
+
+  it("keeps automatic previews out of assistant case context until the user selects a case", () => {
+    const first = promptCase({ id: "first" });
+    const second = promptCase({ id: "second" });
+    const cases = useAiImageCases();
+    cases.items.value = [first, second];
+
+    cases.previewCase(first);
+    expect(cases.selectedId.value).toBe("first");
+    expect(cases.caseContext.value).toBeNull();
+
+    cases.previewCase(second, { userSelected: true });
+    expect(cases.selectedId.value).toBe("second");
+    expect(cases.caseContext.value?.id).toBe("second");
   });
 });
 

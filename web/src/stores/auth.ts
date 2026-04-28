@@ -59,6 +59,8 @@ export const useAuthStore = defineStore("auth", {
     providerCapabilities: null as ProviderCapabilities | null,
     /** 当前用户生成入口实验分配；sysadmin 固定同时展示两个入口 */
     generationExperience: null as GenerationExperience | null,
+    /** Prompt 助手运维开关；默认 true，真实状态以 /me 响应为准 */
+    promptAssistantEnabled: true,
     /** 是否已结束首次 bootstrap（路由守卫依赖，避免未请求就跳登录） */
     loaded: false
   }),
@@ -78,16 +80,19 @@ export const useAuthStore = defineStore("auth", {
           quota: Quota;
           providerCapabilities: ProviderCapabilities | null;
           generationExperience: GenerationExperience;
+          promptAssistantEnabled: boolean;
         }>("/me");
         this.user = body.user;
         this.quota = body.quota;
         this.providerCapabilities = body.providerCapabilities;
         this.generationExperience = body.generationExperience;
+        this.promptAssistantEnabled = body.promptAssistantEnabled;
       } catch {
         this.user = null;
         this.quota = null;
         this.providerCapabilities = null;
         this.generationExperience = null;
+        this.promptAssistantEnabled = true;
       } finally {
         this.loaded = true;
       }
@@ -102,6 +107,7 @@ export const useAuthStore = defineStore("auth", {
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
         generationExperience: GenerationExperience;
+        promptAssistantEnabled: boolean;
       }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password, turnstileToken })
@@ -110,6 +116,7 @@ export const useAuthStore = defineStore("auth", {
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
       this.generationExperience = body.generationExperience;
+      this.promptAssistantEnabled = body.promptAssistantEnabled;
     },
     /** 调登出接口黑 jti；`.catch` 忽略网络错误仍清本地，避免卡在已删 Cookie 态 */
     async logout() {
@@ -118,6 +125,7 @@ export const useAuthStore = defineStore("auth", {
       this.quota = null;
       this.providerCapabilities = null;
       this.generationExperience = null;
+      this.promptAssistantEnabled = true;
     },
     /** PATCH /api/me 改昵称，成功后覆写 user */
     async updateProfile(nickname: string) {
@@ -126,6 +134,7 @@ export const useAuthStore = defineStore("auth", {
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
         generationExperience: GenerationExperience;
+        promptAssistantEnabled: boolean;
       }>("/me", {
         method: "PATCH",
         body: JSON.stringify({ nickname })
@@ -134,10 +143,17 @@ export const useAuthStore = defineStore("auth", {
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
       this.generationExperience = body.generationExperience;
+      this.promptAssistantEnabled = body.promptAssistantEnabled;
     }
   },
   // 仅持久化展示快照减轻首屏闪烁；真正鉴权和权限边界以 Cookie + 服务端为准
   persist: {
-    pick: ["user", "quota", "providerCapabilities", "generationExperience"]
+    pick: [
+      "user",
+      "quota",
+      "providerCapabilities",
+      "generationExperience",
+      "promptAssistantEnabled"
+    ]
   }
 });

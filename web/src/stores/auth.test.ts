@@ -37,7 +37,8 @@ describe("auth store generation experience", () => {
       },
       quota: { allocatedQuota: 10, usedQuota: 2, remainingQuota: 8 },
       providerCapabilities: null,
-      generationExperience
+      generationExperience,
+      promptAssistantEnabled: false
     });
 
     const auth = useAuthStore();
@@ -45,6 +46,7 @@ describe("auth store generation experience", () => {
 
     expect(mockedApiFetch).toHaveBeenCalledWith("/me");
     expect(auth.generationExperience).toEqual(generationExperience);
+    expect(auth.promptAssistantEnabled).toBe(false);
     expect(auth.loaded).toBe(true);
   });
 
@@ -52,10 +54,12 @@ describe("auth store generation experience", () => {
     mockedApiFetch.mockResolvedValueOnce(undefined);
     const auth = useAuthStore();
     auth.generationExperience = generationExperience;
+    auth.promptAssistantEnabled = false;
 
     await auth.logout();
 
     expect(auth.generationExperience).toBeNull();
+    expect(auth.promptAssistantEnabled).toBe(true);
     expect(auth.user).toBeNull();
   });
 });

@@ -3,6 +3,7 @@ import { usePromptCasesAdmin } from "./usePromptCasesAdmin";
 import { promptCaseToForm, type PromptCase } from "@/types/promptCases";
 
 const mocks = vi.hoisted(() => ({
+  bulkUpdateCases: vi.fn(),
   createCase: vi.fn(),
   importCases: vi.fn(),
   listCases: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/api/promptCases", () => ({
+  bulkUpdateSysadminPromptCases: mocks.bulkUpdateCases,
   createSysadminPromptCase: mocks.createCase,
   importSysadminPromptCases: mocks.importCases,
   listSysadminPromptCases: mocks.listCases,
@@ -127,6 +129,30 @@ describe("usePromptCasesAdmin", () => {
     expect(mocks.updateCase).toHaveBeenNthCalledWith(1, "pcase_1", { status: "published" });
     expect(mocks.updateCase).toHaveBeenNthCalledWith(2, "pcase_1", { featured: true });
     expect(mocks.toastSuccess).toHaveBeenCalledTimes(2);
+  });
+
+  it("bulk updates selected cases and clears the selection after reload", async () => {
+    const first = promptCase({ id: "pcase_1", status: "draft" });
+    const second = promptCase({ id: "pcase_2", status: "hidden" });
+    const published = [
+      promptCase({ id: "pcase_1", status: "published" }),
+      promptCase({ id: "pcase_2", status: "published" })
+    ];
+    mocks.listCases.mockResolvedValueOnce([first, second]).mockResolvedValueOnce(published);
+    mocks.bulkUpdateCases.mockResolvedValueOnce({ items: published });
+
+    const admin = usePromptCasesAdmin();
+    await admin.load();
+    admin.toggleSelected("pcase_1", true);
+    admin.toggleSelected("pcase_2", true);
+    await admin.bulkChangeStatus("published");
+
+    expect(mocks.bulkUpdateCases).toHaveBeenCalledWith({
+      ids: ["pcase_1", "pcase_2"],
+      patch: { status: "published" }
+    });
+    expect(admin.selectedCount.value).toBe(0);
+    expect(mocks.toastSuccess).toHaveBeenCalledWith('promptCases.bulkUpdated:{"count":2}');
   });
 
   it("imports valid JSON cases and rejects empty import payloads locally", async () => {

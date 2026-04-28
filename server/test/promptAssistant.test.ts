@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   assistantLogPayload,
+  isPromptAssistantEnabled,
   promptAssistantTurnSchema,
   runPromptAssistantTurn
 } from "../src/lib/promptAssistant";
 import type { AppBindings } from "../src/types";
 
 describe("prompt assistant", () => {
+  it("supports an explicit environment kill switch", () => {
+    expect(isPromptAssistantEnabled({})).toBe(true);
+    expect(isPromptAssistantEnabled({ PROMPT_ASSISTANT_ENABLED: "true" })).toBe(true);
+    expect(isPromptAssistantEnabled({ PROMPT_ASSISTANT_ENABLED: "false" })).toBe(false);
+    expect(isPromptAssistantEnabled({ PROMPT_ASSISTANT_ENABLED: "off" })).toBe(false);
+  });
+
   it("rejects unsupported chat mode at the schema boundary", () => {
     expect(() =>
       promptAssistantTurnSchema.parse({

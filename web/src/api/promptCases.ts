@@ -4,7 +4,12 @@
  * 只在这里拼查询参数和请求路径，页面组件保持面向领域类型，避免散落字符串路径。
  */
 import { apiFetch } from "@/api/client";
-import type { PromptCase, PromptCaseFilters, PromptCaseFormInput } from "@/types/promptCases";
+import type {
+  PromptCase,
+  PromptCaseBulkPatchInput,
+  PromptCaseFilters,
+  PromptCaseFormInput
+} from "@/types/promptCases";
 
 export type PromptCaseListResponse = {
   items: PromptCase[];
@@ -70,6 +75,16 @@ export async function updateSysadminPromptCase(id: string, input: Partial<Prompt
     body: JSON.stringify(input)
   });
   return body.item;
+}
+
+export async function bulkUpdateSysadminPromptCases(input: {
+  ids: string[];
+  patch: PromptCaseBulkPatchInput;
+}) {
+  return apiFetch<PromptCaseListResponse>("/sysadmin/prompt-cases/bulk", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
 }
 
 export async function importSysadminPromptCases(input: {
