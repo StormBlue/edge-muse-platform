@@ -4,12 +4,13 @@
  *
  * 桌面端继续使用中间栏；移动端通过 sheet 展示详情，避免案例内容把生成面板挤到很远。
  */
+import { computed, onBeforeUnmount, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
 import type { PromptCase } from "@/types/promptCases";
 
-defineProps<{
+const props = defineProps<{
   open: boolean;
   item: PromptCase | null;
 }>();
@@ -20,6 +21,29 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const sheetActive = computed(() => props.open && Boolean(props.item));
+let previousBodyOverflow = "";
+let previousBodyOverscrollBehavior = "";
+let bodyScrollLocked = false;
+
+function setPageScrollLocked(locked: boolean) {
+  if (typeof document === "undefined") return;
+  if (locked === bodyScrollLocked) return;
+  if (locked) {
+    previousBodyOverflow = document.body.style.overflow;
+    previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+    document.body.style.overflow = "hidden";
+    document.body.style.overscrollBehavior = "none";
+    bodyScrollLocked = true;
+    return;
+  }
+  document.body.style.overflow = previousBodyOverflow;
+  document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+  bodyScrollLocked = false;
+}
+
+watch(sheetActive, (active) => setPageScrollLocked(active), { immediate: true });
+onBeforeUnmount(() => setPageScrollLocked(false));
 </script>
 
 <template>
@@ -27,13 +51,18 @@ const { t } = useI18n();
     <Transition name="case-sheet">
       <div
         v-if="open && item"
-        class="fixed inset-0 z-50 bg-black/45 2xl:hidden"
+        class="case-sheet-backdrop fixed inset-0 z-50 bg-black/45 2xl:hidden"
         role="dialog"
         aria-modal="true"
         @click.self="emit('close')"
+        @touchmove.self.prevent
+        @wheel.self.prevent
       >
         <div
-          class="absolute bottom-0 left-0 right-0 max-h-[86dvh] overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl"
+          class="case-sheet-dialog absolute bottom-0 left-0 right-0 flex max-h-[86dvh] flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl"
+          @click.stop
+          @touchmove.stop
+          @wheel.stop
         >
           <div class="border-b border-border px-4 pb-3 pt-2">
             <div class="mx-auto mb-2 h-1 w-10 rounded-full bg-muted-foreground/30" />
@@ -66,6 +95,20 @@ const { t } = useI18n();
 </template>
 
 <style scoped>
+.case-sheet-backdrop {
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+
+.case-sheet-dialog {
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.case-sheet-dialog :deep(.thin-scrollbar) {
+  overscroll-behavior: contain;
+}
+
 .case-sheet-enter-active,
 .case-sheet-leave-active {
   transition: opacity 160ms ease;

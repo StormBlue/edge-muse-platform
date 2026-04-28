@@ -34,7 +34,8 @@ vi.mock("./PromptCaseDetail.vue", () => ({
   default: {
     props: ["item"],
     emits: ["apply"],
-    template: '<section data-testid="detail"></section>'
+    template:
+      '<section data-testid="detail"><button v-if="item" data-testid="apply-case" type="button" @click="$emit(\'apply\', item)"></button></section>'
   }
 }));
 
@@ -130,10 +131,13 @@ describe("AiImageGeneration", () => {
     const wrapper = mount(AiImageGeneration);
     const generation = mocks.generation as ReturnType<typeof generationState>;
     const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase({ modes: ["image2image", "text2image"] });
 
-    cases.selected.value = promptCase({ modes: ["image2image", "text2image"] });
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
     cases.selectedMode.value = "image2image";
-    cases.finalPromptSource.value = "case";
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
     await nextTick();
     await nextTick();
 
@@ -154,7 +158,13 @@ describe("AiImageGeneration", () => {
     const generation = mocks.generation as ReturnType<typeof generationState>;
     const cases = mocks.cases as ReturnType<typeof casesState>;
     const selected = promptCase({ id: "case_user_context", title: "案例标题" });
-    cases.selected.value = selected;
+
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+
     cases.finalPrompt.value = "用户手写 prompt";
     cases.finalPromptSource.value = "user";
 
@@ -169,7 +179,7 @@ describe("AiImageGeneration", () => {
         n: 1,
         referenceImageCount: 0,
         promptSource: "user",
-        caseContextId: undefined,
+        caseContextId: "case_user_context",
         directAccess: false
       }
     });
@@ -205,6 +215,9 @@ describe("AiImageGeneration", () => {
       }
     });
 
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+
     await wrapper.get('[data-testid="fill-assistant"]').trigger("click");
     expect(mocks.trackExperimentEvent).toHaveBeenNthCalledWith(2, {
       eventName: "assistant_prompt_filled",
@@ -222,7 +235,14 @@ describe("AiImageGeneration", () => {
     const wrapper = mount(AiImageGeneration);
     const generation = mocks.generation as ReturnType<typeof generationState>;
     const cases = mocks.cases as ReturnType<typeof casesState>;
-    cases.caseContext.value = promptCase({ id: "case_open" });
+    const selected = promptCase({ id: "case_open" });
+
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+
     generation.mode.value = "image2image";
 
     await wrapper.get('[data-testid="open-assistant"]').trigger("click");
@@ -311,6 +331,12 @@ function casesState() {
       finalPrompt.value = item.promptTemplate;
       finalPromptSource.value = "case";
       return { mode: item.modes[0] ?? "text2image" };
+    }),
+    startBlankCase: vi.fn(() => {
+      selected.value = null;
+      caseContext.value = null;
+      finalPrompt.value = "";
+      finalPromptSource.value = null;
     }),
     setPrompt: vi.fn()
   };

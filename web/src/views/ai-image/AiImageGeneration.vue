@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Maximize2, WandSparkles, X } from "lucide-vue-next";
+import { ArrowLeft, Maximize2, WandSparkles, X } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
@@ -229,51 +229,90 @@ watch(
 <template>
   <AppShell>
     <div class="ai-image-page" :class="{ 'ai-image-page--generating': caseBrowserCollapsed }">
-      <section v-if="!caseBrowserCollapsed" class="panel p-3">
-        <div class="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-          <div class="thin-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
-            <button
-              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-              :class="
-                !cases.category.value ? 'border-primary bg-primary/10' : 'border-border bg-card'
-              "
-              type="button"
-              @click="cases.category.value = ''"
-            >
-              {{ t("aiImage.allCategories") }}
-            </button>
-            <button
-              v-for="category in cases.categories.value"
-              :key="category"
-              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-              :class="
-                cases.category.value === category
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-card'
-              "
-              type="button"
-              @click="cases.category.value = category"
-            >
-              {{ category }}
-            </button>
-          </div>
-          <div class="flex shrink-0 flex-wrap gap-2 text-sm">
-            <button
-              class="ui-button ui-button-secondary h-9 shrink-0 text-xs"
-              type="button"
-              @click="startBlankAssistantFlow"
-            >
-              <WandSparkles class="h-3.5 w-3.5" />
-              {{ t("aiImage.startBlankAssistant") }}
-            </button>
-            <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-              {{ t("common.quota") }}:
-              {{ quotaLabel }}
+      <section v-if="!caseBrowserCollapsed" class="case-picker-panel panel p-3">
+        <div class="case-picker-toolbar">
+          <button class="direct-create-entry" type="button" @click="startBlankAssistantFlow">
+            <span class="direct-create-icon">
+              <WandSparkles class="h-5 w-5" />
             </span>
-            <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-              {{ providerLabel }}
+            <span class="min-w-0 flex-1">
+              <span class="block text-base font-semibold leading-6">
+                {{ t("aiImage.startBlankAssistant") }}
+              </span>
+              <span class="mt-1 block text-sm leading-5 text-muted-foreground">
+                {{ t("aiImage.blankCaseSummary") }}
+              </span>
             </span>
+            <span class="direct-create-action">
+              {{ t("aiImage.startBlankAssistantAction") }}
+            </span>
+          </button>
+
+          <div class="case-picker-controls">
+            <div class="thin-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
+              <button
+                class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
+                :class="
+                  !cases.category.value ? 'border-primary bg-primary/10' : 'border-border bg-card'
+                "
+                type="button"
+                @click="cases.category.value = ''"
+              >
+                {{ t("aiImage.allCategories") }}
+              </button>
+              <button
+                v-for="category in cases.categories.value"
+                :key="category"
+                class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
+                :class="
+                  cases.category.value === category
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border bg-card'
+                "
+                type="button"
+                @click="cases.category.value = category"
+              >
+                {{ category }}
+              </button>
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2 text-sm">
+              <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
+                {{ t("common.quota") }}:
+                {{ quotaLabel }}
+              </span>
+              <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
+                {{ providerLabel }}
+              </span>
+            </div>
           </div>
+        </div>
+      </section>
+
+      <section v-else class="generation-page-header">
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            class="ui-button ui-button-secondary h-10 shrink-0 px-4 text-sm"
+            type="button"
+            @click="reopenCaseBrowser"
+          >
+            <ArrowLeft class="h-4 w-4" />
+            {{ t("aiImage.backToCases") }}
+          </button>
+          <div class="min-w-0">
+            <p class="text-xs font-medium text-muted-foreground">
+              {{ activeCase ? t("aiImage.selectedCase") : t("aiImage.creationMode") }}
+            </p>
+            <h1 class="truncate text-lg font-semibold leading-7">{{ selectedCaseTitle }}</h1>
+          </div>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2 text-sm">
+          <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
+            {{ t("common.quota") }}:
+            {{ quotaLabel }}
+          </span>
+          <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
+            {{ providerLabel }}
+          </span>
         </div>
       </section>
 
@@ -323,13 +362,6 @@ watch(
           <p class="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {{ activeCase?.promptSummary || t("aiImage.blankCaseSummary") }}
           </p>
-          <button
-            class="ui-button ui-button-secondary mt-3 h-8 w-full text-xs"
-            type="button"
-            @click="reopenCaseBrowser"
-          >
-            {{ t("aiImage.changeCase") }}
-          </button>
         </section>
 
         <AiImagePromptPanel
@@ -422,6 +454,82 @@ watch(
   gap: 0.875rem;
 }
 
+.case-picker-toolbar {
+  display: grid;
+  min-width: 0;
+  gap: 0.75rem;
+}
+
+.case-picker-controls {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.direct-create-entry {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.875rem;
+  border-radius: 0.625rem;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 55%);
+  background: color-mix(in oklch, var(--primary), transparent 92%);
+  padding: 0.875rem;
+  text-align: left;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.direct-create-entry:hover {
+  border-color: color-mix(in oklch, var(--primary), transparent 35%);
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+}
+
+.direct-create-entry:active {
+  transform: translateY(1px);
+}
+
+.direct-create-icon {
+  display: inline-flex;
+  height: 2.75rem;
+  width: 2.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.direct-create-action {
+  display: inline-flex;
+  min-height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  padding: 0.5rem 0.875rem;
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.generation-page-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.75rem;
+}
+
 .ai-image-grid {
   display: grid;
   gap: 1rem;
@@ -450,7 +558,12 @@ watch(
 
 @container (min-width: 50rem) {
   .ai-image-page--generating {
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .case-picker-toolbar {
+    grid-template-columns: minmax(21rem, 0.9fr) minmax(0, 1.1fr);
+    align-items: stretch;
   }
 
   .ai-image-grid {

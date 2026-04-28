@@ -156,28 +156,6 @@ function isMobileAssistantViewport() {
         <p class="mt-1 truncate text-xs text-muted-foreground">{{ selectedCaseTitle }}</p>
       </div>
       <div class="thin-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-        <div
-          v-if="!hasPrompt"
-          class="rounded-lg border border-dashed border-border bg-muted/25 p-3"
-        >
-          <p class="text-sm font-semibold">{{ t("aiImage.emptyGuideTitle") }}</p>
-          <p class="mt-1 text-xs leading-5 text-muted-foreground">
-            {{ t("aiImage.emptyGuideBody") }}
-          </p>
-          <button
-            v-if="assistantEnabled"
-            class="ui-button ui-button-secondary mt-3 h-8 text-xs"
-            type="button"
-            @click="openAssistantView"
-          >
-            <WandSparkles class="h-3.5 w-3.5" />
-            {{ t("aiImage.openAssistant") }}
-          </button>
-          <p v-else class="mt-2 text-xs leading-5 text-muted-foreground">
-            {{ t("aiImage.assistantDisabled") }}
-          </p>
-        </div>
-
         <div>
           <p class="mb-2 text-xs font-medium text-muted-foreground">
             {{ t("workspace.generationMode") }}
