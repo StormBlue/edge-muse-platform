@@ -56,6 +56,8 @@ describe("useAiImageCases", () => {
 
     expect(cases.selectedId.value).toBe("txt");
     expect(cases.selectedMode.value).toBe("text2image");
+    expect(cases.finalPrompt.value).toBe("");
+    expect(cases.finalPromptSource.value).toBeNull();
     expect(cases.filterMode.value).toBe("");
     expect(cases.filteredItems.value.map((item) => item.id)).toEqual(["txt", "img"]);
   });

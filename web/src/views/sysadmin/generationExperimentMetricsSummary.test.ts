@@ -5,7 +5,10 @@ import type { ExperimentMetric } from "@/api/experiments";
 describe("generation experiment metric summary", () => {
   it("includes retry success counts and rates", () => {
     const metrics: ExperimentMetric[] = [
+      { variant: "B", eventName: "generation_entry_exposed", count: 20 },
       { variant: "B", eventName: "generation_page_opened", count: 10 },
+      { variant: "B", eventName: "assistant_started", count: 5 },
+      { variant: "B", eventName: "assistant_prompt_filled", count: 3 },
       { variant: "B", eventName: "generate_submitted", count: 4 },
       { variant: "B", eventName: "generate_succeeded", count: 3 },
       { variant: "B", eventName: "generate_failed", count: 2 },
@@ -17,18 +20,23 @@ describe("generation experiment metric summary", () => {
     expect(buildGenerationExperimentMetricSummary(metrics)).toEqual([
       {
         variant: "B",
+        exposed: 20,
         opened: 10,
+        assistantStarted: 5,
+        promptFilled: 3,
         submitted: 4,
         succeeded: 3,
         failed: 2,
         retrySubmitted: 2,
         retrySucceeded: 1,
         directAccess: 1,
+        openRate: "50.0%",
+        promptFillRate: "60.0%",
         submitRate: "40.0%",
         successRate: "75.0%",
         retryRate: "100.0%",
         retrySuccessRate: "50.0%",
-        total: 23
+        total: 51
       }
     ]);
   });

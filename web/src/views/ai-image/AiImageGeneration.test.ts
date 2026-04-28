@@ -49,13 +49,15 @@ vi.mock("./PromptCaseMobileSheet.vue", () => ({
 vi.mock("./AiImagePromptPanel.vue", () => ({
   default: {
     name: "AiImagePromptPanel",
-    props: ["mode", "size", "sizeFallbackNotice", "directAccess"],
+    props: ["mode", "size", "sizeFallbackNotice"],
     emits: [
       "addFiles",
       "clearPrompt",
       "copyPrompt",
       "fillAssistant",
+      "openAssistant",
       "removeFile",
+      "retryFailed",
       "submit",
       "update:mode",
       "update:prompt",
@@ -67,7 +69,12 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
         <button
           data-testid="fill-assistant"
           type="button"
-          @click="$emit('fillAssistant', { prompt: '助手改写 prompt', recommendedSize: '1024x1024' })"
+          @click="$emit('fillAssistant', { prompt: '助手改写 prompt', recommendedSize: '1024x1024', turnCount: 3 })"
+        ></button>
+        <button
+          data-testid="open-assistant"
+          type="button"
+          @click="$emit('openAssistant')"
         ></button>
       </section>
     `
@@ -126,6 +133,7 @@ describe("AiImageGeneration", () => {
 
     cases.selected.value = promptCase({ modes: ["image2image", "text2image"] });
     cases.selectedMode.value = "image2image";
+    cases.finalPromptSource.value = "case";
     await nextTick();
     await nextTick();
 
@@ -158,6 +166,7 @@ describe("AiImageGeneration", () => {
       metadata: {
         mode: "text2image",
         size: "1024x1024",
+        n: 1,
         referenceImageCount: 0,
         promptSource: "user",
         caseContextId: "case_user_context",
@@ -203,7 +212,28 @@ describe("AiImageGeneration", () => {
       caseId: "case_direct",
       metadata: {
         promptLength: "助手改写 prompt".length,
+        turnCount: 3,
         directAccess: true
+      }
+    });
+  });
+
+  it("tracks assistant start when the assistant is opened", async () => {
+    const wrapper = mount(AiImageGeneration);
+    const generation = mocks.generation as ReturnType<typeof generationState>;
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    cases.selected.value = promptCase({ id: "case_open" });
+    generation.mode.value = "image2image";
+
+    await wrapper.get('[data-testid="open-assistant"]').trigger("click");
+
+    expect(mocks.trackExperimentEvent).toHaveBeenCalledWith({
+      eventName: "assistant_started",
+      route: "/ai-image",
+      caseId: "case_open",
+      metadata: {
+        mode: "image2image",
+        directAccess: false
       }
     });
   });
@@ -213,6 +243,10 @@ function generationState() {
   const supportedModes = ref<PromptCaseMode[]>(["image2image", "text2image"]);
   const sizeOptions = ref<SizeOption[]>([{ value: "1024x1024", ratio: "1:1", label: "Square" }]);
   return {
+    activeFailed: ref(false),
+    activeFailedMessage: ref(null),
+    failedMessage: ref(""),
+    failedTitle: ref(""),
     files: ref([]),
     hasRunningTask: ref(false),
     maxReferenceFiles: ref(5),
@@ -228,6 +262,7 @@ function generationState() {
     addFiles: vi.fn(),
     clearFiles: vi.fn(),
     removeFile: vi.fn(),
+    retry: vi.fn(),
     submit: vi.fn()
   };
 }
@@ -235,13 +270,15 @@ function generationState() {
 function casesState() {
   const selected = ref<PromptCase | null>(null);
   const items = ref<PromptCase[]>([]);
+  const finalPrompt = ref("");
+  const finalPromptSource = ref<"case" | "assistant" | "user" | null>(null);
   return {
     availableItems: computed(() => items.value),
     categories: computed(() => []),
     category: ref(""),
     filteredItems: computed(() => items.value),
-    finalPrompt: ref(""),
-    finalPromptSource: ref<"case" | "assistant" | "user" | null>(null),
+    finalPrompt,
+    finalPromptSource,
     filterMode: ref(""),
     items,
     loading: ref(false),
@@ -253,12 +290,20 @@ function casesState() {
     sizes: computed(() => []),
     applyCasePrompt: vi.fn((item: PromptCase) => {
       selected.value = item;
+      finalPrompt.value = item.promptTemplate;
+      finalPromptSource.value = "case";
       return { prompt: item.promptTemplate, mode: item.modes[0] ?? "text2image" };
     }),
     clearPrompt: vi.fn(),
     load: vi.fn(),
+    previewCase: vi.fn((item: PromptCase) => {
+      selected.value = item;
+      return { mode: item.modes[0] ?? "text2image" };
+    }),
     selectCase: vi.fn((item: PromptCase) => {
       selected.value = item;
+      finalPrompt.value = item.promptTemplate;
+      finalPromptSource.value = "case";
       return { mode: item.modes[0] ?? "text2image" };
     }),
     setPrompt: vi.fn()

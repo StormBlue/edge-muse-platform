@@ -22,6 +22,7 @@ import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
 import { recordExperimentEvent, recordRetrySubmittedExperimentEvent } from "../lib/experiments";
+import { SERVER_GENERATE_SUBMIT_SOURCE } from "../lib/generationExperimentConstants";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
 import { logInfo, logWarn, promptSummary } from "../lib/log";
 import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
@@ -172,7 +173,7 @@ generateRoutes.post(
           taskId: result.taskId,
           metadata: {
             ...experimentEvent.metadata,
-            submitEventSource: "server_generate"
+            submitEventSource: SERVER_GENERATE_SUBMIT_SOURCE
           }
         });
         logInfo("generate.experiment_submitted_written", {

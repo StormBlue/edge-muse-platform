@@ -7,9 +7,10 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
+import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
-import { useSessionStore, type ImageAttachment } from "@/stores/session";
+import { useSessionStore, type ImageAttachment, type Message } from "@/stores/session";
 import { imageFilesFromFileList, prepareReferenceImageFiles } from "@/utils/referenceImageFiles";
 import { imagesForAiImageActiveResult } from "./aiImageResultScope";
 import {
@@ -55,6 +56,29 @@ export function useAiImageGenerationSubmit() {
       taskId: activeTaskId.value,
       sessionId: activeSessionId.value
     })
+  );
+  const activeResultMessage = computed(() =>
+    findAiImageActiveResultMessage(sessions.messages, {
+      taskId: activeTaskId.value,
+      sessionId: activeSessionId.value
+    })
+  );
+  const activeFailedMessage = computed(() => {
+    const message = activeResultMessage.value;
+    if (!message || hasRunningTask.value) return null;
+    return message.status === "failed" ? message : null;
+  });
+  const activeFailed = computed(() => Boolean(activeFailedMessage.value));
+  const failedTitle = computed(() =>
+    activeFailedMessage.value?.error?.code?.startsWith("PROVIDER")
+      ? t("workspace.providerGenerationFailed")
+      : t("workspace.generationFailed")
+  );
+  const failedMessage = computed(
+    () =>
+      activeFailedMessage.value?.error?.message ||
+      activeFailedMessage.value?.prompt ||
+      t("workspace.generationFailedHint")
   );
 
   const { status, connect, disconnect } = useTaskWebSocket((payload) => {
@@ -162,6 +186,69 @@ export function useAiImageGenerationSubmit() {
     }
   }
 
+  async function retry(experimentEvent?: AiImageSubmitExperimentEvent) {
+    const failed = activeFailedMessage.value;
+    if (!failed?.taskId || submitting.value || hasRunningTask.value) return;
+    submitting.value = true;
+    try {
+      const body = await apiFetch<{ taskId: string; sessionId: string; messageId: string }>(
+        `/tasks/${failed.taskId}/retry`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            experimentEvent: {
+              route: experimentEvent?.route ?? "/ai-image",
+              caseId: experimentEvent?.caseId,
+              metadata: {
+                ...experimentEvent?.metadata,
+                isRetry: true,
+                retryTrigger: "ai-image",
+                directAccess:
+                  experimentEvent?.metadata?.directAccess ??
+                  isDirectGenerationAccess("/ai-image", auth.generationExperience, auth.isSysadmin)
+              }
+            }
+          })
+        }
+      );
+      const createdAt = Date.now();
+      sessions.messages.push({
+        id: `local-retry-${createdAt}`,
+        sessionId: body.sessionId,
+        role: "user",
+        prompt: failed.prompt,
+        attachments: [],
+        referenceImages: findSourceReferenceImages(failed),
+        referenceImageIds: findSourceReferenceImageIds(failed),
+        status: "succeeded",
+        createdAt
+      });
+      sessions.messages.push({
+        id: body.messageId,
+        sessionId: body.sessionId,
+        role: "assistant",
+        prompt: failed.prompt,
+        attachments: [],
+        referenceImageIds: [],
+        taskId: body.taskId,
+        status: "queued",
+        progress: 0,
+        createdAt: createdAt + 1
+      });
+      activeTaskId.value = body.taskId;
+      activeSessionId.value = body.sessionId;
+      connect(`/ws/task/${body.taskId}`);
+    } catch (error) {
+      const message =
+        error && typeof error === "object" && "error" in error
+          ? (error as { error: { message: string } }).error.message
+          : t("workspace.submitFailed");
+      toast.error(message);
+    } finally {
+      submitting.value = false;
+    }
+  }
+
   async function uploadReferencesIfNeeded() {
     if (mode.value !== "image2image" || !files.value.length) {
       return { referenceImageIds: [] as string[], referenceImages: [] as ImageAttachment[] };
@@ -187,7 +274,29 @@ export function useAiImageGenerationSubmit() {
     return t("workspace.generationRunning");
   }
 
+  function findSourceReferenceImageIds(message: Message) {
+    return findSourceUserMessage(message)?.referenceImageIds ?? [];
+  }
+
+  function findSourceReferenceImages(message: Message) {
+    return findSourceUserMessage(message)?.referenceImages ?? [];
+  }
+
+  function findSourceUserMessage(message: Message) {
+    const messageIndex = sessions.messages.findIndex((item) => item.id === message.id);
+    const endIndex = messageIndex >= 0 ? messageIndex - 1 : sessions.messages.length - 1;
+    for (let index = endIndex; index >= 0; index -= 1) {
+      const candidate = sessions.messages[index];
+      if (candidate?.sessionId === message.sessionId && candidate.role === "user") return candidate;
+    }
+    return null;
+  }
+
   return {
+    activeFailed,
+    activeFailedMessage,
+    failedMessage,
+    failedTitle,
     files,
     hasRunningTask,
     maxReferenceFiles,
@@ -203,6 +312,21 @@ export function useAiImageGenerationSubmit() {
     addFiles,
     clearFiles,
     removeFile,
+    retry,
     submit
   };
+}
+
+function findAiImageActiveResultMessage(
+  messages: Message[],
+  scope: { taskId: string | null; sessionId: string | null }
+) {
+  if (!scope.taskId && !scope.sessionId) return null;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant") continue;
+    if (scope.taskId && message.taskId === scope.taskId) return message;
+    if (scope.sessionId && message.sessionId === scope.sessionId && message.taskId) return message;
+  }
+  return null;
 }

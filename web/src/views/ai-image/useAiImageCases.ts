@@ -1,7 +1,7 @@
 /**
  * AI 图像生成页的案例浏览控制器。
  *
- * 只读取 published 案例；选中案例后回填 prompt，但不自动提交生成，避免误消耗配额。
+ * 只读取 published 案例；初始加载只预览案例，用户明确选择/应用后才回填 prompt。
  */
 import { computed, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -137,12 +137,23 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       ? available.some((item) => item.id === selectedId.value)
       : false;
     if (!selectedAvailable) {
-      selectCase(available[0]);
+      previewCase(available[0]);
       return;
     }
 
     const current = available.find((item) => item.id === selectedId.value);
-    if (current && !supportedModes.value.includes(selectedMode.value)) selectCase(current);
+    if (current && !supportedModes.value.includes(selectedMode.value)) {
+      const result = promptCaseApplyResult(current, filterMode.value, supportedModes.value);
+      selectedMode.value = result.mode;
+      if (finalPromptSource.value === "case") finalPrompt.value = result.prompt;
+    }
+  }
+
+  function previewCase(item: PromptCase) {
+    const result = promptCaseApplyResult(item, filterMode.value, supportedModes.value);
+    selectedId.value = item.id;
+    selectedMode.value = result.mode;
+    if (finalPromptSource.value === "case") clearPrompt();
   }
 
   return {
@@ -164,6 +175,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     applyCasePrompt,
     clearPrompt,
     load,
+    previewCase,
     selectCase,
     setPrompt
   };

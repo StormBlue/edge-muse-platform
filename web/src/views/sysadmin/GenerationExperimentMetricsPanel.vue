@@ -24,11 +24,16 @@ const { t } = useI18n();
     <div class="border-b border-border p-4">
       <h3 class="text-sm font-semibold">{{ t("experiments.funnelSummary") }}</h3>
       <div class="mt-3 overflow-auto rounded-lg border border-border">
-        <table class="w-full min-w-[56rem] text-sm">
+        <table class="w-full min-w-[76rem] text-sm">
           <thead class="bg-muted text-left text-muted-foreground">
             <tr>
               <th class="p-3">{{ t("experiments.variant") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.exposed") }}</th>
               <th class="p-3 text-right">{{ t("experiments.pageOpened") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.openRate") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.assistantStarted") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.promptFilled") }}</th>
+              <th class="p-3 text-right">{{ t("experiments.promptFillRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.submitted") }}</th>
               <th class="p-3 text-right">{{ t("experiments.submitRate") }}</th>
               <th class="p-3 text-right">{{ t("experiments.successRate") }}</th>
@@ -42,12 +47,12 @@ const { t } = useI18n();
           </thead>
           <tbody>
             <tr v-if="loading" class="border-t border-border">
-              <td class="p-4 text-center text-muted-foreground" colspan="11">
+              <td class="p-4 text-center text-muted-foreground" colspan="16">
                 {{ t("common.loading") }}
               </td>
             </tr>
             <tr v-else-if="!metricSummaryRows.length" class="border-t border-border">
-              <td class="p-4 text-center text-muted-foreground" colspan="11">
+              <td class="p-4 text-center text-muted-foreground" colspan="16">
                 {{ t("experiments.noMetrics") }}
               </td>
             </tr>
@@ -58,7 +63,12 @@ const { t } = useI18n();
               class="border-t border-border"
             >
               <td class="p-3 font-mono">{{ row.variant }}</td>
+              <td class="p-3 text-right font-mono">{{ row.exposed }}</td>
               <td class="p-3 text-right font-mono">{{ row.opened }}</td>
+              <td class="p-3 text-right font-mono">{{ row.openRate }}</td>
+              <td class="p-3 text-right font-mono">{{ row.assistantStarted }}</td>
+              <td class="p-3 text-right font-mono">{{ row.promptFilled }}</td>
+              <td class="p-3 text-right font-mono">{{ row.promptFillRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.submitted }}</td>
               <td class="p-3 text-right font-mono">{{ row.submitRate }}</td>
               <td class="p-3 text-right font-mono">{{ row.successRate }}</td>

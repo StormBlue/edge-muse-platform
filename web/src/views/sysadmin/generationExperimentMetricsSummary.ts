@@ -4,13 +4,18 @@ const SUMMARY_VARIANTS = ["A", "B", "parallel"] as const;
 
 export type GenerationExperimentMetricSummaryRow = {
   variant: (typeof SUMMARY_VARIANTS)[number];
+  exposed: number;
   opened: number;
+  assistantStarted: number;
+  promptFilled: number;
   submitted: number;
   succeeded: number;
   failed: number;
   retrySubmitted: number;
   retrySucceeded: number;
   directAccess: number;
+  openRate: string;
+  promptFillRate: string;
   submitRate: string;
   successRate: string;
   retryRate: string;
@@ -23,7 +28,10 @@ export function buildGenerationExperimentMetricSummary(
 ): GenerationExperimentMetricSummaryRow[] {
   const counts = new Map(metrics.map((item) => [`${item.variant}:${item.eventName}`, item.count]));
   return SUMMARY_VARIANTS.map((variant) => {
+    const exposed = metricCount(counts, variant, "generation_entry_exposed");
     const opened = metricCount(counts, variant, "generation_page_opened");
+    const assistantStarted = metricCount(counts, variant, "assistant_started");
+    const promptFilled = metricCount(counts, variant, "assistant_prompt_filled");
     const submitted = metricCount(counts, variant, "generate_submitted");
     const succeeded = metricCount(counts, variant, "generate_succeeded");
     const failed = metricCount(counts, variant, "generate_failed");
@@ -32,19 +40,33 @@ export function buildGenerationExperimentMetricSummary(
     const directAccess = metricCount(counts, variant, "variant_switched_directly");
     return {
       variant,
+      exposed,
       opened,
+      assistantStarted,
+      promptFilled,
       submitted,
       succeeded,
       failed,
       retrySubmitted,
       retrySucceeded,
       directAccess,
+      openRate: formatRate(opened, exposed),
+      promptFillRate: formatRate(promptFilled, assistantStarted || opened),
       submitRate: formatRate(submitted, opened),
       successRate: formatRate(succeeded, submitted),
       retryRate: formatRate(retrySubmitted, failed),
       retrySuccessRate: formatRate(retrySucceeded, retrySubmitted),
       total:
-        opened + submitted + succeeded + failed + retrySubmitted + retrySucceeded + directAccess
+        opened +
+        submitted +
+        succeeded +
+        failed +
+        retrySubmitted +
+        retrySucceeded +
+        directAccess +
+        exposed +
+        assistantStarted +
+        promptFilled
     };
   }).filter((row) => row.total > 0);
 }

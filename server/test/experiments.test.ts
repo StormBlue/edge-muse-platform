@@ -5,6 +5,10 @@ import {
   sanitizeExperimentEventMetadata
 } from "../src/lib/experiments";
 import { isInGenerationExperimentScope } from "../src/lib/experimentScope";
+import {
+  generationExperimentMetricEventName,
+  shouldCountGenerationExperimentMetricEvent
+} from "../src/lib/generationExperimentEvents";
 
 describe("generation experiment events", () => {
   it("accepts known generation funnel events", () => {
@@ -78,6 +82,26 @@ describe("generation experiment events", () => {
       promptLength: 2048,
       longText: "x".repeat(160)
     });
+  });
+
+  it("derives retry metric names and primary metric filters from the event catalog", () => {
+    expect(generationExperimentMetricEventName("generate_submitted", { isRetry: true })).toBe(
+      "generate_retry_submitted"
+    );
+    expect(
+      shouldCountGenerationExperimentMetricEvent(
+        "assistant_prompt_filled",
+        { directAccess: true },
+        { serverTaskTerminalSource: "server_task_terminal" }
+      )
+    ).toBe(false);
+    expect(
+      shouldCountGenerationExperimentMetricEvent(
+        "generate_succeeded",
+        { resultEventSource: "client_echo" },
+        { serverTaskTerminalSource: "server_task_terminal" }
+      )
+    ).toBe(false);
   });
 });
 

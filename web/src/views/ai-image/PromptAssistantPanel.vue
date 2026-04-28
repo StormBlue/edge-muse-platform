@@ -9,11 +9,9 @@ import { RotateCcw, Send } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
-import { trackExperimentEvent } from "@/api/experiments";
 import PromptAssistantFinalPrompt from "./PromptAssistantFinalPrompt.vue";
 import PromptAssistantMessages from "./PromptAssistantMessages.vue";
 import { promptAssistantLocaleFromUiLocale } from "./promptAssistantLocale";
-import { buildAiImageAssistantStartedEvent } from "./useAiImageExperimentTracking";
 import { useUiStore } from "@/stores/ui";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
@@ -22,14 +20,15 @@ import type { AssistantMessage, AssistantResponse } from "./promptAssistantTypes
 const props = defineProps<{
   mode: PromptCaseMode;
   caseItem: PromptCase | null;
-  directAccess: boolean;
   provider: ProviderCapabilities | null;
   referenceCount: number;
+  referenceDescription: string;
   referenceContextKey: string;
 }>();
 
 const emit = defineEmits<{
-  fill: [value: { prompt: string; recommendedSize: string }];
+  fill: [value: { prompt: string; recommendedSize: string; turnCount: number }];
+  open: [];
 }>();
 
 const { t } = useI18n();
@@ -64,9 +63,20 @@ const contextKey = computed(() =>
     props.provider?.supportedSizes?.join("|") ?? "",
     props.provider?.maxReferenceImages ?? "",
     // 图生图参考图会影响追问策略；同数量替换图片也必须重开上下文。
-    props.referenceContextKey
+    props.referenceContextKey,
+    props.referenceDescription.trim()
   ].join("::")
 );
+const referenceBrief = computed(() => {
+  if (props.mode !== "image2image") return undefined;
+  const description = props.referenceDescription.trim();
+  return description
+    ? t("aiImage.referenceBriefWithDescription", {
+        count: props.referenceCount,
+        description
+      })
+    : t("aiImage.referenceBrief", { count: props.referenceCount });
+});
 
 watch(finalPrompt, (value) => {
   editableFinalPrompt.value = value;
@@ -80,7 +90,6 @@ async function sendTurn() {
   if (!canSend.value) return;
   const currentSeq = ++requestSeq;
   const currentContextKey = contextKey.value;
-  const isFirstTurn = messages.value.length === 0;
   const nextMessages: AssistantMessage[] = [
     ...messages.value,
     { role: "user", content: input.value.trim() }
@@ -88,15 +97,6 @@ async function sendTurn() {
   input.value = "";
   messages.value = nextMessages;
   loading.value = true;
-  if (isFirstTurn) {
-    void trackExperimentEvent(
-      buildAiImageAssistantStartedEvent({
-        caseId: props.caseItem?.id,
-        mode: props.mode,
-        directAccess: props.directAccess
-      })
-    );
-  }
   try {
     const result = await apiFetch<AssistantResponse>("/prompt-assistant/turn", {
       method: "POST",
@@ -114,10 +114,7 @@ async function sendTurn() {
               maxReferenceImages: props.provider.maxReferenceImages
             }
           : undefined,
-        referenceBrief:
-          props.mode === "image2image"
-            ? t("aiImage.referenceBrief", { count: props.referenceCount })
-            : undefined,
+        referenceBrief: referenceBrief.value,
         messages: nextMessages
       })
     });
@@ -141,9 +138,14 @@ function fillPrompt() {
   if (!prompt) return;
   emit("fill", {
     prompt,
-    recommendedSize: latest.value?.recommendedSize ?? "1024x1024"
+    recommendedSize: latest.value?.recommendedSize ?? "1024x1024",
+    turnCount: completedAssistantReplies.value
   });
   toast.success(t("aiImage.promptFilled"));
+}
+
+function notifyOpen() {
+  emit("open");
 }
 
 function copyFinalPrompt() {
@@ -164,7 +166,7 @@ function reset() {
 </script>
 
 <template>
-  <div class="rounded-lg border border-border">
+  <div class="rounded-lg border border-border" @focusin="notifyOpen" @click="notifyOpen">
     <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
       <div>
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>

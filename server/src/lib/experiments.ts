@@ -3,7 +3,7 @@
  *
  * MVP 只实现固定实验 `generation_experience`，避免把项目过早抽象成通用实验平台。
  */
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client";
 import {
@@ -18,22 +18,26 @@ import { appError } from "./errors";
 import { newId, now } from "./id";
 import { parseJson, stringifyJson } from "./json";
 import {
+  SERVER_GENERATE_SUBMIT_SOURCE,
+  SERVER_RETRY_SUBMIT_SOURCE,
+  SERVER_TASK_TERMINAL_SOURCE,
+  GENERATION_EXPERIENCE_KEY
+} from "./generationExperimentConstants";
+import {
   clientGenerationExperimentEventSchema,
   generationExperimentEventSchema,
-  generationExperimentMetricEventName,
   isDirectAccessPrimaryMetricEventName,
   isTaskResultExperimentEventName,
   type TaskResultExperimentEventName
 } from "./generationExperimentEvents";
+export {
+  getGenerationExperimentMetrics,
+  getGenerationExperimentMetricsWindow,
+  type GenerationExperimentMetric,
+  type GenerationExperimentMetricsWindow
+} from "./experimentMetrics";
+export { GENERATION_EXPERIENCE_KEY } from "./generationExperimentConstants";
 import type { AppBindings, AuthUser } from "../types";
-
-export const GENERATION_EXPERIENCE_KEY = "generation_experience";
-export const GENERATION_METRICS_WINDOW_DAYS = 30;
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-const SERVER_GENERATE_SUBMIT_SOURCE = "server_generate";
-const SERVER_RETRY_SUBMIT_SOURCE = "server_retry";
-const SERVER_TASK_TERMINAL_SOURCE = "server_task_terminal";
 
 export const experimentPatchSchema = z.object({
   status: z.enum(["draft", "running", "paused", "archived"]),
@@ -62,12 +66,6 @@ export const clientExperimentEventSchema = z
 export type ExperimentStrategy = z.infer<typeof experimentPatchSchema>["strategy"];
 export type ExperimentStatus = z.infer<typeof experimentPatchSchema>["status"];
 export type ExperimentVariant = "A" | "B" | "parallel" | "sysadmin";
-export type GenerationExperimentMetric = { variant: string; eventName: string; count: number };
-export type GenerationExperimentMetricsWindow = {
-  since: number;
-  until: number;
-  days: number;
-};
 export type GenerationExperimentAssignmentOverride = {
   userId: string;
   username: string;
@@ -579,80 +577,10 @@ async function findExperimentAuthUser(env: AppBindings, userId: string): Promise
   };
 }
 
-export function getGenerationExperimentMetricsWindow(
-  referenceTime = now()
-): GenerationExperimentMetricsWindow {
-  return {
-    since: referenceTime - GENERATION_METRICS_WINDOW_DAYS * DAY_MS,
-    until: referenceTime,
-    days: GENERATION_METRICS_WINDOW_DAYS
-  };
-}
-
-export async function getGenerationExperimentMetrics(
-  env: AppBindings,
-  options: { window?: GenerationExperimentMetricsWindow } = {}
-) {
-  const window = options.window ?? getGenerationExperimentMetricsWindow();
-  const rows = await getDb(env)
-    .select({
-      variant: experimentEvents.variant,
-      eventName: experimentEvents.eventName,
-      metadata: experimentEvents.metadata
-    })
-    .from(experimentEvents)
-    .where(
-      and(
-        eq(experimentEvents.experimentKey, GENERATION_EXPERIENCE_KEY),
-        eq(experimentEvents.isSysadminPreview, false),
-        gte(experimentEvents.createdAt, window.since),
-        lte(experimentEvents.createdAt, window.until)
-      )
-    );
-  const metrics = new Map<string, GenerationExperimentMetric>();
-  for (const row of rows) {
-    const metadata = parseJson<Record<string, unknown>>(row.metadata, {});
-    if (!shouldCountMetricEvent(row.eventName, metadata)) continue;
-    const eventName = metricEventName(row.eventName, metadata);
-    incrementMetric(metrics, row.variant, eventName);
-  }
-  return [...metrics.values()].sort((left, right) =>
-    `${left.variant}:${left.eventName}`.localeCompare(`${right.variant}:${right.eventName}`)
-  );
-}
-
-function shouldCountMetricEvent(eventName: string, metadata: Record<string, unknown>) {
-  if (isDirectAccessPrimaryMetricEventName(eventName) && metadata.directAccess === true) {
-    return false;
-  }
-  if (eventName === "generate_succeeded" || eventName === "generate_failed") {
-    return metadata.resultEventSource === SERVER_TASK_TERMINAL_SOURCE;
-  }
-  return true;
-}
-
 function isDirectAccessGenerateRoute(variant: ExperimentVariant, route?: string) {
   if (variant === "A") return route === "/ai-image";
   if (variant === "B") return route === "/workspace";
   return false;
-}
-
-function metricEventName(eventName: string, metadata: Record<string, unknown>) {
-  return generationExperimentMetricEventName(eventName, metadata);
-}
-
-function incrementMetric(
-  metrics: Map<string, GenerationExperimentMetric>,
-  variant: string,
-  eventName: string
-) {
-  const key = `${variant}:${eventName}`;
-  const existing = metrics.get(key);
-  if (existing) {
-    existing.count += 1;
-    return;
-  }
-  metrics.set(key, { variant, eventName, count: 1 });
 }
 
 function isTrustedSubmittedMetadata(metadata: Record<string, unknown>) {

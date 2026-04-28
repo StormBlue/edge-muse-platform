@@ -26,6 +26,7 @@ const cases = useAiImageCases({ supportedModes: generation.supportedModes });
 const {
   directAccess,
   trackPromptCaseSelected,
+  trackAssistantStarted,
   trackAssistantPromptFilled,
   buildSubmitExperimentEvent
 } = useAiImageExperimentTracking(auth);
@@ -54,8 +55,7 @@ const providerLabel = computed(() => {
 });
 
 function selectCase(item: PromptCase) {
-  const result = cases.selectCase(item);
-  syncGenerationFromCase(item, result.mode);
+  cases.previewCase(item);
   mobileCaseSheetOpen.value = shouldOpenMobileCaseSheet();
   trackPromptCaseSelected(item);
 }
@@ -81,6 +81,7 @@ function syncCurrentCaseToGeneration() {
     sizeFallback.value = null;
     return;
   }
+  if (cases.finalPromptSource.value !== "case") return;
   syncGenerationFromCase(item, cases.selectedMode.value);
 }
 
@@ -105,28 +106,61 @@ function copyPrompt() {
   toast.success(t("promptCases.promptCopied"));
 }
 
-function fillAssistantPrompt(value: { prompt: string; recommendedSize: string }) {
+function fillAssistantPrompt(value: {
+  prompt: string;
+  recommendedSize: string;
+  turnCount: number;
+}) {
   cases.setPrompt(value.prompt, "assistant");
   applyRecommendedSize(value.recommendedSize);
-  trackAssistantPromptFilled(cases.selected.value?.id, value.prompt);
+  trackAssistantPromptFilled({
+    caseId: cases.selected.value?.id,
+    prompt: value.prompt,
+    turnCount: value.turnCount
+  });
+}
+
+function openAssistant() {
+  trackAssistantStarted({
+    caseId: cases.selected.value?.id,
+    mode: generation.mode.value
+  });
 }
 
 async function submitGeneration() {
+  const experimentEvent = currentSubmitExperimentEvent();
+  const promptSource = cases.finalPromptSource.value ?? "unknown";
+  await generation.submit(
+    cases.finalPrompt.value,
+    promptSource === "case" ? cases.selected.value?.title : undefined,
+    experimentEvent
+  );
+}
+
+async function retryFailedGeneration() {
+  const experimentEvent = currentSubmitExperimentEvent();
+  await generation.retry({
+    ...experimentEvent,
+    metadata: {
+      ...experimentEvent.metadata,
+      isRetry: true,
+      retryTrigger: "ai-image"
+    }
+  });
+}
+
+function currentSubmitExperimentEvent() {
   const promptSource = cases.finalPromptSource.value ?? "unknown";
   const selected = cases.selected.value;
-  const experimentEvent = buildSubmitExperimentEvent({
+  return buildSubmitExperimentEvent({
     promptSource,
     selectedCaseId: selected?.id,
     mode: generation.mode.value,
     size: generation.size.value,
+    n: 1,
     referenceImageCount: generation.files.value.length,
     directAccess: directAccess.value
   });
-  await generation.submit(
-    cases.finalPrompt.value,
-    promptSource === "case" ? selected?.title : undefined,
-    experimentEvent
-  );
 }
 
 function shouldOpenMobileCaseSheet() {
@@ -141,6 +175,7 @@ watch(
   () => [
     cases.selected.value?.id ?? "",
     cases.selectedMode.value,
+    cases.finalPromptSource.value ?? "",
     generation.supportedModes.value.join("|"),
     generation.sizeOptions.value.map((option) => option.value).join("|")
   ],
@@ -238,8 +273,10 @@ watch(
 
         <AiImagePromptPanel
           v-model:mode="generation.mode.value"
+          :active-failed="generation.activeFailed.value"
           :case-item="cases.selected.value"
-          :direct-access="directAccess"
+          :failed-message="generation.failedMessage.value"
+          :failed-title="generation.failedTitle.value"
           :has-running-task="generation.hasRunningTask.value"
           :prompt="cases.finalPrompt.value"
           :previews="generation.previews.value"
@@ -256,9 +293,11 @@ watch(
           @clear-prompt="cases.clearPrompt"
           @copy-prompt="copyPrompt"
           @fill-assistant="fillAssistantPrompt"
+          @open-assistant="openAssistant"
           @update:prompt="(value) => cases.setPrompt(value, 'user')"
           @update:size="setGenerationSize"
           @remove-file="generation.removeFile"
+          @retry-failed="retryFailedGeneration"
           @submit="submitGeneration"
         />
       </div>

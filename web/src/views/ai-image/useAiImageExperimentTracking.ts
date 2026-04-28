@@ -14,6 +14,7 @@ type AiImageSubmitExperimentInput = {
   selectedCaseId?: string;
   mode: string;
   size: string;
+  n: number;
   referenceImageCount: number;
   directAccess: boolean;
 };
@@ -27,11 +28,26 @@ export function useAiImageExperimentTracking(auth: AiImageTrackingAuthState) {
     void trackExperimentEvent(buildAiImagePromptCaseSelectedEvent(item, directAccess.value));
   }
 
-  function trackAssistantPromptFilled(caseId: string | undefined, prompt: string) {
+  function trackAssistantStarted(input: { caseId?: string; mode: PromptCaseMode }) {
+    void trackExperimentEvent(
+      buildAiImageAssistantStartedEvent({
+        caseId: input.caseId,
+        mode: input.mode,
+        directAccess: directAccess.value
+      })
+    );
+  }
+
+  function trackAssistantPromptFilled(input: {
+    caseId?: string;
+    prompt: string;
+    turnCount: number;
+  }) {
     void trackExperimentEvent(
       buildAiImageAssistantPromptFilledEvent({
-        caseId,
-        promptLength: prompt.length,
+        caseId: input.caseId,
+        promptLength: input.prompt.length,
+        turnCount: input.turnCount,
         directAccess: directAccess.value
       })
     );
@@ -44,6 +60,7 @@ export function useAiImageExperimentTracking(auth: AiImageTrackingAuthState) {
   return {
     directAccess,
     trackPromptCaseSelected,
+    trackAssistantStarted,
     trackAssistantPromptFilled,
     buildSubmitExperimentEvent
   };
@@ -91,6 +108,7 @@ export function buildAiImageAssistantStartedEvent(input: {
 export function buildAiImageAssistantPromptFilledEvent(input: {
   caseId?: string;
   promptLength: number;
+  turnCount: number;
   directAccess: boolean;
 }): ClientExperimentEventInput {
   return {
@@ -99,6 +117,7 @@ export function buildAiImageAssistantPromptFilledEvent(input: {
     caseId: input.caseId,
     metadata: {
       promptLength: input.promptLength,
+      turnCount: input.turnCount,
       directAccess: input.directAccess
     }
   };
@@ -111,6 +130,7 @@ export function buildAiImageSubmitExperimentEvent(input: AiImageSubmitExperiment
     metadata: {
       mode: input.mode,
       size: input.size,
+      n: input.n,
       referenceImageCount: input.referenceImageCount,
       promptSource: input.promptSource,
       caseContextId: input.promptSource === "case" ? undefined : input.selectedCaseId,

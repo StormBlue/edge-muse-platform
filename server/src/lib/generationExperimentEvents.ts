@@ -5,7 +5,12 @@ type GenerationExperimentEventSpec = {
   generateMetric: boolean;
   taskResult: boolean;
   excludeDirectAccessFromPrimaryMetrics: boolean;
+  retryMetricName?: string;
 };
+type GenerationExperimentEventBooleanFlag = Exclude<
+  keyof GenerationExperimentEventSpec,
+  "retryMetricName"
+>;
 
 const GENERATION_EXPERIMENT_EVENT_CATALOG = {
   generation_entry_exposed: {
@@ -42,19 +47,22 @@ const GENERATION_EXPERIMENT_EVENT_CATALOG = {
     client: false,
     generateMetric: true,
     taskResult: false,
-    excludeDirectAccessFromPrimaryMetrics: true
+    excludeDirectAccessFromPrimaryMetrics: true,
+    retryMetricName: "generate_retry_submitted"
   },
   generate_succeeded: {
     client: false,
     generateMetric: true,
     taskResult: true,
-    excludeDirectAccessFromPrimaryMetrics: true
+    excludeDirectAccessFromPrimaryMetrics: true,
+    retryMetricName: "generate_retry_succeeded"
   },
   generate_failed: {
     client: false,
     generateMetric: true,
     taskResult: true,
-    excludeDirectAccessFromPrimaryMetrics: true
+    excludeDirectAccessFromPrimaryMetrics: true,
+    retryMetricName: "generate_retry_failed"
   },
   variant_switched_directly: {
     client: true,
@@ -66,7 +74,7 @@ const GENERATION_EXPERIMENT_EVENT_CATALOG = {
 
 export type GenerationExperimentEventName = keyof typeof GENERATION_EXPERIMENT_EVENT_CATALOG;
 
-type EventNamesByFlag<Flag extends keyof GenerationExperimentEventSpec> = {
+type EventNamesByFlag<Flag extends GenerationExperimentEventBooleanFlag> = {
   [Name in GenerationExperimentEventName]: (typeof GENERATION_EXPERIMENT_EVENT_CATALOG)[Name][Flag] extends true
     ? Name
     : never;
@@ -112,18 +120,31 @@ export function generationExperimentMetricEventName(
   metadata: Record<string, unknown>
 ) {
   if (!isGenerateMetricEventName(eventName)) return eventName;
-  if (metadata.isRetry === true) return generationExperimentRetryMetricName(eventName);
+  if (metadata.isRetry === true) {
+    return GENERATION_EXPERIMENT_EVENT_CATALOG[eventName].retryMetricName ?? eventName;
+  }
   if (metadata.mode === "chat") return `chat_${eventName}`;
   return eventName;
 }
 
-function generationExperimentRetryMetricName(eventName: GenerateMetricEventName) {
-  if (eventName === "generate_submitted") return "generate_retry_submitted";
-  if (eventName === "generate_succeeded") return "generate_retry_succeeded";
-  return "generate_retry_failed";
+export function shouldCountGenerationExperimentMetricEvent(
+  eventName: string,
+  metadata: Record<string, unknown>,
+  options: { serverTaskTerminalSource: string }
+) {
+  if (isDirectAccessPrimaryMetricEventName(eventName) && metadata.directAccess === true) {
+    return false;
+  }
+  if (
+    isGenerationExperimentEventName(eventName) &&
+    GENERATION_EXPERIMENT_EVENT_CATALOG[eventName].taskResult
+  ) {
+    return metadata.resultEventSource === options.serverTaskTerminalSource;
+  }
+  return true;
 }
 
-function hasEventFlag<Flag extends keyof GenerationExperimentEventSpec>(
+function hasEventFlag<Flag extends GenerationExperimentEventBooleanFlag>(
   eventName: string,
   flag: Flag
 ) {
