@@ -20,6 +20,17 @@ export type ExperimentMetric = {
   count: number;
 };
 
+export type ExperimentAssignmentOverride = {
+  userId: string;
+  username: string;
+  email: string;
+  nickname: string;
+  variant: "A" | "B";
+  manualOverride: boolean;
+  assignedAt: number;
+  updatedAt: number;
+};
+
 export type ExperimentMetricsWindow = {
   since: number;
   until: number;
@@ -46,6 +57,7 @@ export async function getGenerationExperiment() {
     experiment: GenerationExperiment;
     metrics: ExperimentMetric[];
     metricsWindow: ExperimentMetricsWindow;
+    assignments: ExperimentAssignmentOverride[];
   }>("/sysadmin/experiments/generation");
 }
 
@@ -63,6 +75,23 @@ export async function saveGenerationExperiment(input: {
     }
   );
   return body.experiment;
+}
+
+export async function saveGenerationExperimentAssignment(userId: string, variant: "A" | "B") {
+  const body = await apiFetch<{ assignment: ExperimentAssignmentOverride }>(
+    `/sysadmin/experiments/generation/assignments/${encodeURIComponent(userId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ variant })
+    }
+  );
+  return body.assignment;
+}
+
+export async function deleteGenerationExperimentAssignment(userId: string) {
+  await apiFetch(`/sysadmin/experiments/generation/assignments/${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
 }
 
 export async function trackExperimentEvent(input: ClientExperimentEventInput) {

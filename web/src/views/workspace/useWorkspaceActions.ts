@@ -2,6 +2,7 @@ import type { ComputedRef, Ref } from "vue";
 import type { Router } from "vue-router";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
+import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import { useAuthStore } from "@/stores/auth";
 import {
   useSessionStore,
@@ -136,7 +137,15 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           body: JSON.stringify({
             experimentEvent: {
               route: "/workspace",
-              metadata: { isRetry: true, retryTrigger: "workspace" }
+              metadata: {
+                isRetry: true,
+                retryTrigger: "workspace",
+                directAccess: isDirectGenerationAccess(
+                  "/workspace",
+                  auth.generationExperience,
+                  auth.isSysadmin
+                )
+              }
             }
           })
         }
@@ -236,7 +245,12 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           size: input.size,
           n: input.n,
           referenceImageCount,
-          promptSource: "user"
+          promptSource: "user",
+          directAccess: isDirectGenerationAccess(
+            "/workspace",
+            auth.generationExperience,
+            auth.isSysadmin
+          )
         }
       }
     };

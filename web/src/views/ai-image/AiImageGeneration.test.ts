@@ -139,7 +139,8 @@ describe("AiImageGeneration", () => {
         size: "1024x1024",
         referenceImageCount: 0,
         promptSource: "user",
-        caseContextId: "case_user_context"
+        caseContextId: "case_user_context",
+        directAccess: false
       }
     });
   });

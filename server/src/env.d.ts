@@ -1,6 +1,7 @@
 declare namespace Cloudflare {
   interface Env {
     ENVIRONMENT: string;
+    AI: Ai;
     AI_GATEWAY_URL?: string;
     PROMPT_ASSISTANT_MODEL?: string;
     TURNSTILE_SITE_KEY?: string;

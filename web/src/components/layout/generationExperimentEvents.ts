@@ -57,15 +57,7 @@ export function buildGenerationRouteOpenEvents(
   if (!targetRoute || !variant) return [];
 
   const events: GenerationExperimentEventDraft[] = [];
-  const assignedTarget = experience?.navTarget;
-  const directTrackingEnabled =
-    !isSysadmin &&
-    experience?.status === "running" &&
-    experience.variant !== "parallel" &&
-    ["ab_test", "force_ai", "force_legacy"].includes(experience.strategy);
-  const directAccess = Boolean(
-    directTrackingEnabled && assignedTarget && assignedTarget !== targetRoute
-  );
+  const directAccess = isDirectGenerationAccess(targetRoute, experience, isSysadmin);
   const openedKey = `${fullPath}:${experience?.variant ?? "unknown"}`;
   if (!openedKeys.has(openedKey)) {
     openedKeys.add(openedKey);
@@ -90,4 +82,20 @@ export function buildGenerationRouteOpenEvents(
   }
 
   return events;
+}
+
+export function isDirectGenerationAccess(
+  targetRoute: "/workspace" | "/ai-image",
+  experience: GenerationExperience | null | undefined,
+  isSysadmin: boolean
+) {
+  if (isSysadmin) return false;
+  if (!experience) return false;
+  if (experience.variant === "parallel") return false;
+  const tracksDirectAccess =
+    (experience.status === "running" &&
+      ["ab_test", "force_ai", "force_legacy"].includes(experience.strategy)) ||
+    (experience.status === "paused" && experience.strategy === "ab_test");
+  if (!tracksDirectAccess) return false;
+  return experience.navTarget !== targetRoute;
 }

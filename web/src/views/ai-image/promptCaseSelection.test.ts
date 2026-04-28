@@ -64,6 +64,17 @@ describe("prompt case selection", () => {
     expect(promptCaseSizes(cases)).toEqual(["1:1", "3:4"]);
   });
 
+  it("keeps MVP categories in product order before custom categories", () => {
+    expect(
+      promptCaseCategories([
+        promptCase({ category: "视频感关键帧" }),
+        promptCase({ category: "商品与广告" }),
+        promptCase({ category: "自定义分类" }),
+        promptCase({ category: "人像与摄影" })
+      ])
+    ).toEqual(["人像与摄影", "商品与广告", "视频感关键帧", "自定义分类"]);
+  });
+
   it("filters cases by category, mode, size and keyword", () => {
     const filtered = filterPromptCases(cases, {
       category: "角色设计",
@@ -116,3 +127,11 @@ describe("prompt case selection", () => {
     });
   });
 });
+
+function promptCase(overrides: Partial<PromptCase>): PromptCase {
+  return {
+    ...cases[0],
+    id: `case_${overrides.category ?? "custom"}`,
+    ...overrides
+  };
+}

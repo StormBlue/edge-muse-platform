@@ -47,7 +47,8 @@ describe("useWorkspaceActions", () => {
             size: "1024x1024",
             n: 2,
             referenceImageCount: 0,
-            promptSource: "user"
+            promptSource: "user",
+            directAccess: false
           }
         }
       })
@@ -111,7 +112,7 @@ describe("useWorkspaceActions", () => {
       body: JSON.stringify({
         experimentEvent: {
           route: "/workspace",
-          metadata: { isRetry: true, retryTrigger: "workspace" }
+          metadata: { isRetry: true, retryTrigger: "workspace", directAccess: false }
         }
       })
     });
@@ -122,9 +123,42 @@ describe("useWorkspaceActions", () => {
       status: "queued"
     });
   });
+
+  it("marks workspace submissions as direct access for users assigned to the AI image entry", async () => {
+    const { actions, sessions } = createActions({
+      auth: {
+        isSysadmin: false,
+        generationExperience: {
+          experimentKey: "generation_experience",
+          status: "running",
+          strategy: "ab_test",
+          variant: "B",
+          navTarget: "/ai-image",
+          showLegacy: false,
+          showAi: true
+        }
+      }
+    });
+
+    await actions.submit({
+      prompt: "仍然使用专业工作台",
+      mode: "text2image",
+      size: "1024x1024",
+      n: 1,
+      files: []
+    });
+
+    expect(sessions.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        experimentEvent: expect.objectContaining({
+          metadata: expect.objectContaining({ directAccess: true })
+        })
+      })
+    );
+  });
 });
 
-function createActions() {
+function createActions(overrides: { auth?: unknown } = {}) {
   const sessions = {
     messages: [] as Message[],
     generate: vi.fn().mockResolvedValue({
@@ -142,7 +176,7 @@ function createActions() {
     t: (key) => key,
     router: router as never,
     sessions: sessions as never,
-    auth: { isSysadmin: false } as never,
+    auth: (overrides.auth ?? { isSysadmin: false, generationExperience: null }) as never,
     connect,
     draftTitle: ref(""),
     submitting: ref(false),

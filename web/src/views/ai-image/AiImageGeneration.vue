@@ -8,6 +8,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { trackExperimentEvent } from "@/api/experiments";
+import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import AppShell from "@/components/layout/AppShell.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
@@ -124,7 +125,8 @@ async function submitGeneration() {
     size: generation.size.value,
     referenceImageCount: generation.files.value.length,
     promptSource,
-    caseContextId: promptSource === "case" ? undefined : selected?.id
+    caseContextId: promptSource === "case" ? undefined : selected?.id,
+    directAccess: isDirectGenerationAccess("/ai-image", auth.generationExperience, auth.isSysadmin)
   };
   await generation.submit(
     cases.finalPrompt.value,

@@ -2,12 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "../src/db/client";
 import { experimentAssignments, experimentEvents, users } from "../src/db/schema";
 import {
+  clearGenerationExperimentAssignmentOverride,
   getGenerationExperienceForUser,
   getGenerationExperimentMetrics,
   getGenerationExperimentMetricsWindow,
+  listGenerationExperimentAssignmentOverrides,
   recordExperimentEvent,
   recordRetrySubmittedExperimentEvent,
   recordTaskResultExperimentEvent,
+  setGenerationExperimentAssignmentOverride,
   saveGenerationExperiment
 } from "../src/lib/experiments";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
@@ -134,6 +137,138 @@ describe("generation experiments D1 integration", () => {
     });
     expect(assignmentRows).toHaveLength(1);
     expect(assignmentRows[0]).toMatchObject({ userId: "usr_1", variant: "B" });
+  });
+
+  it("recomputes non-manual A/B assignments when running traffic changes", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 0,
+      scope: { userIds: ["usr_1"] }
+    });
+    const initiallyA = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 100,
+      scope: { userIds: ["usr_1"] }
+    });
+
+    const expandedToB = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    const assignmentRows = await getDb(ctx.env).select().from(experimentAssignments);
+
+    expect(initiallyA).toMatchObject({ variant: "A", navTarget: "/workspace" });
+    expect(expandedToB).toMatchObject({ variant: "B", navTarget: "/ai-image" });
+    expect(assignmentRows).toHaveLength(1);
+    expect(assignmentRows[0]).toMatchObject({ userId: "usr_1", variant: "B" });
+  });
+
+  it("keeps manual A/B assignment overrides when running traffic changes", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 100,
+      scope: { userIds: ["usr_1"] }
+    });
+    await getDb(ctx.env).insert(experimentAssignments).values({
+      id: "expasn_manual",
+      experimentKey: "generation_experience",
+      userId: "usr_1",
+      variant: "A",
+      manualOverride: true,
+      assignedAt: 1,
+      updatedAt: 1
+    });
+
+    const assigned = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    const assignmentRows = await getDb(ctx.env).select().from(experimentAssignments);
+
+    expect(assigned).toMatchObject({ variant: "A", navTarget: "/workspace" });
+    expect(assignmentRows).toHaveLength(1);
+    expect(assignmentRows[0]).toMatchObject({ variant: "A", manualOverride: true });
+  });
+
+  it("lets sysadmin set and clear manual A/B assignment overrides", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 0,
+      scope: { userIds: ["usr_2"] }
+    });
+
+    await setGenerationExperimentAssignmentOverride(ctx.env, "sys_1", {
+      userId: "usr_1",
+      variant: "B"
+    });
+
+    const overridden = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    const overrides = await listGenerationExperimentAssignmentOverrides(ctx.env);
+    expect(overridden).toMatchObject({ variant: "B", navTarget: "/ai-image" });
+    expect(overrides).toHaveLength(1);
+    expect(overrides[0]).toMatchObject({
+      userId: "usr_1",
+      variant: "B",
+      manualOverride: true
+    });
+
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 0,
+      scope: { userIds: ["usr_1"] }
+    });
+    await clearGenerationExperimentAssignmentOverride(ctx.env, "usr_1");
+
+    const recomputed = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    const clearedOverrides = await listGenerationExperimentAssignmentOverrides(ctx.env);
+    const assignmentRows = await getDb(ctx.env).select().from(experimentAssignments);
+    expect(recomputed).toMatchObject({ variant: "A", navTarget: "/workspace" });
+    expect(clearedOverrides).toHaveLength(0);
+    expect(assignmentRows).toHaveLength(1);
+    expect(assignmentRows[0]).toMatchObject({
+      userId: "usr_1",
+      variant: "A",
+      manualOverride: false
+    });
+  });
+
+  it("keeps a non-manual A/B assignment when a manual override is cleared while paused", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "ab_test",
+      trafficPercent: 100,
+      scope: { userIds: ["usr_1"] }
+    });
+    const initiallyAssigned = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    await setGenerationExperimentAssignmentOverride(ctx.env, "sys_1", {
+      userId: "usr_1",
+      variant: "A"
+    });
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "paused",
+      strategy: "ab_test",
+      trafficPercent: 100,
+      scope: { userIds: ["usr_1"] }
+    });
+
+    await clearGenerationExperimentAssignmentOverride(ctx.env, "usr_1");
+
+    const afterClear = await getGenerationExperienceForUser(ctx.env, authUser("usr_1"));
+    const overrides = await listGenerationExperimentAssignmentOverrides(ctx.env);
+    const assignmentRows = await getDb(ctx.env).select().from(experimentAssignments);
+    expect(initiallyAssigned).toMatchObject({ variant: "B", navTarget: "/ai-image" });
+    expect(afterClear).toMatchObject({
+      status: "paused",
+      variant: "B",
+      navTarget: "/ai-image"
+    });
+    expect(overrides).toHaveLength(0);
+    expect(assignmentRows).toHaveLength(1);
+    expect(assignmentRows[0]).toMatchObject({
+      userId: "usr_1",
+      variant: "B",
+      manualOverride: false
+    });
   });
 
   it("excludes sysadmin preview events from default metrics", async () => {
@@ -435,6 +570,38 @@ describe("generation experiments D1 integration", () => {
       { variant: "A", eventName: "generate_retry_succeeded", count: 1 },
       { variant: "A", eventName: "generate_submitted", count: 1 }
     ]);
+  });
+
+  it("excludes direct-access generation events from default funnel metrics", async () => {
+    await saveGenerationExperiment(ctx.env, "sys_1", {
+      status: "running",
+      strategy: "force_ai",
+      trafficPercent: 100,
+      scope: { userIds: ["usr_1"] }
+    });
+    await recordExperimentEvent(ctx.env, authUser("usr_1"), {
+      eventName: "generate_submitted",
+      route: "/workspace",
+      taskId: "direct_task",
+      metadata: {
+        mode: "text2image",
+        submitEventSource: "server_generate"
+      }
+    });
+
+    await recordTaskResultExperimentEvent(ctx.env, {
+      userId: "usr_1",
+      taskId: "direct_task",
+      eventName: "generate_succeeded",
+      metadata: { imageCount: 1 }
+    });
+
+    const events = await getDb(ctx.env).select().from(experimentEvents);
+    const metrics = await getGenerationExperimentMetrics(ctx.env);
+
+    expect(events).toHaveLength(2);
+    expect(JSON.parse(events[0].metadata)).toMatchObject({ directAccess: true });
+    expect(metrics).toEqual([]);
   });
 
   it("does not create retry experiment metrics for continuous chat mode", async () => {

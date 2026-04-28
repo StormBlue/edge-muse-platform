@@ -18,8 +18,24 @@ export type PromptCaseApplyResult = {
   mode: PromptCaseMode;
 };
 
+const PROMPT_CASE_CATEGORY_ORDER = [
+  "人像与摄影",
+  "商品与广告",
+  "海报与插画",
+  "角色与世界观",
+  "UI 与社媒截图",
+  "信息图与知识卡",
+  "视频感关键帧"
+];
+const PROMPT_CASE_CATEGORY_INDEX = new Map(
+  PROMPT_CASE_CATEGORY_ORDER.map((category, index) => [category, index])
+);
+
 export function promptCaseCategories(items: PromptCase[]) {
-  return uniqueSorted(items.map((item) => item.category));
+  return uniqueSorted(
+    items.map((item) => item.category),
+    comparePromptCaseCategories
+  );
 }
 
 export function promptCaseSizes(items: PromptCase[]) {
@@ -69,6 +85,15 @@ export function promptCaseApplyResult(
   };
 }
 
-function uniqueSorted(values: string[]) {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+function comparePromptCaseCategories(left: string, right: string) {
+  const leftIndex = PROMPT_CASE_CATEGORY_INDEX.get(left);
+  const rightIndex = PROMPT_CASE_CATEGORY_INDEX.get(right);
+  if (leftIndex !== undefined || rightIndex !== undefined) {
+    return (leftIndex ?? Number.MAX_SAFE_INTEGER) - (rightIndex ?? Number.MAX_SAFE_INTEGER);
+  }
+  return left.localeCompare(right, "zh-CN");
+}
+
+function uniqueSorted(values: string[], compare = (a: string, b: string) => a.localeCompare(b)) {
+  return Array.from(new Set(values)).sort(compare);
 }

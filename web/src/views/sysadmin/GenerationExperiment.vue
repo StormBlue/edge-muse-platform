@@ -9,8 +9,11 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
 import {
+  deleteGenerationExperimentAssignment,
   getGenerationExperiment,
+  saveGenerationExperimentAssignment,
   saveGenerationExperiment,
+  type ExperimentAssignmentOverride,
   type ExperimentMetric,
   type ExperimentMetricsWindow,
   type GenerationExperiment
@@ -21,19 +24,26 @@ import {
   GENERATION_EXPERIMENT_PRESETS,
   type GenerationExperimentPresetKey
 } from "./generationExperimentPresets";
+import { buildGenerationExperimentMetricSummary } from "./generationExperimentMetricsSummary";
 import { generationExperimentRiskSummary } from "./generationExperimentRisk";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const loading = ref(false);
 const saving = ref(false);
+const savingAssignment = ref(false);
 const metrics = ref<ExperimentMetric[]>([]);
 const metricsWindow = ref<ExperimentMetricsWindow | null>(null);
+const assignments = ref<ExperimentAssignmentOverride[]>([]);
 const scopeText = ref("{}");
 const form = ref({
   status: "draft" as GenerationExperiment["status"],
   strategy: "parallel" as GenerationExperiment["strategy"],
   trafficPercent: 50,
   scope: {}
+});
+const assignmentForm = ref({
+  userId: "",
+  variant: "B" as "A" | "B"
 });
 
 const trafficOptions = [0, 25, 50, 75, 100];
@@ -42,6 +52,9 @@ const metricRows = computed(() =>
     `${left.variant}:${left.eventName}`.localeCompare(`${right.variant}:${right.eventName}`)
   )
 );
+const metricSummaryRows = computed(() => {
+  return buildGenerationExperimentMetricSummary(metrics.value);
+});
 const presetButtons = computed(() =>
   GENERATION_EXPERIMENT_PRESETS.map((preset) => ({
     ...preset,
@@ -75,6 +88,7 @@ async function load() {
     scopeText.value = JSON.stringify(body.experiment.scope, null, 2);
     metrics.value = body.metrics;
     metricsWindow.value = body.metricsWindow;
+    assignments.value = body.assignments;
   } finally {
     loading.value = false;
   }
@@ -99,6 +113,44 @@ async function save() {
   }
 }
 
+async function saveAssignment() {
+  const userId = assignmentForm.value.userId.trim();
+  if (!userId) {
+    toast.error(t("experiments.assignmentUserIdRequired"));
+    return;
+  }
+  savingAssignment.value = true;
+  try {
+    await saveGenerationExperimentAssignment(userId, assignmentForm.value.variant);
+    toast.success(t("experiments.assignmentSaved"));
+    assignmentForm.value.userId = "";
+    await load();
+  } finally {
+    savingAssignment.value = false;
+  }
+}
+
+async function removeAssignment(userId: string) {
+  savingAssignment.value = true;
+  try {
+    await deleteGenerationExperimentAssignment(userId);
+    toast.success(t("experiments.assignmentRemoved"));
+    await load();
+  } finally {
+    savingAssignment.value = false;
+  }
+}
+
+function formatDateTime(value: number) {
+  return new Intl.DateTimeFormat(locale.value, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(value);
+}
+
 function applyPreset(key: GenerationExperimentPresetKey) {
   const preset = GENERATION_EXPERIMENT_PRESETS.find((item) => item.key === key);
   if (!preset) return;
@@ -114,8 +166,8 @@ onMounted(load);
 
 <template>
   <AppShell>
-    <form class="grid gap-4 xl:grid-cols-[26rem_minmax(0,1fr)]" @submit.prevent="save">
-      <section class="panel space-y-4 p-5">
+    <div class="grid gap-4 xl:grid-cols-[26rem_minmax(0,1fr)]">
+      <form class="panel space-y-4 p-5" @submit.prevent="save">
         <div>
           <h1 class="text-xl font-semibold">{{ t("experiments.title") }}</h1>
           <p class="mt-1 text-sm text-muted-foreground">{{ t("experiments.subtitle") }}</p>
@@ -196,49 +248,195 @@ onMounted(load);
         <button class="ui-button ui-button-primary" type="submit" :disabled="saving || loading">
           {{ t("common.save") }}
         </button>
-      </section>
+      </form>
 
-      <section class="panel overflow-hidden">
-        <div class="border-b border-border p-4">
-          <h2 class="font-semibold">{{ t("experiments.metrics") }}</h2>
-          <p v-if="metricsWindowText" class="mt-1 text-xs text-muted-foreground">
-            {{ metricsWindowText }}
-          </p>
-        </div>
-        <div class="thin-scrollbar max-h-[calc(100vh-12rem)] overflow-auto">
-          <table class="w-full min-w-[42rem] text-sm">
-            <thead class="sticky top-0 bg-muted text-left text-muted-foreground">
-              <tr>
-                <th class="p-3">{{ t("experiments.variant") }}</th>
-                <th class="p-3">{{ t("experiments.eventName") }}</th>
-                <th class="p-3 text-right">{{ t("experiments.count") }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-if="loading" class="border-t border-border">
-                <td class="p-4 text-center text-muted-foreground" colspan="3">
-                  {{ t("common.loading") }}
-                </td>
-              </tr>
-              <tr v-else-if="!metricRows.length" class="border-t border-border">
-                <td class="p-4 text-center text-muted-foreground" colspan="3">
-                  {{ t("experiments.noMetrics") }}
-                </td>
-              </tr>
-              <tr
-                v-for="row in metricRows"
-                v-else
-                :key="`${row.variant}:${row.eventName}`"
-                class="border-t border-border"
+      <div class="space-y-4">
+        <section class="panel overflow-hidden">
+          <div class="border-b border-border p-4">
+            <h2 class="font-semibold">{{ t("experiments.metrics") }}</h2>
+            <p v-if="metricsWindowText" class="mt-1 text-xs text-muted-foreground">
+              {{ metricsWindowText }}
+            </p>
+          </div>
+          <div class="border-b border-border p-4">
+            <h3 class="text-sm font-semibold">{{ t("experiments.funnelSummary") }}</h3>
+            <div class="mt-3 overflow-auto rounded-lg border border-border">
+              <table class="w-full min-w-[56rem] text-sm">
+                <thead class="bg-muted text-left text-muted-foreground">
+                  <tr>
+                    <th class="p-3">{{ t("experiments.variant") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.pageOpened") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.submitted") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.submitRate") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.successRate") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.failed") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.retrySubmitted") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.retryRate") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.retrySucceeded") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.retrySuccessRate") }}</th>
+                    <th class="p-3 text-right">{{ t("experiments.directAccess") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="loading" class="border-t border-border">
+                    <td class="p-4 text-center text-muted-foreground" colspan="11">
+                      {{ t("common.loading") }}
+                    </td>
+                  </tr>
+                  <tr v-else-if="!metricSummaryRows.length" class="border-t border-border">
+                    <td class="p-4 text-center text-muted-foreground" colspan="11">
+                      {{ t("experiments.noMetrics") }}
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="row in metricSummaryRows"
+                    v-else
+                    :key="row.variant"
+                    class="border-t border-border"
+                  >
+                    <td class="p-3 font-mono">{{ row.variant }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.opened }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.submitted }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.submitRate }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.successRate }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.failed }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.retrySubmitted }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.retryRate }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.retrySucceeded }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.retrySuccessRate }}</td>
+                    <td class="p-3 text-right font-mono">{{ row.directAccess }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="thin-scrollbar max-h-[calc(100vh-20rem)] overflow-auto">
+            <table class="w-full min-w-[42rem] text-sm">
+              <thead class="sticky top-0 bg-muted text-left text-muted-foreground">
+                <tr>
+                  <th class="p-3">{{ t("experiments.variant") }}</th>
+                  <th class="p-3">{{ t("experiments.eventName") }}</th>
+                  <th class="p-3 text-right">{{ t("experiments.count") }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-if="loading" class="border-t border-border">
+                  <td class="p-4 text-center text-muted-foreground" colspan="3">
+                    {{ t("common.loading") }}
+                  </td>
+                </tr>
+                <tr v-else-if="!metricRows.length" class="border-t border-border">
+                  <td class="p-4 text-center text-muted-foreground" colspan="3">
+                    {{ t("experiments.noMetrics") }}
+                  </td>
+                </tr>
+                <tr
+                  v-for="row in metricRows"
+                  v-else
+                  :key="`${row.variant}:${row.eventName}`"
+                  class="border-t border-border"
+                >
+                  <td class="p-3 font-mono">{{ row.variant }}</td>
+                  <td class="p-3">{{ row.eventName }}</td>
+                  <td class="p-3 text-right font-mono">{{ row.count }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel overflow-hidden">
+          <div class="border-b border-border p-4">
+            <h2 class="font-semibold">{{ t("experiments.manualAssignments") }}</h2>
+            <p class="mt-1 text-xs text-muted-foreground">
+              {{ t("experiments.manualAssignmentsHint") }}
+            </p>
+          </div>
+          <div class="space-y-4 p-4">
+            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr)_8rem_auto]">
+              <label class="block">
+                <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  {{ t("experiments.assignmentUserId") }}
+                </span>
+                <input
+                  v-model.trim="assignmentForm.userId"
+                  class="ui-field h-10 px-3 font-mono text-sm"
+                  :placeholder="t('experiments.assignmentUserIdPlaceholder')"
+                />
+              </label>
+              <label class="block">
+                <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                  {{ t("experiments.assignmentVariant") }}
+                </span>
+                <select v-model="assignmentForm.variant" class="ui-field h-10 px-3">
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                </select>
+              </label>
+              <button
+                class="ui-button ui-button-secondary self-end"
+                type="button"
+                :disabled="savingAssignment || loading"
+                @click="saveAssignment"
               >
-                <td class="p-3 font-mono">{{ row.variant }}</td>
-                <td class="p-3">{{ row.eventName }}</td>
-                <td class="p-3 text-right font-mono">{{ row.count }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </form>
+                {{ t("experiments.setAssignment") }}
+              </button>
+            </div>
+
+            <div class="thin-scrollbar max-h-72 overflow-auto rounded-lg border border-border">
+              <table class="w-full min-w-[42rem] text-sm">
+                <thead class="sticky top-0 bg-muted text-left text-muted-foreground">
+                  <tr>
+                    <th class="p-3">{{ t("adminUsers.user") }}</th>
+                    <th class="p-3">{{ t("experiments.variant") }}</th>
+                    <th class="p-3">{{ t("history.updatedAt") }}</th>
+                    <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="loading" class="border-t border-border">
+                    <td class="p-4 text-center text-muted-foreground" colspan="4">
+                      {{ t("common.loading") }}
+                    </td>
+                  </tr>
+                  <tr v-else-if="!assignments.length" class="border-t border-border">
+                    <td class="p-4 text-center text-muted-foreground" colspan="4">
+                      {{ t("experiments.noAssignments") }}
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="assignment in assignments"
+                    v-else
+                    :key="assignment.userId"
+                    class="border-t border-border"
+                  >
+                    <td class="p-3">
+                      <p class="font-medium">{{ assignment.nickname }}</p>
+                      <p class="font-mono text-xs text-muted-foreground">
+                        {{ assignment.userId }} · {{ assignment.username }}
+                      </p>
+                    </td>
+                    <td class="p-3 font-mono">{{ assignment.variant }}</td>
+                    <td class="p-3 text-muted-foreground">
+                      {{ formatDateTime(assignment.updatedAt) }}
+                    </td>
+                    <td class="p-3 text-right">
+                      <button
+                        class="ui-button ui-button-ghost"
+                        type="button"
+                        :disabled="savingAssignment || loading"
+                        @click="removeAssignment(assignment.userId)"
+                      >
+                        {{ t("experiments.removeAssignment") }}
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
   </AppShell>
 </template>

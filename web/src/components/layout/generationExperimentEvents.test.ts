@@ -4,7 +4,8 @@ import {
   buildGenerationEntryExposureEvents,
   buildGenerationRouteOpenEvents,
   generationTargetForPath,
-  generationVariantForPath
+  generationVariantForPath,
+  isDirectGenerationAccess
 } from "./generationExperimentEvents";
 
 const legacyExperience: GenerationExperience = {
@@ -127,7 +128,7 @@ describe("generation experiment events", () => {
     ]);
   });
 
-  it("does not mark direct switching while the experiment is paused", () => {
+  it("marks direct switching for paused A/B users with existing assignments", () => {
     const pausedExperience: GenerationExperience = {
       ...legacyExperience,
       status: "paused"
@@ -146,9 +147,23 @@ describe("generation experiment events", () => {
       {
         eventName: "generation_page_opened",
         route: "/ai-image",
-        metadata: { variant: "B", directAccess: false }
+        metadata: { variant: "B", directAccess: true }
+      },
+      {
+        eventName: "variant_switched_directly",
+        route: "/ai-image",
+        metadata: { fromVariant: "A", toVariant: "B" }
       }
     ]);
+  });
+
+  it("reuses the direct access rule for generation submissions", () => {
+    expect(isDirectGenerationAccess("/ai-image", legacyExperience, false)).toBe(true);
+    expect(isDirectGenerationAccess("/workspace", legacyExperience, false)).toBe(false);
+    expect(isDirectGenerationAccess("/ai-image", legacyExperience, true)).toBe(false);
+    expect(
+      isDirectGenerationAccess("/ai-image", { ...legacyExperience, status: "paused" }, false)
+    ).toBe(true);
   });
 
   it("deduplicates opened and direct events for the same full path and assignment", () => {
