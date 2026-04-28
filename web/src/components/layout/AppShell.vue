@@ -13,6 +13,8 @@ import {
   History,
   Image,
   KeyRound,
+  FlaskConical,
+  Library,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -21,11 +23,17 @@ import {
   Moon,
   Settings,
   SlidersHorizontal,
+  Sparkles,
   Sun,
   Users
 } from "lucide-vue-next";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { trackExperimentEvent } from "@/api/experiments";
+import {
+  buildGenerationEntryExposureEvents,
+  buildGenerationRouteOpenEvents
+} from "@/components/layout/generationExperimentEvents";
 import { useAuthStore } from "@/stores/auth";
 import { type ThemeMode, useUiStore } from "@/stores/ui";
 
@@ -40,6 +48,9 @@ const themeMenuRef = ref<HTMLElement | null>(null);
 const isDesktopSidebar = ref(false);
 let sidebarModeQuery: MediaQueryList | null = null;
 let stopSidebarModeSync: (() => void) | null = null;
+const exposedGenerationEntries = new Set<string>();
+const openedGenerationRoutes = new Set<string>();
+const directGenerationRoutes = new Set<string>();
 
 const quotaLabel = computed(() => {
   if (!auth.quota) return "--";
@@ -56,7 +67,18 @@ const nav = computed(() => {
     show: auth.isSysadmin
   };
   const sharedEntries = [
-    { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
+    {
+      to: "/ai-image",
+      label: t("nav.aiImage"),
+      icon: Sparkles,
+      show: auth.isSysadmin || (auth.generationExperience?.showAi ?? true)
+    },
+    {
+      to: "/workspace",
+      label: t("nav.workspace"),
+      icon: Image,
+      show: auth.isSysadmin || (auth.generationExperience?.showLegacy ?? true)
+    },
     { to: "/history", label: t("nav.history"), icon: History, show: true },
     { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin }
   ];
@@ -72,6 +94,18 @@ const nav = computed(() => {
       to: "/sysadmin/preferences",
       label: t("nav.preferences"),
       icon: SlidersHorizontal,
+      show: auth.isSysadmin
+    },
+    {
+      to: "/sysadmin/prompt-cases",
+      label: t("nav.promptCases"),
+      icon: Library,
+      show: auth.isSysadmin
+    },
+    {
+      to: "/sysadmin/experiments/generation",
+      label: t("nav.generationExperiment"),
+      icon: FlaskConical,
       show: auth.isSysadmin
     }
   ];
@@ -136,6 +170,30 @@ function closeMobileSidebar() {
   if (!isDesktopSidebar.value) ui.closeSidebar();
 }
 
+function trackGenerationEntryExposure() {
+  const events = buildGenerationEntryExposureEvents(visibleNav.value);
+  for (const event of events) {
+    const key = `${event.metadata?.variant ?? "unknown"}:${event.route}:${
+      auth.generationExperience?.variant ?? "unknown"
+    }`;
+    if (exposedGenerationEntries.has(key)) continue;
+    exposedGenerationEntries.add(key);
+    void trackExperimentEvent(event);
+  }
+}
+
+function trackGenerationRouteOpen() {
+  const events = buildGenerationRouteOpenEvents(
+    route.path,
+    route.fullPath,
+    auth.generationExperience,
+    auth.isSysadmin,
+    openedGenerationRoutes,
+    directGenerationRoutes
+  );
+  for (const event of events) void trackExperimentEvent(event);
+}
+
 async function logout() {
   await auth.logout();
   await router.push("/login");
@@ -151,7 +209,25 @@ function closeThemeMenu(event: PointerEvent) {
 // 换页后收起移动侧栏，避免挡内容
 watch(
   () => route.fullPath,
-  () => closeMobileSidebar()
+  () => {
+    closeMobileSidebar();
+    trackGenerationEntryExposure();
+    trackGenerationRouteOpen();
+  }
+);
+
+watch(
+  () => [
+    auth.generationExperience?.variant,
+    auth.generationExperience?.navTarget,
+    auth.generationExperience?.showAi,
+    auth.generationExperience?.showLegacy,
+    ui.locale
+  ],
+  () => {
+    trackGenerationEntryExposure();
+    trackGenerationRouteOpen();
+  }
 );
 
 onMounted(() => {
@@ -160,6 +236,8 @@ onMounted(() => {
   syncSidebarMode();
   sidebarModeQuery.addEventListener("change", syncSidebarMode);
   stopSidebarModeSync = () => sidebarModeQuery?.removeEventListener("change", syncSidebarMode);
+  trackGenerationEntryExposure();
+  trackGenerationRouteOpen();
 });
 
 onBeforeUnmount(() => {

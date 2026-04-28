@@ -2,7 +2,7 @@
  * 认证与当前用户/配额（与 GET /api/me、POST /api/auth/login|logout 对齐）
  *
  * - `bootstrap`：应用启动时拉 `/me`；失败则置未登录（Cookie 可能过期或首次访问）。
- * - `persist`：仅持久化 user/quota 减轻闪烁；敏感操作仍以服务端会话为准。
+ * - `persist`：持久化首屏展示所需快照；敏感操作仍以服务端会话为准。
  *
  * 登录时序（符号）：
  *   login() → POST /api/auth/login（可带 Turnstile）→ 服务端 Set-Cookie
@@ -40,6 +40,15 @@ export type Quota = {
   usedQuota: number;
   remainingQuota: number | null;
 };
+export type GenerationExperience = {
+  experimentKey: "generation_experience";
+  status: "draft" | "running" | "paused" | "archived";
+  strategy: "parallel" | "force_legacy" | "force_ai" | "ab_test";
+  variant: "A" | "B" | "parallel" | "sysadmin";
+  navTarget: "/workspace" | "/ai-image";
+  showLegacy: boolean;
+  showAi: boolean;
+};
 
 export const useAuthStore = defineStore("auth", {
   state: () => ({
@@ -48,6 +57,8 @@ export const useAuthStore = defineStore("auth", {
     quota: null as Quota | null,
     /** 当前用户实际 provider/key 的能力快照；为空时前端保留通用能力，后端仍会校验 */
     providerCapabilities: null as ProviderCapabilities | null,
+    /** 当前用户生成入口实验分配；sysadmin 固定同时展示两个入口 */
+    generationExperience: null as GenerationExperience | null,
     /** 是否已结束首次 bootstrap（路由守卫依赖，避免未请求就跳登录） */
     loaded: false
   }),
@@ -66,14 +77,17 @@ export const useAuthStore = defineStore("auth", {
           user: User;
           quota: Quota;
           providerCapabilities: ProviderCapabilities | null;
+          generationExperience: GenerationExperience;
         }>("/me");
         this.user = body.user;
         this.quota = body.quota;
         this.providerCapabilities = body.providerCapabilities;
+        this.generationExperience = body.generationExperience;
       } catch {
         this.user = null;
         this.quota = null;
         this.providerCapabilities = null;
+        this.generationExperience = null;
       } finally {
         this.loaded = true;
       }
@@ -87,6 +101,7 @@ export const useAuthStore = defineStore("auth", {
         user: User;
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
+        generationExperience: GenerationExperience;
       }>("/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password, turnstileToken })
@@ -94,6 +109,7 @@ export const useAuthStore = defineStore("auth", {
       this.user = body.user;
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
+      this.generationExperience = body.generationExperience;
     },
     /** 调登出接口黑 jti；`.catch` 忽略网络错误仍清本地，避免卡在已删 Cookie 态 */
     async logout() {
@@ -101,6 +117,7 @@ export const useAuthStore = defineStore("auth", {
       this.user = null;
       this.quota = null;
       this.providerCapabilities = null;
+      this.generationExperience = null;
     },
     /** PATCH /api/me 改昵称，成功后覆写 user */
     async updateProfile(nickname: string) {
@@ -108,6 +125,7 @@ export const useAuthStore = defineStore("auth", {
         user: User;
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
+        generationExperience: GenerationExperience;
       }>("/me", {
         method: "PATCH",
         body: JSON.stringify({ nickname })
@@ -115,10 +133,11 @@ export const useAuthStore = defineStore("auth", {
       this.user = body.user;
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
+      this.generationExperience = body.generationExperience;
     }
   },
-  // 仅把 user/quota 写入 localStorage 减轻首屏闪烁；真正鉴权以 Cookie + 服务端为准
+  // 仅持久化展示快照减轻首屏闪烁；真正鉴权和权限边界以 Cookie + 服务端为准
   persist: {
-    pick: ["user", "quota", "providerCapabilities"]
+    pick: ["user", "quota", "providerCapabilities", "generationExperience"]
   }
 });

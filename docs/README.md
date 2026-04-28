@@ -27,12 +27,13 @@
 
 ## 质量与历史
 
-| 文件                                           | 用途                         |
-| ---------------------------------------------- | ---------------------------- |
-| [QUALITY_SCORE.md](./QUALITY_SCORE.md)         | 模块质量与已知债             |
-| [design-docs/index.md](./design-docs/index.md) | 设计决策索引                 |
-| [exec-plans/README.md](./exec-plans/README.md) | 活跃开发计划与任务清单       |
-| [archive/README.md](./archive/README.md)       | 已归档 PRD、Cubence 任务全书 |
+| 文件                                                                                 | 用途                         |
+| ------------------------------------------------------------------------------------ | ---------------------------- |
+| [QUALITY_SCORE.md](./QUALITY_SCORE.md)                                               | 模块质量与已知债             |
+| [design-docs/index.md](./design-docs/index.md)                                       | 设计决策索引                 |
+| [exec-plans/README.md](./exec-plans/README.md)                                       | 活跃开发计划与任务清单       |
+| [reviews/ai-image-generation-audit-01.md](./reviews/ai-image-generation-audit-01.md) | AI 图像生成开发审核报告 01   |
+| [archive/README.md](./archive/README.md)                                             | 已归档 PRD、Cubence 任务全书 |
 
 ## 已合并 / 迁移说明
 

@@ -7,7 +7,7 @@
 - **JWT**：访问/刷新令牌通过 **httpOnly Cookie** 传递；刷新轮换策略见 [`server/src/routes/auth.ts`](../server/src/routes/auth.ts)、[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts)。
 - **登出黑名单**：刷新令牌可记入 KV 黑名单（[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts) 及相关路由）。
 - **CSRF**：非 GET 请求校验 CSRF token（[`server/src/middleware/csrf.ts`](../server/src/middleware/csrf.ts)）。
-- **登录防护**：Turnstile + 限流（[`server/src/lib/turnstile.ts`](../server/src/lib/turnstile.ts)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）；开发环境行为以 `ENVIRONMENT` 为准。
+- **登录防护**：Turnstile + 限流（[`server/src/lib/turnstile.ts`](../server/src/lib/turnstile.ts)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）；`ENVIRONMENT=dev` 时服务端跳过 Turnstile，且 `/api/config` 不下发 site key，生产环境失败关闭。
 
 ## 账号生命周期
 

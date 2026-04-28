@@ -10,6 +10,7 @@ import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { getGenerationExperienceForUser } from "../lib/experiments";
 import { now } from "../lib/id";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
@@ -24,7 +25,8 @@ meRoutes.get("/", requireAuth, async (c) => {
   return c.json({
     user,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationExperience: await getGenerationExperienceForUser(c.env, user)
   });
 });
 
@@ -50,7 +52,8 @@ meRoutes.patch(
     return c.json({
       user: { ...user, nickname: body.nickname },
       quota: await getQuota(c.env, user.id),
-      providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+      providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+      generationExperience: await getGenerationExperienceForUser(c.env, user)
     });
   }
 );

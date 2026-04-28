@@ -23,6 +23,7 @@ import {
 } from "../lib/cookies";
 import { appError } from "../lib/errors";
 import { randomBytes, base64UrlEncode } from "../lib/encoding";
+import { getGenerationExperienceForUser } from "../lib/experiments";
 import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
 import { logWarn } from "../lib/log";
@@ -32,7 +33,7 @@ import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
 import { requireAuth } from "../middleware/auth";
 import { consumeRateLimit } from "../middleware/rateLimit";
-import type { AppEnv } from "../types";
+import type { AppEnv, AuthUser } from "../types";
 
 /** 登录体：邮箱或用户名 + 密码；Turnstile 由环境决定是否强制 */
 const loginSchema = z.object({
@@ -106,7 +107,8 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
     user: publicUser(user),
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user))
   });
 });
 
@@ -159,7 +161,8 @@ authRoutes.post("/refresh", async (c) => {
     user: publicUser(user),
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationExperience: await getGenerationExperienceForUser(c.env, publicUser(user))
   });
 });
 
@@ -196,10 +199,10 @@ function publicUser(user: {
   email: string;
   username: string;
   nickname: string;
-  role: string;
-  status: string;
+  role: AuthUser["role"];
+  status: AuthUser["status"];
   preferredProviderKeyId?: string | null;
-}) {
+}): AuthUser {
   return {
     id: user.id,
     email: user.email,

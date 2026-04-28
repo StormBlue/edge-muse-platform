@@ -1,7 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { webcrypto } from "node:crypto";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const encoder = new TextEncoder();
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const serverRoot = join(scriptDir, "..");
+const wranglerBin = join(serverRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 
 const keySecret = process.env.KEY_ENCRYPTION_KEY ?? "local-development-key-material";
 const timestamp = Date.now();
@@ -90,10 +95,10 @@ VALUES ('usr_sysadmin', 'key_mock', ${timestamp});
 `;
 
 execFileSync(
-  "pnpm",
-  ["wrangler", "d1", "execute", "edge-muse", "--local", "--command", command],
+  process.execPath,
+  [wranglerBin, "d1", "execute", "edge-muse", "--local", "--command", command],
   {
-    cwd: new URL("..", import.meta.url),
+    cwd: serverRoot,
     stdio: "inherit"
   }
 );

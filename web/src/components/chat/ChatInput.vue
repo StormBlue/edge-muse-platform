@@ -6,6 +6,11 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Loader2, Send, Upload, X } from "lucide-vue-next";
+import {
+  imageFilesFromDataTransfer,
+  imageFilesFromFileList,
+  prepareReferenceImageFiles
+} from "@/utils/referenceImageFiles";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
 
 type SizeOption = {
@@ -191,21 +196,21 @@ async function submit() {
 async function onFiles(event: Event) {
   if (isReadOnly.value) return;
   const input = event.target as HTMLInputElement;
-  await addFiles(Array.from(input.files ?? []));
+  await addFiles(imageFilesFromFileList(input.files));
   input.value = "";
 }
 
 async function onDrop(event: DragEvent) {
   if (isReadOnly.value) return;
   dragging.value = false;
-  await addFiles(Array.from(event.dataTransfer?.files ?? []));
+  await addFiles(imageFilesFromDataTransfer(event.dataTransfer));
 }
 
 async function onPaste(event: ClipboardEvent) {
   if (isReadOnly.value) return;
   if (!isImageToImage.value) return;
-  const pastedFiles = Array.from(event.clipboardData?.files ?? []);
-  if (pastedFiles.some((file) => file.type.startsWith("image/"))) {
+  const pastedFiles = imageFilesFromDataTransfer(event.clipboardData);
+  if (pastedFiles.length) {
     event.preventDefault();
     await addFiles(pastedFiles);
   }
@@ -215,8 +220,7 @@ async function onPaste(event: ClipboardEvent) {
 async function addFiles(inputFiles: File[]) {
   if (isReadOnly.value) return;
   if (!isImageToImage.value) return;
-  const imageFiles = inputFiles.filter((file) => file.type.startsWith("image/"));
-  const compressed = await Promise.all(imageFiles.map(compressImage));
+  const compressed = await prepareReferenceImageFiles(inputFiles);
   files.value = [...files.value, ...compressed].slice(0, effectiveMaxReferenceFiles.value);
 }
 
@@ -245,47 +249,13 @@ function normalizeCount(event: Event) {
 function clampImageCount(value: number) {
   return Math.min(maxCustomCount, Math.max(1, Math.floor(value)));
 }
-
-/**
- * 大图或超 ~1.5MB 时压到长边 2048、jpeg 0.85，失败则回传原 File
- */
-async function compressImage(file: File): Promise<File> {
-  const bitmap = await createImageBitmap(file).catch(() => null);
-  if (!bitmap) return file;
-  const maxEdge = Math.max(bitmap.width, bitmap.height);
-  const needsCompression = file.size > 1.5 * 1024 * 1024 || maxEdge > 2048;
-  if (!needsCompression) {
-    bitmap.close();
-    return file;
-  }
-  const scale = Math.min(1, 2048 / maxEdge);
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) {
-    bitmap.close();
-    return file;
-  }
-  context.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/jpeg", 0.85)
-  );
-  if (!blob) return file;
-  return new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), {
-    type: "image/jpeg",
-    lastModified: Date.now()
-  });
-}
 </script>
 
 <template>
   <form
     class="panel thin-scrollbar flex min-h-0 flex-col overflow-y-auto"
     :class="isChatVariant ? 'gap-3 p-3' : 'min-h-[34rem] gap-4 p-4 xl:min-h-0'"
+    @paste="onPaste"
     @submit.prevent="submit"
   >
     <div v-if="!isChatVariant" class="flex shrink-0 items-center justify-between gap-3">
@@ -304,7 +274,6 @@ async function compressImage(file: File): Promise<File> {
         class="ui-field resize-none px-3 py-3 text-sm leading-6"
         :class="isChatVariant ? 'min-h-32' : 'min-h-40'"
         :placeholder="t('workspace.promptPlaceholder')"
-        @paste="onPaste"
         @keydown.meta.enter.prevent="submit"
         @keydown.ctrl.enter.prevent="submit"
       ></textarea>
@@ -383,6 +352,7 @@ async function compressImage(file: File): Promise<File> {
             : 'border-border text-muted-foreground',
           isReadOnly ? 'cursor-default' : 'cursor-pointer'
         ]"
+        :tabindex="isReadOnly ? -1 : 0"
         @dragenter.prevent="!isReadOnly && (dragging = true)"
         @dragover.prevent="!isReadOnly && (dragging = true)"
         @dragleave.prevent="dragging = false"
@@ -390,6 +360,9 @@ async function compressImage(file: File): Promise<File> {
       >
         <Upload class="h-4 w-4" />
         <span>{{ uploaderLabel }}</span>
+        <span v-if="!isReadOnly" class="text-xs font-normal">
+          {{ t("workspace.referenceImageInputHint") }}
+        </span>
         <input
           v-if="!isReadOnly"
           class="hidden"

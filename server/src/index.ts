@@ -11,6 +11,9 @@ import { meRoutes } from "./routes/me";
 import { sessionRoutes, historyRoutes } from "./routes/sessions";
 import { generateRoutes, handleTaskWebSocket } from "./routes/generate";
 import { imageRoutes } from "./routes/images";
+import { experimentRoutes } from "./routes/experiments";
+import { promptAssistantRoutes } from "./routes/promptAssistant";
+import { promptCaseRoutes } from "./routes/promptCases";
 import { uploadRoutes } from "./routes/uploads";
 import { adminRoutes } from "./routes/admin";
 import { sysadminRoutes } from "./routes/sysadmin";
@@ -21,6 +24,7 @@ import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
+import { getPublicTurnstileSiteKey } from "./lib/turnstile";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -41,7 +45,7 @@ app.use(
 );
 app.use("/api/*", csrf);
 
-// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框）----------
+// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框；dev 环境返回 null）----------
 app.get("/api/health", (c) =>
   c.json({
     ok: true,
@@ -53,7 +57,7 @@ app.get("/api/health", (c) =>
 
 app.get("/api/config", (c) =>
   c.json({
-    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY || null
+    turnstileSiteKey: getPublicTurnstileSiteKey(c.env)
   })
 );
 
@@ -65,6 +69,9 @@ app.route("/api/history", historyRoutes);
 app.route("/api", generateRoutes);
 app.route("/api", imageRoutes);
 app.route("/api", uploadRoutes);
+app.route("/api/experiments", experimentRoutes);
+app.route("/api/prompt-assistant", promptAssistantRoutes);
+app.route("/api/prompt-cases", promptCaseRoutes);
 app.route("/api/admin", adminRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
 /** 浏览器 WebSocket 连接点：`wss://<host>/ws/task/<taskId>`（无前缀 /api） */

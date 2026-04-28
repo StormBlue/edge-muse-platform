@@ -1,0 +1,92 @@
+<script setup lang="ts">
+/**
+ * 用户端案例卡片列表。
+ *
+ * 这里不暴露 draft/hidden 状态，数据源已由后端限制为 published。
+ */
+import { ImageOff, Star } from "lucide-vue-next";
+import { useI18n } from "vue-i18n";
+import type { PromptCase } from "@/types/promptCases";
+
+defineProps<{
+  items: PromptCase[];
+  loading: boolean;
+  selectedId: string | null;
+}>();
+
+const emit = defineEmits<{
+  select: [item: PromptCase];
+}>();
+
+const { t } = useI18n();
+</script>
+
+<template>
+  <section class="panel flex min-h-[24rem] flex-col overflow-hidden">
+    <div class="border-b border-border px-4 py-3">
+      <h2 class="text-sm font-semibold">{{ t("aiImage.caseGallery") }}</h2>
+    </div>
+    <div
+      v-if="loading"
+      class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+    >
+      {{ t("common.loading") }}
+    </div>
+    <div
+      v-else-if="!items.length"
+      class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+    >
+      {{ t("aiImage.noCases") }}
+    </div>
+    <div v-else class="thin-scrollbar grid gap-3 overflow-y-auto p-3 sm:grid-cols-2 xl:grid-cols-1">
+      <button
+        v-for="item in items"
+        :key="item.id"
+        class="group grid min-h-32 grid-cols-[7rem_minmax(0,1fr)] gap-3 rounded-lg border border-border bg-card p-2 text-left transition hover:border-primary/60 hover:bg-muted/35"
+        :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
+        type="button"
+        @click="emit('select', item)"
+      >
+        <div class="relative h-full min-h-28 overflow-hidden rounded-md bg-muted">
+          <img
+            v-if="item.thumbnailUrl"
+            class="h-full w-full object-cover"
+            :src="item.thumbnailUrl"
+            :alt="item.title"
+          />
+          <div v-else class="flex h-full items-center justify-center text-muted-foreground">
+            <ImageOff class="h-6 w-6" />
+          </div>
+          <span
+            v-if="item.featured"
+            class="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-1 text-xs"
+          >
+            <Star class="h-3 w-3 text-primary" />
+            {{ t("promptCases.featured") }}
+          </span>
+        </div>
+        <div class="min-w-0">
+          <p class="truncate text-sm font-semibold">{{ item.title }}</p>
+          <p class="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
+            {{ item.promptSummary }}
+          </p>
+          <div class="mt-2 flex flex-wrap gap-1">
+            <span
+              v-for="tag in item.tags.slice(0, 2)"
+              :key="tag"
+              class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
+            >
+              {{ tag }}
+            </span>
+            <span class="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+              {{ item.recommendedSize }}
+            </span>
+          </div>
+          <p class="mt-2 truncate text-xs text-muted-foreground">
+            {{ item.sourceAuthor || item.sourceRepo || item.sourceLicense }}
+          </p>
+        </div>
+      </button>
+    </div>
+  </section>
+</template>

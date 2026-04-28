@@ -1,7 +1,7 @@
 # AI 图像生成页面开发任务列表
 
-状态：active  
-需求文档：[`../design-docs/ai-image-generation-page.md`](../design-docs/ai-image-generation-page.md)  
+状态：active
+需求文档：[`../design-docs/ai-image-generation-page.md`](../design-docs/ai-image-generation-page.md)
 最后更新：2026-04-28
 
 ## 状态约定
@@ -17,26 +17,26 @@
 
 ## 总览
 
-| ID     | 里程碑           | 状态 | 需求锚点               | 完成证据                                |
-| ------ | ---------------- | ---- | ---------------------- | --------------------------------------- |
-| AIG-M1 | 独立页面骨架     | TODO | 信息架构、Phase 1      | 路由、导航和空页面可访问。              |
-| AIG-M2 | 案例库管理与归因 | TODO | 案例库需求、Phase 2    | sysadmin 可管理案例，用户端可筛选回填。 |
-| AIG-M3 | AI 提示词助手    | TODO | AI 提示词助手、Phase 3 | 6-10 轮问答可生成 final prompt。        |
-| AIG-M4 | A/B 测试管理     | TODO | A/B 测试管理、Phase 4  | sysadmin 可启停实验并查看指标。         |
-| AIG-M5 | 验证与发布       | TODO | Phase 5、成功指标      | 测试通过，灰度策略明确。                |
+| ID     | 里程碑           | 状态   | 需求锚点               | 完成证据                                           |
+| ------ | ---------------- | ------ | ---------------------- | -------------------------------------------------- |
+| AIG-M1 | 独立页面骨架     | DONE   | 信息架构、Phase 1      | 路由、导航、移动端 sheet 和空状态可访问。          |
+| AIG-M2 | 案例库管理与归因 | DONE   | 案例库需求、Phase 2    | sysadmin 可管理案例，用户端可筛选回填。            |
+| AIG-M3 | AI 提示词助手    | DONE   | AI 提示词助手、Phase 3 | 自然对话最多 8 次来回，可生成并确认 final prompt。 |
+| AIG-M4 | A/B 测试管理     | DONE   | A/B 测试管理、Phase 4  | sysadmin 可启停实验并查看指标。                    |
+| AIG-M5 | 验证与发布       | REVIEW | Phase 5、成功指标      | 测试通过，待实际灰度发布。                         |
 
 ## AIG-M1：独立页面骨架
 
 ### AIG-001 路由与导航
 
-状态：TODO  
-依赖：无  
+状态：DONE
+依赖：无
 涉及文件：`web/src/router/index.ts`、`web/src/components/layout/AppShell.vue`、`web/src/locales/*.json`
 
-- [ ] 新增 `/ai-image` 路由，页面组件指向 `web/src/views/ai-image/AiImageGeneration.vue`。
-- [ ] 保留 `/workspace` 为“图像生成”专业页。
-- [ ] 普通用户导航支持实验分配后的主入口展示。
-- [ ] sysadmin 导航同时展示“图像生成”和“AI 图像生成”。
+- [x] 新增 `/ai-image` 路由，页面组件指向 `web/src/views/ai-image/AiImageGeneration.vue`。
+- [x] 保留 `/workspace` 为“图像生成”专业页。
+- [x] 普通用户导航支持实验分配后的主入口展示。
+- [x] sysadmin 导航同时展示“图像生成”和“AI 图像生成”。
 
 验收：
 
@@ -46,49 +46,66 @@
 
 ### AIG-002 AI 图像生成页面基础布局
 
-状态：TODO  
-依赖：AIG-001  
+状态：DONE
+依赖：AIG-001
 涉及文件：`web/src/views/ai-image/AiImageGeneration.vue`
 
-- [ ] 实现桌面端三栏布局：案例库、案例详情、提示词/生成面板。
-- [ ] 实现移动端分类横向滚动与详情 sheet。
-- [ ] 显示配额、当前 provider 能力、生成状态。
-- [ ] 页面空状态引导用户选择案例或打开 AI 助手。
+- [x] 实现桌面端三栏布局：案例库、案例详情、提示词/生成面板。
+- [x] 实现移动端分类横向滚动与详情 sheet。
+- [x] 显示配额、当前 provider 能力、生成状态。
+- [x] 页面空状态引导用户选择案例或打开 AI 助手。
 
 验收：
 
 - 桌面和移动端无横向溢出。
-- 无案例选择时页面仍可直接输入 prompt。
+- 无案例选择或清空 prompt 后页面仍可直接输入 prompt，并可进入 AI 助手。
 
 ### AIG-003 复用现有生成任务链路
 
-状态：TODO  
-依赖：AIG-002  
-涉及文件：`web/src/views/ai-image/useAiImageGenerationController.ts`、`web/src/stores/session.ts`
+状态：DONE
+依赖：AIG-002
+涉及文件：`web/src/views/ai-image/useAiImageGenerationSubmit.ts`、`web/src/stores/session.ts`
 
-- [ ] 从 AI 图像生成页调用现有 `/api/generate`。
-- [ ] 文生图、图生图上传参考图行为与工作台一致。
-- [ ] 接入现有 WebSocket 任务状态合并逻辑。
-- [ ] 生成成功后结果进入现有历史记录。
+- [x] 从 AI 图像生成页调用现有 `/api/generate`。
+- [x] 文生图、图生图上传参考图行为与工作台一致。
+- [x] 接入现有 WebSocket 任务状态合并逻辑。
+- [x] 生成成功后结果进入现有历史记录。
 
 验收：
 
 - `/ai-image` 生成出的会话可在 `/history` 查看。
 - 失败任务沿用现有错误展示和重试策略。
 
+### AIG-004 参考图便捷添加
+
+状态：DONE
+依赖：AIG-003
+涉及文件：`web/src/components/chat/ChatInput.vue`、`web/src/views/ai-image/AiImagePromptPanel.vue`、`web/src/utils/referenceImageFiles.ts`
+
+- [x] `/workspace` 图生图上传区域支持点击上传、拖拽图片和粘贴图片。
+- [x] `/ai-image` 图生图上传区域支持点击上传、拖拽图片和粘贴图片。
+- [x] 两个入口复用统一参考图筛选与压缩逻辑。
+- [x] 上传区域文案明确提示点击、粘贴和拖拽三种入口。
+
+验收：
+
+- 在 `/workspace` 图生图模式拖拽/粘贴图片后出现参考图预览。
+- 在 `/ai-image` 图生图模式拖拽/粘贴图片后出现参考图预览。
+- 非图片内容不会被加入参考图队列。
+
 ## AIG-M2：案例库管理与归因
 
 ### AIG-010 案例数据模型与 D1 表
 
-状态：TODO  
-依赖：AIG-002  
-涉及文件：`server/src/db/schema.ts`、`server/src/db/migrations/*`、`web/src/views/ai-image/promptCases.ts`
+状态：DONE
+依赖：AIG-002
+涉及文件：`server/src/db/schema.ts`、`server/migrations/*`、`web/src/types/promptCases.ts`
 
-- [ ] 定义 `PromptCase` 类型。
-- [ ] 新增 `prompt_cases` 表，字段覆盖分类、标签、模式、推荐尺寸、prompt 模板、状态、排序、精选、语言、来源归因。
-- [ ] 新增 `prompt_case_imports` 表，记录导入批次、来源、导入人、导入结果和错误。
-- [ ] 支持 `draft`、`published`、`hidden`、`archived` 状态。
-- [ ] 支持 `text2image` 与 `image2image` 过滤。
+- [x] 定义 `PromptCase` 类型。
+- [x] 新增 `prompt_cases` 表，字段覆盖分类、标签、模式、推荐尺寸、prompt 模板、状态、排序、精选、语言、来源归因。
+- [x] 新增 `prompt_case_imports` 表，记录导入批次、来源、导入人、导入结果和错误。
+- [x] 支持 `draft`、`published`、`hidden`、`archived` 状态。
+- [x] 支持 `text2image` 与 `image2image` 过滤。
 
 验收：
 
@@ -98,16 +115,16 @@
 
 ### AIG-011 案例管理 API
 
-状态：TODO  
-依赖：AIG-010  
+状态：DONE
+依赖：AIG-010
 涉及文件：`server/src/routes/promptCases.ts`、`server/src/routes/sysadmin/promptCases.ts`、`server/src/lib/promptCases.ts`
 
-- [ ] 新增用户端 `GET /api/prompt-cases`，只返回已发布案例。
-- [ ] 新增 sysadmin `GET /api/sysadmin/prompt-cases`。
-- [ ] 新增 sysadmin `POST /api/sysadmin/prompt-cases`。
-- [ ] 新增 sysadmin `PATCH /api/sysadmin/prompt-cases/:id`。
-- [ ] 新增 sysadmin `POST /api/sysadmin/prompt-cases/import`，导入后默认 draft。
-- [ ] 校验外部来源案例必须包含 `sourceUrl`、`sourceAuthor`、`sourceLicense`。
+- [x] 新增用户端 `GET /api/prompt-cases`，只返回已发布案例。
+- [x] 新增 sysadmin `GET /api/sysadmin/prompt-cases`。
+- [x] 新增 sysadmin `POST /api/sysadmin/prompt-cases`。
+- [x] 新增 sysadmin `PATCH /api/sysadmin/prompt-cases/:id`。
+- [x] 新增 sysadmin `POST /api/sysadmin/prompt-cases/import`，导入后默认 draft。
+- [x] 校验外部来源案例必须包含 `sourceUrl`、`sourceAuthor`、`sourceLicense`。
 
 验收：
 
@@ -116,15 +133,17 @@
 
 ### AIG-012 系统管理员案例管理页
 
-状态：TODO  
-依赖：AIG-011  
+状态：DONE
+依赖：AIG-011
 涉及文件：`web/src/views/sysadmin/PromptCases.vue`、`web/src/router/index.ts`、`web/src/components/layout/AppShell.vue`
 
-- [ ] 新增 `/sysadmin/prompt-cases`。
-- [ ] 支持按状态、分类、模式、语言、来源、精选、搜索词筛选。
-- [ ] 支持创建、编辑、发布、隐藏、归档、排序、设置精选。
-- [ ] 支持粘贴 JSON 或导入脚本产物，导入后进入 draft。
-- [ ] 支持普通用户视角预览案例详情和 prompt 回填。
+- [x] 新增 `/sysadmin/prompt-cases`。
+- [x] 支持按状态、分类、模式、语言、来源、精选、搜索词筛选。
+- [x] 支持创建、编辑、发布、隐藏、归档、排序、设置精选。
+- [x] 支持粘贴 JSON 或导入脚本产物，导入后进入 draft。
+- [x] 支持普通用户视角预览案例详情和 prompt 回填。
+- [x] 拆分案例管理页：列表表格和导入弹层独立成组件，主页面保持装配职责。
+- [x] 抽离案例编辑表单规则：克隆、标签清洗、空字符串转 null 和模式切换都有纯函数测试。
 
 验收：
 
@@ -133,15 +152,15 @@
 
 ### AIG-013 精选 awesome-gpt-image-2-prompts 案例
 
-状态：TODO  
-依赖：AIG-011、AIG-012  
+状态：DONE
+依赖：AIG-011、AIG-012
 参考来源：[EvoLinkAI/awesome-gpt-image-2-prompts](https://github.com/EvoLinkAI/awesome-gpt-image-2-prompts)
 
-- [ ] 从人像摄影、商品广告、海报插画、角色、UI/社媒、信息图、视频关键帧中各选 3-5 个。
-- [ ] 保留 `sourceUrl`、`sourceAuthor`、`sourceLicense`、`sourceRepo`。
-- [ ] 将外部 prompt 改写为中文可填槽位模板，避免不归因复制。
-- [ ] 为每个案例标注推荐尺寸和适用模式。
-- [ ] 通过 sysadmin 管理页发布首批案例。
+- [x] 从人像摄影、商品广告、海报插画、角色、UI/社媒、信息图、视频关键帧中各选 3-5 个。
+- [x] 保留 `sourceUrl`、`sourceAuthor`、`sourceLicense`、`sourceRepo`。
+- [x] 将外部 prompt 改写为中文可填槽位模板，避免不归因复制。
+- [x] 为每个案例标注推荐尺寸和适用模式。
+- [x] 通过 sysadmin 管理页发布首批案例。
 
 验收：
 
@@ -150,15 +169,15 @@
 
 ### AIG-014 用户端案例浏览与筛选
 
-状态：TODO  
-依赖：AIG-011、AIG-013  
+状态：DONE
+依赖：AIG-011、AIG-013
 涉及文件：`PromptCaseGallery.vue`、`PromptCaseDetail.vue`
 
-- [ ] 从 `GET /api/prompt-cases` 加载已发布案例。
-- [ ] 支持分类 tabs。
-- [ ] 支持按模式、尺寸、标签筛选。
-- [ ] 案例卡片展示标题、缩略图、标签、来源。
-- [ ] 案例详情展示 prompt 摘要、推荐尺寸、来源归因。
+- [x] 从 `GET /api/prompt-cases` 加载已发布案例。
+- [x] 支持分类 tabs。
+- [x] 支持按模式、尺寸、标签筛选。
+- [x] 案例卡片展示标题、缩略图、标签、来源。
+- [x] 案例详情展示 prompt 摘要、推荐尺寸、来源归因。
 
 验收：
 
@@ -169,14 +188,14 @@
 
 ### AIG-020 Workers AI 配置
 
-状态：TODO  
-依赖：无  
+状态：DONE
+依赖：无
 涉及文件：`server/wrangler.jsonc`、`server/src/types.ts`
 
-- [ ] 增加 Workers AI binding。
-- [ ] 增加 `PROMPT_ASSISTANT_MODEL` 环境变量约定。
-- [ ] 运行 `pnpm -F server types` 更新环境类型。
-- [ ] 文档注明本地开发缺少 AI binding 时的降级行为。
+- [x] 增加 Workers AI binding。
+- [x] 增加 `PROMPT_ASSISTANT_MODEL` 环境变量约定。
+- [x] 运行 `pnpm -F server types` 更新环境类型。
+- [x] 文档注明本地开发缺少 AI binding 时的降级行为。
 
 验收：
 
@@ -185,14 +204,14 @@
 
 ### AIG-021 Prompt Assistant API
 
-状态：TODO  
-依赖：AIG-020  
+状态：DONE
+依赖：AIG-020
 涉及文件：`server/src/routes/promptAssistant.ts`、`server/src/lib/promptAssistant.ts`
 
-- [ ] 新增 `POST /api/prompt-assistant/turn`。
-- [ ] 使用 Zod 校验 mode、locale、turnIndex、messages、provider、referenceBrief。
-- [ ] 限制只允许 `text2image`、`image2image`。
-- [ ] 输出 `assistantMessage`、`readiness`、`brief`、`finalPrompt`、`recommendedSize`、`warnings`。
+- [x] 新增 `POST /api/prompt-assistant/turn`。
+- [x] 使用 Zod 校验 mode、locale、turnIndex、messages、provider、referenceBrief。
+- [x] 限制只允许 `text2image`、`image2image`。
+- [x] 输出 `assistantMessage`、`readiness`、`brief`、`finalPrompt`、`recommendedSize`、`warnings`。
 
 验收：
 
@@ -201,14 +220,15 @@
 
 ### AIG-022 助手前端面板
 
-状态：TODO  
-依赖：AIG-021  
-涉及文件：`PromptAssistantPanel.vue`、`useAiImageGenerationController.ts`
+状态：DONE
+依赖：AIG-021
+涉及文件：`PromptAssistantPanel.vue`、`useAiImageGenerationSubmit.ts`
 
-- [ ] 实现 6-10 轮问答状态。
-- [ ] 每轮只展示 1-2 个问题。
-- [ ] 信息足够时允许提前输出最终 prompt。
-- [ ] 支持回填、复制、继续调整、清空对话。
+- [x] 实现自然聊天式历史，不向用户展示“第几轮”。
+- [x] AI 与用户最多来回问答 8 次，每次只展示 1-2 个问题。
+- [x] 信息足够时允许提前输出最终 prompt。
+- [x] 支持最终 prompt 手动编辑确认、回填、复制、继续调整、清空对话。
+- [x] 拆分助手展示层：聊天历史与最终 prompt 确认区独立成组件，主面板只负责请求与状态。
 
 验收：
 
@@ -217,14 +237,14 @@
 
 ### AIG-023 助手限流与安全日志
 
-状态：TODO  
-依赖：AIG-021  
+状态：DONE
+依赖：AIG-021
 涉及文件：`server/src/lib/promptAssistant.ts`、`server/src/middleware/rateLimit.ts`
 
-- [ ] 每用户每天默认 30 轮助手请求。
-- [ ] 单轮输入最大 6,000 字符，输出最大 1,500 字符。
-- [ ] 日志只记录长度、模式、caseId、turnIndex、模型名和 traceId。
-- [ ] 不记录完整 prompt、参考图内容或密钥。
+- [x] 每用户每天默认 30 次助手请求。
+- [x] 单次输入最大 6,000 字符，输出最大 1,500 字符。
+- [x] 日志只记录长度、模式、caseId、turnIndex、模型名和 traceId。
+- [x] 不记录完整 prompt、参考图内容或密钥。
 
 验收：
 
@@ -235,14 +255,14 @@
 
 ### AIG-030 实验数据表
 
-状态：TODO  
-依赖：无  
-涉及文件：`server/src/db/schema.ts`、`server/src/db/migrations/*`
+状态：DONE
+依赖：无
+涉及文件：`server/src/db/schema.ts`、`server/migrations/*`
 
-- [ ] 新增 `experiments`。
-- [ ] 新增 `experiment_assignments`。
-- [ ] 新增 `experiment_events`。
-- [ ] 生成并提交 D1 migration。
+- [x] 新增 `experiments`。
+- [x] 新增 `experiment_assignments`。
+- [x] 新增 `experiment_events`。
+- [x] 生成并提交 D1 migration。
 
 验收：
 
@@ -251,14 +271,14 @@
 
 ### AIG-031 实验分配服务
 
-状态：TODO  
-依赖：AIG-030  
+状态：DONE
+依赖：AIG-030
 涉及文件：`server/src/lib/experiments.ts`、`server/src/routes/me.ts`
 
-- [ ] 固定实验 key：`generation_experience`。
-- [ ] 支持策略：并列展示、强制旧版、强制新版、A/B 测试。
-- [ ] 使用 `userId + experimentKey + salt` 稳定哈希分配。
-- [ ] `/api/me` 返回当前用户 `generationExperience`。
+- [x] 固定实验 key：`generation_experience`。
+- [x] 支持策略：并列展示、强制旧版、强制新版、A/B 测试。
+- [x] 使用 `userId + experimentKey + salt` 稳定哈希分配。
+- [x] `/api/me` 返回当前用户 `generationExperience`。
 
 验收：
 
@@ -267,14 +287,15 @@
 
 ### AIG-032 实验事件采集
 
-状态：TODO  
-依赖：AIG-030、AIG-031  
+状态：DONE
+依赖：AIG-030、AIG-031
 涉及文件：`server/src/routes/experiments.ts`、`web/src/api/client.ts`
 
-- [ ] 新增 `POST /api/experiments/events`。
-- [ ] 支持曝光、页面打开、案例选择、助手回填、生成提交、任务结果事件。
-- [ ] 过滤 sysadmin 预览事件或标记 `isSysadminPreview`。
-- [ ] 不存完整 prompt。
+- [x] 新增 `POST /api/experiments/events`。
+- [x] 支持曝光、页面打开、案例选择、助手回填、生成提交、任务结果事件。
+- [x] 过滤 sysadmin 预览事件或标记 `isSysadminPreview`。
+- [x] 不存完整 prompt。
+- [x] 统一记录 `/workspace` 与 `/ai-image` 的入口曝光、页面打开和直接访问另一变体事件。
 
 验收：
 
@@ -283,15 +304,15 @@
 
 ### AIG-033 系统管理员实验管理页
 
-状态：TODO  
-依赖：AIG-030、AIG-031  
+状态：DONE
+依赖：AIG-030、AIG-031
 涉及文件：`web/src/views/sysadmin/GenerationExperiment.vue`、`server/src/routes/sysadmin/generationExperiment.ts`
 
-- [ ] 新增 `/sysadmin/experiments/generation`。
-- [ ] 支持查看状态、入口策略、流量配置、适用范围。
-- [ ] 支持 draft、running、paused、archived 状态流转。
-- [ ] 支持 0/25/50/75/100 流量档位。
-- [ ] 展示曝光、打开、prompt 回填、提交、成功、失败指标。
+- [x] 新增 `/sysadmin/experiments/generation`。
+- [x] 支持查看状态、入口策略、流量配置、适用范围。
+- [x] 支持 draft、running、paused、archived 状态流转。
+- [x] 支持 0/25/50/75/100 流量档位。
+- [x] 展示曝光、打开、prompt 回填、提交、成功、失败指标。
 
 验收：
 
@@ -302,14 +323,21 @@
 
 ### AIG-040 测试覆盖
 
-状态：TODO  
-依赖：AIG-M1、AIG-M2、AIG-M3、AIG-M4  
+状态：REVIEW
+依赖：AIG-M1、AIG-M2、AIG-M3、AIG-M4
 涉及文件：`*.test.ts`、`*.spec.ts`
 
-- [ ] 后端：案例管理 API、prompt assistant schema、实验分配、事件写入测试。
-- [ ] 前端：案例管理、案例筛选、prompt 回填、路由守卫、导航分配测试。
-- [ ] Store：`generationExperience` 持久化与刷新测试。
-- [ ] 回归：现有 `/workspace` 生成不受影响。
+- [x] 后端：prompt assistant schema、Workers AI 降级路径、实验事件 schema 与脱敏测试。
+- [x] 后端：实验 scope 规则测试覆盖用户白名单、指定 admin 名下用户与排除名单。
+- [x] 后端：案例管理写入/发布过滤、实验分配、事件写入和指标聚合的 D1 集成测试。
+- [x] 前端：参考图文件筛选与压缩降级工具测试。
+- [x] 前端：导航分配与直达切换事件纯函数测试覆盖曝光、打开和去重边界。
+- [x] 前端：案例筛选、prompt 回填默认值、sysadmin 案例导入解析和首页落点纯函数测试。
+- [x] 前端：sysadmin 案例管理控制器交互测试覆盖加载选择、筛选后选择同步、创建/编辑、状态流转、精选切换和导入。
+- [x] 前端：路由守卫判断测试覆盖未登录跳转、登录后首页、admin/sysadmin 权限与 bootstrap 条件。
+- [ ] 前端：页面组件级案例管理交互测试。
+- [x] Store：`generationExperience` 写入、刷新与登出清理测试。
+- [x] 回归：现有 session store 任务事件合并测试继续通过。
 
 验收：
 
@@ -318,14 +346,15 @@
 
 ### AIG-041 视觉与交互验收
 
-状态：TODO  
+状态：DONE
 依赖：AIG-002、AIG-012、AIG-014、AIG-022、AIG-033
 
-- [ ] 桌面端检查 `/ai-image`。
-- [ ] 移动端检查 `/ai-image`。
-- [ ] 检查 sysadmin 案例管理页。
-- [ ] 检查 sysadmin 实验管理页。
-- [ ] 检查文本不溢出、按钮状态、加载状态、错误状态。
+- [x] 桌面端检查 `/ai-image`。
+- [x] 移动端检查 `/ai-image`。
+- [x] 检查 sysadmin 案例管理页。
+- [x] 检查 sysadmin 实验管理页。
+- [x] 检查文本不溢出、按钮状态、加载状态、错误状态。
+- [x] Workers AI 降级 warnings 在助手面板可见。
 
 验收：
 
@@ -334,10 +363,12 @@
 
 ### AIG-042 灰度发布
 
-状态：TODO  
+状态：TODO
 依赖：AIG-040、AIG-041
 
-- [ ] 发布前默认入口策略为并列展示或强制旧版。
+- [x] 发布前默认入口策略为并列展示或强制旧版；当前无实验记录时为 `draft + parallel`，sysadmin 表单初始值也为 `draft + parallel`。
+- [x] sysadmin 实验页提供灰度预设：回滚旧版、并列展示、当前范围强制新版、25% B 变体。
+- [x] sysadmin 实验页提供保存前风险摘要，覆盖无效 JSON、全量强制新版、高流量 B 变体、`mode: off` 和仅排除名单仍属全量范围等误操作场景。
 - [ ] 先对内部用户开启 AI 图像生成。
 - [ ] 再对 25% 普通用户开启 B 变体。
 - [ ] 观察 3 天核心指标后决定是否扩大流量。
@@ -376,6 +407,22 @@ flowchart TD
 
 ## 更新记录
 
-| 日期       | 变更                                                                 |
-| ---------- | -------------------------------------------------------------------- |
-| 2026-04-28 | 初版：按独立 AI 图像生成页、案例库、AI 助手和 A/B 测试管理拆分任务。 |
+| 日期       | 变更                                                                                                         |
+| ---------- | ------------------------------------------------------------------------------------------------------------ |
+| 2026-04-28 | 初版：按独立 AI 图像生成页、案例库、AI 助手和 A/B 测试管理拆分任务。                                         |
+| 2026-04-28 | 实现收尾：补移动端详情 sheet、空状态 AI 助手引导、助手启动事件、降级提示和专项测试；灰度发布仍待线上执行。   |
+| 2026-04-28 | 追加图生图交互：`/workspace` 与 `/ai-image` 参考图区域支持点击上传、粘贴图片和拖拽图片。                     |
+| 2026-04-28 | 补齐 A/B scope 生效逻辑与入口级事件采集：曝光、页面打开、直接访问另一变体。                                  |
+| 2026-04-28 | 抽离入口实验事件纯函数并补前端单测，覆盖导航曝光、直达切换和去重。                                           |
+| 2026-04-28 | 补前端纯函数测试：案例筛选、prompt 回填、案例导入归一化和默认首页落点。                                      |
+| 2026-04-28 | 补 Miniflare D1 集成测试：案例发布过滤、导入批次、实验分配、事件脱敏和指标聚合。                             |
+| 2026-04-28 | 灰度发布前默认策略检查：默认 `draft + parallel`，生产灰度执行仍待 sysadmin 操作。                            |
+| 2026-04-28 | 优化 AI 提示词助手交互：自然聊天历史、最多 8 次来回、最终 prompt 可编辑确认后回填。                          |
+| 2026-04-28 | 抽离路由守卫判断并补单测，覆盖登录态、A/B 首页落点和角色权限边界。                                           |
+| 2026-04-28 | 增加 sysadmin 生成实验灰度预设按钮，降低回滚、内部试用和 25% B 变体配置失误风险。                            |
+| 2026-04-28 | 补 sysadmin 生成实验保存前风险摘要：前端范围判断与后端 scope 语义对齐，避免仅排除名单被误判为定向范围。      |
+| 2026-04-28 | 修复本地登录 Turnstile 跳过逻辑：dev 环境不下发 site key，避免 localhost 触发 110200 阻塞 `/ai-image` 验证。 |
+| 2026-04-28 | 补 sysadmin 案例管理控制器交互测试，并修复筛选刷新后 selectedId 未同步导致表格高亮与预览不一致的问题。       |
+| 2026-04-28 | 拆分 sysadmin 案例管理页：提取 `PromptCaseTable` 与 `PromptCaseImportDialog`，降低单文件复杂度。             |
+| 2026-04-28 | 抽离案例编辑表单规则并补测试，覆盖保存前文本清洗、标签解析、归因空值和模式切换边界。                         |
+| 2026-04-28 | 拆分 AI Prompt 助手面板：提取聊天历史区与最终 Prompt 确认区，降低主组件复杂度。                              |

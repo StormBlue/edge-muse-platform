@@ -2,7 +2,7 @@
 
 ## 本地开发
 
-- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`）。
+- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`；脚本会注入 `ENVIRONMENT=dev`，本地登录不渲染 Turnstile）。
 - 前端：`pnpm dev:web`（Vite，默认 `5173`）。
 - 并行：`pnpm dev`（workspace 并行）。
 
@@ -13,6 +13,8 @@ cp server/.dev.vars.example server/.dev.vars
 pnpm -F server db:migrate:local
 pnpm -F server seed:local
 ```
+
+本地 `.dev.vars` 仍用于 JWT、加密密钥等开发密钥；即使其中保留 Turnstile 测试 key，`ENVIRONMENT=dev` 下 `/api/config` 也会返回 `turnstileSiteKey: null`，避免 localhost 触发 Cloudflare Turnstile 域名校验错误。
 
 变量说明见根目录 [`README.md`](../README.md)。
 
