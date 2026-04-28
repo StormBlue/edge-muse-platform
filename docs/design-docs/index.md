@@ -10,6 +10,7 @@
 | 内置服务商         | 米醋 API + Cubence 由 catalog 自动补齐，禁止删除内置 provider | [`server/src/providers/catalog.ts`](../../server/src/providers/catalog.ts)                           |
 | 密钥解析无全局兜底 | 用户必须偏好密钥或显式绑定                                    | [`server/src/lib/providerKeys.ts`](../../server/src/lib/providerKeys.ts)                             |
 | Cubence 能力边界   | chat 禁用；图生图单参考图                                     | [`server/src/lib/tasks.ts`](../../server/src/lib/tasks.ts)、[`docs/USER_GUIDE.md`](../USER_GUIDE.md) |
+| AI 图像生成页面    | 新增普通用户入口；案例库与 A/B 测试均由 sysadmin 管理         | [`ai-image-generation-page.md`](./ai-image-generation-page.md)                                       |
 
 ## 归档参考
 

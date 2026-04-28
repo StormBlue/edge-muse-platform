@@ -31,6 +31,7 @@
 | ---------------------------------------------- | ---------------------------- |
 | [QUALITY_SCORE.md](./QUALITY_SCORE.md)         | 模块质量与已知债             |
 | [design-docs/index.md](./design-docs/index.md) | 设计决策索引                 |
+| [exec-plans/README.md](./exec-plans/README.md) | 活跃开发计划与任务清单       |
 | [archive/README.md](./archive/README.md)       | 已归档 PRD、Cubence 任务全书 |
 
 ## 已合并 / 迁移说明
