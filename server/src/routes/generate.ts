@@ -311,17 +311,18 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
 });
 
 /** 注意：全局路由在 index.ts 注册为 `GET /ws/task/:id`（无 /api 前缀），与返回给前端的 wsUrl 一致 */
-generateRoutes.get("/ws/task/:id", handleTaskWebSocket);
+generateRoutes.get("/ws/task/:id", requireAuth, handleTaskWebSocket);
 
 /**
  * WebSocket 升级：按 taskId 派发到对应 Durable Object 实例（`idFromName(taskId)`）。
- * 鉴权若需加强，可在此校验 Cookie/JWT 与 task.userId（当前依赖 DO 侧或上游中间件策略时见项目演进）。
+ * 在进入 DO 前校验 Cookie/JWT 与 task.userId，避免匿名随机 taskId 占用 DO 连接。
  */
 export async function handleTaskWebSocket(c: AppContext) {
   if (c.req.header("Upgrade") !== "websocket") return c.text("Expected websocket", 426);
   if (!c.env.TASK_ROOM) throw appError("INTERNAL", "Task room binding is missing");
   const taskId = c.req.param("id");
   if (!taskId) throw appError("VALIDATION_ERROR", "Task id required");
+  await assertTaskAccess(c.env, taskId, c.get("user"));
   // 每个 taskId 一个 DO 实例，与 `broadcastTaskEvent` 的 idFromName 一致
   const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);

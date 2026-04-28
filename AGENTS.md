@@ -19,20 +19,21 @@ pnpm dev
 
 ## 仓库结构
 
-| 路径                    | 说明                                                                        |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `server/src/index.ts`   | Worker 入口：中间件、路由挂载、WebSocket、cron                              |
-| `server/src/routes/`    | REST 路由（auth、me、sessions、generate、images、uploads、admin、sysadmin） |
-| `server/src/lib/`       | 任务、配额、密钥解析、R2、JWT、审计等业务库                                 |
-| `server/src/providers/` | 多服务商适配器与内置 catalog                                                |
-| `server/src/workflows/` | 生图 Workflow                                                               |
-| `server/src/do/`        | Durable Objects                                                             |
-| `server/src/db/`        | Drizzle schema 与 migrations                                                |
-| `web/src/`              | Vue 应用：views、components、stores、router                                 |
+| 路径                    | 说明                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `server/src/index.ts`   | Worker 入口：中间件、路由挂载、WebSocket、cron                                                                                  |
+| `server/src/routes/`    | REST 路由（含 `experiments`、`promptAssistant`、`promptCases`；auth、me、sessions、generate、images、uploads、admin、sysadmin） |
+| `server/src/lib/`       | `tasks/` 生图管线子模块、`experiments.ts` 实验聚合出口、配额、密钥、R2、JWT、审计等                                             |
+| `server/src/lib/tasks/` | 任务创建/点火/运行/失败/恢复等实现（对外仍经 `lib/tasks.ts` 再导出）                                                            |
+| `server/src/providers/` | 多服务商适配器与内置 catalog                                                                                                    |
+| `server/src/workflows/` | 生图 Workflow                                                                                                                   |
+| `server/src/do/`        | Durable Objects                                                                                                                 |
+| `server/src/db/`        | Drizzle schema 与 migrations                                                                                                    |
+| `web/src/`              | Vue 应用：views、components、stores、router                                                                                     |
 
 ## 架构一览
 
-单一 Worker 托管 API + SPA 静态资源；异步生图走 Workflow/`waitUntil`，状态经 Durable Object WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+单一 Worker 托管 API + SPA 静态资源；异步生图走 Workflow/`waitUntil`，状态经 Durable Object WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。生成入口 A/B、`/api/experiments/events` 与 `/api/me` 中的 `generationExperience` 见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 文档地图
 
@@ -49,6 +50,7 @@ pnpm dev
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)               | Wrangler、CI/CD、环境        |
 | [`docs/TESTING.md`](docs/TESTING.md)                     | Vitest 与验证命令            |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md)               | 迁移、密钥、日志、演练       |
+| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)             | 生成入口 A/B、实验事件与配置 |
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)               | 终端用户说明                 |
 | [`docs/DEMO.md`](docs/DEMO.md)                           | 内部演示脚本                 |
 | [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)               | 验收与发布前检查             |
@@ -61,7 +63,7 @@ pnpm dev
 
 1. **类型与领域类型**：共享类型在 [`server/src/types.ts`](server/src/types.ts)；路由用 Hono `AppEnv`。
 2. **密钥**：上游 API Key 仅密文存 D1；解析与能力快照见 `lib/providerKeys.ts`；禁止把明文密钥打进日志或响应。
-3. **配额**：`createGenerateTask` 内按张数预扣；非服务商错误的失败路径需按业务退还（见 `lib/tasks.ts`）。
+3. **配额**：[`createGenerateTask`](server/src/lib/tasks/create.ts) 内按张数预扣（自 `lib/tasks.ts` 再导出）；非服务商错误的失败路径需按业务退还（见 `server/src/lib/tasks/` 与 facade [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts)）。
 4. **Provider 能力**：`openai_images`（Cubence）限制 chat、多参考图等，前后端须一致（`/api/me` 带 `providerCapabilities`）。
 5. **错误响应**：统一 `{ error: { code, message, details } }`（见 `docs/API.md`）。
 6. **迁移**：schema 变更走 `pnpm -F server db:gen`，提交 SQL 后再 `db:migrate:local` / remote。
