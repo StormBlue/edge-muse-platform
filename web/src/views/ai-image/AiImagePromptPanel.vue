@@ -42,6 +42,7 @@ const props = defineProps<{
   failedMessage: string;
   submitting: boolean;
   hasRunningTask: boolean;
+  workflowExpanded: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -114,7 +115,7 @@ function addReferenceFiles(files: File[]) {
 function openAssistantView() {
   if (!props.assistantEnabled) return;
   trackAssistantOpen();
-  if (isMobileAssistantViewport()) {
+  if (!props.workflowExpanded || isMobileAssistantViewport()) {
     assistantFullscreenOpen.value = true;
     return;
   }
@@ -143,179 +144,188 @@ function isMobileAssistantViewport() {
 </script>
 
 <template>
-  <section class="panel flex min-h-[32rem] flex-col overflow-hidden" @paste="onPaste">
-    <div class="border-b border-border px-4 py-3">
-      <h2 class="text-sm font-semibold">{{ t("aiImage.promptPanel") }}</h2>
-      <p class="mt-1 truncate text-xs text-muted-foreground">{{ selectedCaseTitle }}</p>
-    </div>
-    <div class="thin-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-      <div v-if="!hasPrompt" class="rounded-lg border border-dashed border-border bg-muted/25 p-3">
-        <p class="text-sm font-semibold">{{ t("aiImage.emptyGuideTitle") }}</p>
-        <p class="mt-1 text-xs leading-5 text-muted-foreground">
-          {{ t("aiImage.emptyGuideBody") }}
-        </p>
+  <div
+    class="ai-prompt-workspace"
+    :class="{ 'ai-prompt-workspace--expanded': workflowExpanded }"
+    @paste="onPaste"
+  >
+    <section class="prompt-compose-panel panel flex min-h-[32rem] flex-col overflow-hidden">
+      <div class="border-b border-border px-4 py-3">
+        <h2 class="text-sm font-semibold">{{ t("aiImage.promptPanel") }}</h2>
+        <p class="mt-1 truncate text-xs text-muted-foreground">{{ selectedCaseTitle }}</p>
+      </div>
+      <div class="thin-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <div
+          v-if="!hasPrompt"
+          class="rounded-lg border border-dashed border-border bg-muted/25 p-3"
+        >
+          <p class="text-sm font-semibold">{{ t("aiImage.emptyGuideTitle") }}</p>
+          <p class="mt-1 text-xs leading-5 text-muted-foreground">
+            {{ t("aiImage.emptyGuideBody") }}
+          </p>
+          <button
+            v-if="assistantEnabled"
+            class="ui-button ui-button-secondary mt-3 h-8 text-xs"
+            type="button"
+            @click="openAssistantView"
+          >
+            <WandSparkles class="h-3.5 w-3.5" />
+            {{ t("aiImage.openAssistant") }}
+          </button>
+          <p v-else class="mt-2 text-xs leading-5 text-muted-foreground">
+            {{ t("aiImage.assistantDisabled") }}
+          </p>
+        </div>
+
+        <div>
+          <p class="mb-2 text-xs font-medium text-muted-foreground">
+            {{ t("workspace.generationMode") }}
+          </p>
+          <div class="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
+            <button
+              v-for="item in supportedModes"
+              :key="item"
+              class="h-10 rounded-lg border text-sm font-semibold"
+              :class="mode === item ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'"
+              type="button"
+              @click="emit('update:mode', item)"
+            >
+              {{ t(`workspace.${item}`) }}
+            </button>
+          </div>
+          <p
+            v-if="sizeFallbackNotice"
+            class="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-100"
+          >
+            {{ sizeFallbackNotice }}
+          </p>
+        </div>
+
+        <div>
+          <p class="mb-2 text-xs font-medium text-muted-foreground">
+            {{ t("workspace.canvasSize") }}
+          </p>
+          <div class="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
+            <button
+              v-for="option in sizeOptions"
+              :key="option.value"
+              class="rounded-lg border px-3 py-2 text-left"
+              :class="
+                size === option.value ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'
+              "
+              type="button"
+              @click="emit('update:size', option.value)"
+            >
+              <span class="block text-sm font-semibold">{{ option.ratio }}</span>
+              <span class="text-xs text-muted-foreground">{{ option.label }}</span>
+            </button>
+          </div>
+        </div>
+
+        <label class="block">
+          <span class="mb-2 block text-xs font-medium text-muted-foreground">
+            {{ t("workspace.prompt") }}
+          </span>
+          <textarea
+            class="ui-field min-h-44 resize-none p-3 text-sm leading-6"
+            :placeholder="t('aiImage.promptPlaceholder')"
+            :value="prompt"
+            @input="onPromptInput"
+          />
+        </label>
+
         <button
-          v-if="assistantEnabled"
-          class="ui-button ui-button-secondary mt-3 h-8 text-xs"
+          v-if="assistantEnabled && hasPrompt && !workflowExpanded"
+          class="ui-button ui-button-secondary h-9 text-xs"
           type="button"
           @click="openAssistantView"
         >
           <WandSparkles class="h-3.5 w-3.5" />
           {{ t("aiImage.openAssistant") }}
         </button>
-        <p v-else class="mt-2 text-xs leading-5 text-muted-foreground">
-          {{ t("aiImage.assistantDisabled") }}
-        </p>
+
+        <AiImageReferenceInput
+          v-if="mode === 'image2image'"
+          v-model:description="referenceDescription"
+          :can-accept-files="canAcceptReferenceFiles"
+          :previews="previews"
+          @add-files="addReferenceFiles"
+          @remove-file="(index) => emit('removeFile', index)"
+        />
+
+        <div v-if="resultImages.length" class="grid grid-cols-2 gap-2">
+          <img
+            v-for="image in resultImages"
+            :key="image.id"
+            class="aspect-square rounded-lg border border-border object-cover"
+            :src="image.url"
+            :alt="image.prompt ?? ''"
+          />
+        </div>
+
+        <AiImageFailurePanel
+          v-if="activeFailed"
+          :message="failedMessage"
+          :title="failedTitle"
+          @retry="emit('retryFailed')"
+        />
       </div>
 
-      <div>
-        <p class="mb-2 text-xs font-medium text-muted-foreground">
-          {{ t("workspace.generationMode") }}
-        </p>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="item in supportedModes"
-            :key="item"
-            class="h-10 rounded-lg border text-sm font-semibold"
-            :class="mode === item ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'"
-            type="button"
-            @click="emit('update:mode', item)"
-          >
-            {{ t(`workspace.${item}`) }}
+      <div class="flex flex-wrap justify-between gap-2 border-t border-border p-4">
+        <div class="flex gap-2">
+          <button class="ui-button ui-button-secondary" type="button" @click="emit('copyPrompt')">
+            <Copy class="h-4 w-4" />
+            {{ t("promptCases.copyPrompt") }}
+          </button>
+          <button class="ui-button ui-button-secondary" type="button" @click="emit('clearPrompt')">
+            <Trash2 class="h-4 w-4" />
+            {{ t("aiImage.clearPrompt") }}
           </button>
         </div>
-        <p
-          v-if="sizeFallbackNotice"
-          class="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-100"
+        <button
+          class="ui-button ui-button-primary"
+          type="button"
+          :disabled="submitDisabled"
+          @click="emit('submit')"
         >
-          {{ sizeFallbackNotice }}
-        </p>
-      </div>
-
-      <div>
-        <p class="mb-2 text-xs font-medium text-muted-foreground">
-          {{ t("workspace.canvasSize") }}
-        </p>
-        <div class="grid grid-cols-2 gap-2">
-          <button
-            v-for="option in sizeOptions"
-            :key="option.value"
-            class="rounded-lg border px-3 py-2 text-left"
-            :class="
-              size === option.value ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'
-            "
-            type="button"
-            @click="emit('update:size', option.value)"
-          >
-            <span class="block text-sm font-semibold">{{ option.ratio }}</span>
-            <span class="text-xs text-muted-foreground">{{ option.label }}</span>
-          </button>
-        </div>
-      </div>
-
-      <label class="block">
-        <span class="mb-2 block text-xs font-medium text-muted-foreground">
-          {{ t("workspace.prompt") }}
-        </span>
-        <textarea
-          class="ui-field min-h-56 resize-none p-3 text-sm leading-6"
-          :placeholder="t('aiImage.promptPlaceholder')"
-          :value="prompt"
-          @input="onPromptInput"
-        />
-      </label>
-
-      <button
-        v-if="assistantEnabled && hasPrompt"
-        class="ui-button ui-button-secondary h-9 text-xs md:hidden"
-        type="button"
-        @click="openAssistantView"
-      >
-        <WandSparkles class="h-3.5 w-3.5" />
-        {{ t("aiImage.openAssistant") }}
-      </button>
-
-      <AiImageReferenceInput
-        v-if="mode === 'image2image'"
-        v-model:description="referenceDescription"
-        :can-accept-files="canAcceptReferenceFiles"
-        :previews="previews"
-        @add-files="addReferenceFiles"
-        @remove-file="(index) => emit('removeFile', index)"
-      />
-
-      <div
-        v-if="assistantEnabled"
-        ref="assistantAnchor"
-        class="assistant-shell"
-        :class="{ 'assistant-shell--fullscreen': assistantFullscreenOpen }"
-      >
-        <div class="assistant-mobile-header">
-          <div>
-            <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-            <p class="text-xs text-muted-foreground">{{ t("aiImage.assistantSubtitle") }}</p>
-          </div>
-          <button
-            class="ui-button ui-button-secondary h-9 w-9 p-0"
-            type="button"
-            :aria-label="t('viewer.close')"
-            @click="assistantFullscreenOpen = false"
-          >
-            <X class="h-4 w-4" />
-          </button>
-        </div>
-        <PromptAssistantPanel
-          :case-item="caseItem"
-          :mode="mode"
-          :provider="provider"
-          :reference-count="referenceCount"
-          :reference-description="referenceDescription"
-          :reference-context-key="referenceContextKey"
-          @fill="fillAssistantPrompt"
-          @open="trackAssistantOpen"
-        />
-      </div>
-
-      <div v-if="resultImages.length" class="grid grid-cols-2 gap-2">
-        <img
-          v-for="image in resultImages"
-          :key="image.id"
-          class="aspect-square rounded-lg border border-border object-cover"
-          :src="image.url"
-          :alt="image.prompt ?? ''"
-        />
-      </div>
-
-      <AiImageFailurePanel
-        v-if="activeFailed"
-        :message="failedMessage"
-        :title="failedTitle"
-        @retry="emit('retryFailed')"
-      />
-    </div>
-
-    <div class="flex flex-wrap justify-between gap-2 border-t border-border p-4">
-      <div class="flex gap-2">
-        <button class="ui-button ui-button-secondary" type="button" @click="emit('copyPrompt')">
-          <Copy class="h-4 w-4" />
-          {{ t("promptCases.copyPrompt") }}
-        </button>
-        <button class="ui-button ui-button-secondary" type="button" @click="emit('clearPrompt')">
-          <Trash2 class="h-4 w-4" />
-          {{ t("aiImage.clearPrompt") }}
+          <Sparkles class="h-4 w-4" />
+          {{ hasRunningTask ? t("workspace.generationRunning") : t("workspace.generate") }}
         </button>
       </div>
-      <button
-        class="ui-button ui-button-primary"
-        type="button"
-        :disabled="submitDisabled"
-        @click="emit('submit')"
-      >
-        <Sparkles class="h-4 w-4" />
-        {{ hasRunningTask ? t("workspace.generationRunning") : t("workspace.generate") }}
-      </button>
+    </section>
+
+    <div
+      v-if="assistantEnabled"
+      ref="assistantAnchor"
+      class="assistant-shell"
+      :class="{ 'assistant-shell--fullscreen': assistantFullscreenOpen }"
+    >
+      <div class="assistant-mobile-header">
+        <div>
+          <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
+          <p class="text-xs text-muted-foreground">{{ t("aiImage.assistantSubtitle") }}</p>
+        </div>
+        <button
+          class="ui-button ui-button-secondary h-9 w-9 p-0"
+          type="button"
+          :aria-label="t('viewer.close')"
+          @click="assistantFullscreenOpen = false"
+        >
+          <X class="h-4 w-4" />
+        </button>
+      </div>
+      <PromptAssistantPanel
+        :case-item="caseItem"
+        :mode="mode"
+        :provider="provider"
+        :reference-count="referenceCount"
+        :reference-description="referenceDescription"
+        :reference-context-key="referenceContextKey"
+        @fill="fillAssistantPrompt"
+        @open="trackAssistantOpen"
+      />
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
@@ -323,43 +333,93 @@ function isMobileAssistantViewport() {
   display: none;
 }
 
+.ai-prompt-workspace {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+  min-height: 0;
+}
+
+.assistant-shell {
+  min-width: 0;
+}
+
+.ai-prompt-workspace:not(.ai-prompt-workspace--expanded) .assistant-shell {
+  display: none;
+}
+
+.ai-prompt-workspace--expanded {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  min-height: min(56rem, calc(100dvh - 7rem));
+}
+
+.ai-prompt-workspace--expanded .prompt-compose-panel,
+.ai-prompt-workspace--expanded .assistant-shell {
+  height: 100%;
+  min-height: 0;
+}
+
+.ai-prompt-workspace--expanded .assistant-shell {
+  display: flex;
+  overflow: hidden;
+}
+
+.ai-prompt-workspace--expanded .assistant-shell :deep(.prompt-assistant-panel) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.ai-prompt-workspace--expanded .assistant-shell :deep(.prompt-assistant-messages) {
+  max-height: none;
+  min-height: 0;
+  flex: 1;
+}
+
+.assistant-shell--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex !important;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--background);
+}
+
+.assistant-shell--fullscreen .assistant-mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+.assistant-shell--fullscreen :deep(.prompt-assistant-panel) {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  border: 0;
+  border-radius: 0;
+}
+
+.assistant-shell--fullscreen :deep(.prompt-assistant-messages) {
+  max-height: none;
+  min-height: 0;
+  flex: 1;
+}
+
+@media (min-width: 1280px) {
+  .ai-prompt-workspace {
+    height: 100%;
+  }
+}
+
 @media (max-width: 767px) {
   .assistant-shell {
     display: none;
-  }
-
-  .assistant-shell--fullscreen {
-    position: fixed;
-    inset: 0;
-    z-index: 60;
-    display: flex;
-    min-height: 0;
-    flex-direction: column;
-    background: var(--background);
-  }
-
-  .assistant-shell--fullscreen .assistant-mobile-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    border-bottom: 1px solid var(--border);
-    padding: 0.75rem 1rem;
-  }
-
-  .assistant-shell--fullscreen :deep(.prompt-assistant-panel) {
-    display: flex;
-    min-height: 0;
-    flex: 1;
-    flex-direction: column;
-    border: 0;
-    border-radius: 0;
-  }
-
-  .assistant-shell--fullscreen :deep(.prompt-assistant-messages) {
-    max-height: none;
-    min-height: 0;
-    flex: 1;
   }
 }
 </style>

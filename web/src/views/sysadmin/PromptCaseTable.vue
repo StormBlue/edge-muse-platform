@@ -105,7 +105,7 @@ function statusTone(status: PromptCase["status"]) {
                   >
                     <img
                       v-if="item.thumbnailUrl"
-                      class="h-full w-full object-cover"
+                      class="h-full w-full object-contain"
                       :src="item.thumbnailUrl"
                       :alt="item.title"
                     />

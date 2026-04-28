@@ -167,18 +167,22 @@ function reset() {
 
 <template>
   <div
-    class="prompt-assistant-panel rounded-lg border border-border"
+    class="prompt-assistant-panel flex min-h-0 flex-col overflow-hidden rounded-lg border border-border"
     @focusin="notifyOpen"
     @click="notifyOpen"
   >
     <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-      <div>
+      <div class="min-w-0">
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-        <p class="text-xs text-muted-foreground">
+        <p class="text-xs leading-5 text-muted-foreground">
           {{ t("aiImage.assistantSubtitle") }}
         </p>
       </div>
-      <button class="ui-button ui-button-secondary h-8 text-xs" type="button" @click="reset">
+      <button
+        class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
+        type="button"
+        @click="reset"
+      >
         <RotateCcw class="h-3.5 w-3.5" />
         {{ t("common.retry") }}
       </button>

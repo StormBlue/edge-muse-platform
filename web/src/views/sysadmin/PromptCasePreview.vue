@@ -37,7 +37,7 @@ const { t } = useI18n();
       <div class="aspect-[4/3] overflow-hidden rounded-lg border border-border bg-muted">
         <img
           v-if="item.thumbnailUrl"
-          class="h-full w-full object-cover"
+          class="h-full w-full object-contain"
           :src="item.thumbnailUrl"
           :alt="item.title"
         />

@@ -30,7 +30,7 @@ watch(
   <div class="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
     <img
       v-if="src && !failed"
-      class="h-full w-full object-cover"
+      class="h-full w-full object-contain"
       :src="src"
       :alt="alt"
       @error="failed = true"

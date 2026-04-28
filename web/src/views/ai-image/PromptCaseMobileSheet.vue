@@ -27,7 +27,7 @@ const { t } = useI18n();
     <Transition name="case-sheet">
       <div
         v-if="open && item"
-        class="fixed inset-0 z-50 bg-black/45 xl:hidden"
+        class="fixed inset-0 z-50 bg-black/45 2xl:hidden"
         role="dialog"
         aria-modal="true"
         @click.self="emit('close')"

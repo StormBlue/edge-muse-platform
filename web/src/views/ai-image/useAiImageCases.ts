@@ -125,6 +125,11 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     finalPromptSource.value = null;
   }
 
+  function startBlankCase() {
+    caseContextId.value = null;
+    clearPrompt();
+  }
+
   function setPrompt(value: string, source: Exclude<AiImagePromptSource, null>) {
     finalPrompt.value = value;
     finalPromptSource.value = source;
@@ -193,7 +198,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     load,
     previewCase,
     selectCase,
-    setPrompt
+    setPrompt,
+    startBlankCase
   };
 }
 

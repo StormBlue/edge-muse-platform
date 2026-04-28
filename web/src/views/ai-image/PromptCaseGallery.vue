@@ -23,7 +23,7 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <section class="panel flex min-h-[24rem] flex-col overflow-hidden">
+  <section class="prompt-case-gallery panel flex min-h-[18rem] flex-col overflow-hidden">
     <div class="border-b border-border px-4 py-3">
       <h2 class="text-sm font-semibold">{{ t("aiImage.caseGallery") }}</h2>
     </div>
@@ -39,16 +39,19 @@ const { t } = useI18n();
     >
       {{ t("aiImage.noCases") }}
     </div>
-    <div v-else class="thin-scrollbar grid gap-3 overflow-y-auto p-3 sm:grid-cols-2 xl:grid-cols-1">
+    <div
+      v-else
+      class="prompt-case-grid thin-scrollbar grid min-h-0 flex-1 gap-3 overflow-y-auto p-3"
+    >
       <button
         v-for="item in items"
         :key="item.id"
-        class="group grid min-h-32 grid-cols-[7rem_minmax(0,1fr)] gap-3 rounded-lg border border-border bg-card p-2 text-left transition hover:border-primary/60 hover:bg-muted/35"
+        class="group grid h-32 grid-cols-[5.75rem_minmax(0,1fr)] gap-3 overflow-hidden rounded-lg border border-border bg-card p-2 text-left transition hover:border-primary/60 hover:bg-muted/35 2xl:grid-cols-[6.5rem_minmax(0,1fr)]"
         :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
         type="button"
         @click="emit('select', item)"
       >
-        <div class="relative h-full min-h-28 overflow-hidden rounded-md bg-muted">
+        <div class="relative h-full overflow-hidden rounded-md bg-muted">
           <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-6 w-6" />
           <span
             v-if="item.featured"
@@ -58,12 +61,12 @@ const { t } = useI18n();
             {{ t("promptCases.featured") }}
           </span>
         </div>
-        <div class="min-w-0">
+        <div class="flex min-w-0 flex-col overflow-hidden">
           <p class="truncate text-sm font-semibold">{{ item.title }}</p>
           <p class="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {{ item.promptSummary }}
           </p>
-          <div class="mt-2 flex flex-wrap gap-1">
+          <div class="mt-2 flex max-h-6 flex-wrap gap-1 overflow-hidden">
             <span
               v-for="tag in item.tags.slice(0, 2)"
               :key="tag"
@@ -75,7 +78,7 @@ const { t } = useI18n();
               {{ item.recommendedSize }}
             </span>
           </div>
-          <p class="mt-2 truncate text-xs text-muted-foreground">
+          <p class="mt-auto truncate pt-1 text-xs text-muted-foreground">
             {{ item.sourceAuthor || item.sourceRepo || item.sourceLicense }}
           </p>
         </div>
@@ -83,3 +86,22 @@ const { t } = useI18n();
     </div>
   </section>
 </template>
+
+<style scoped>
+.prompt-case-gallery {
+  container-type: inline-size;
+  max-height: min(28rem, calc(100dvh - 12rem));
+}
+
+.prompt-case-grid {
+  align-content: start;
+  grid-auto-rows: 8rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 36rem) {
+  .prompt-case-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+</style>
