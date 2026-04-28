@@ -17,14 +17,18 @@ import type { ProviderCapabilities } from "@/stores/auth";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
 import type { AssistantMessage, AssistantResponse } from "./promptAssistantTypes";
 
-const props = defineProps<{
-  mode: PromptCaseMode;
-  caseItem: PromptCase | null;
-  provider: ProviderCapabilities | null;
-  referenceCount: number;
-  referenceDescription: string;
-  referenceContextKey: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    mode: PromptCaseMode;
+    caseItem: PromptCase | null;
+    provider: ProviderCapabilities | null;
+    referenceCount: number;
+    referenceDescription: string;
+    referenceContextKey: string;
+    chrome?: "panel" | "embedded";
+  }>(),
+  { chrome: "panel" }
+);
 
 const emit = defineEmits<{
   fill: [value: { prompt: string; recommendedSize: string; turnCount: number }];
@@ -163,15 +167,21 @@ function reset() {
   editableFinalPrompt.value = "";
   loading.value = false;
 }
+
+defineExpose({ reset });
 </script>
 
 <template>
   <div
-    class="prompt-assistant-panel flex min-h-0 flex-col overflow-hidden rounded-lg border border-border"
+    class="prompt-assistant-panel flex min-h-0 flex-col overflow-hidden"
+    :class="chrome === 'panel' ? 'rounded-lg border border-border' : ''"
     @focusin="notifyOpen"
     @click="notifyOpen"
   >
-    <div class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+    <div
+      v-if="chrome === 'panel'"
+      class="flex items-center justify-between gap-2 border-b border-border px-3 py-2"
+    >
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
         <p class="text-xs leading-5 text-muted-foreground">

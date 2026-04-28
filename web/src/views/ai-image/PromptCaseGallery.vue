@@ -55,7 +55,7 @@ const { t } = useI18n();
           <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-6 w-6" />
           <span
             v-if="item.featured"
-            class="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-background/85 px-2 py-1 text-xs"
+            class="absolute left-0 top-0 z-10 inline-flex items-center gap-1 rounded-br-md rounded-tl-md bg-background/90 px-2 py-1 text-xs shadow-sm"
           >
             <Star class="h-3 w-3 text-primary" />
             {{ t("promptCases.featured") }}

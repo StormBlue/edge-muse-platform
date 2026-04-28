@@ -6,7 +6,7 @@
  * 外层页面只负责案例选择和实验事件，避免页面组件继续膨胀。
  */
 import { computed, ref } from "vue";
-import { Copy, Sparkles, Trash2, WandSparkles, X } from "lucide-vue-next";
+import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles, X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import AiImageFailurePanel from "./AiImageFailurePanel.vue";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
@@ -61,7 +61,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const assistantAnchor = ref<HTMLElement | null>(null);
-const assistantFullscreenOpen = ref(false);
+const assistantPanelRef = ref<{ reset: () => void } | null>(null);
+const assistantDialogOpen = ref(false);
 const referenceDescription = ref("");
 const assistantOpenTrackedKeys = new Set<string>();
 
@@ -116,7 +117,7 @@ function openAssistantView() {
   if (!props.assistantEnabled) return;
   trackAssistantOpen();
   if (!props.workflowExpanded || isMobileAssistantViewport()) {
-    assistantFullscreenOpen.value = true;
+    assistantDialogOpen.value = true;
     return;
   }
   assistantAnchor.value?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -135,7 +136,7 @@ function fillAssistantPrompt(value: {
   turnCount: number;
 }) {
   emit("fillAssistant", value);
-  assistantFullscreenOpen.value = false;
+  assistantDialogOpen.value = false;
 }
 
 function isMobileAssistantViewport() {
@@ -298,38 +299,54 @@ function isMobileAssistantViewport() {
       v-if="assistantEnabled"
       ref="assistantAnchor"
       class="assistant-shell"
-      :class="{ 'assistant-shell--fullscreen': assistantFullscreenOpen }"
+      :class="{ 'assistant-shell--dialog': assistantDialogOpen }"
     >
-      <div class="assistant-mobile-header">
-        <div>
-          <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-          <p class="text-xs text-muted-foreground">{{ t("aiImage.assistantSubtitle") }}</p>
+      <div class="assistant-dialog-card">
+        <div class="assistant-dialog-header">
+          <div class="min-w-0">
+            <h3 class="truncate text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
+            <p class="truncate text-xs text-muted-foreground">
+              {{ t("aiImage.assistantSubtitle") }}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <button
+              class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
+              type="button"
+              @click="assistantPanelRef?.reset()"
+            >
+              <RotateCcw class="h-3.5 w-3.5" />
+              {{ t("common.retry") }}
+            </button>
+            <button
+              class="ui-button ui-button-secondary h-8 w-8 p-0"
+              type="button"
+              :aria-label="t('viewer.close')"
+              @click="assistantDialogOpen = false"
+            >
+              <X class="h-4 w-4" />
+            </button>
+          </div>
         </div>
-        <button
-          class="ui-button ui-button-secondary h-9 w-9 p-0"
-          type="button"
-          :aria-label="t('viewer.close')"
-          @click="assistantFullscreenOpen = false"
-        >
-          <X class="h-4 w-4" />
-        </button>
+        <PromptAssistantPanel
+          ref="assistantPanelRef"
+          :case-item="caseItem"
+          :chrome="assistantDialogOpen ? 'embedded' : 'panel'"
+          :mode="mode"
+          :provider="provider"
+          :reference-count="referenceCount"
+          :reference-description="referenceDescription"
+          :reference-context-key="referenceContextKey"
+          @fill="fillAssistantPrompt"
+          @open="trackAssistantOpen"
+        />
       </div>
-      <PromptAssistantPanel
-        :case-item="caseItem"
-        :mode="mode"
-        :provider="provider"
-        :reference-count="referenceCount"
-        :reference-description="referenceDescription"
-        :reference-context-key="referenceContextKey"
-        @fill="fillAssistantPrompt"
-        @open="trackAssistantOpen"
-      />
     </div>
   </div>
 </template>
 
 <style scoped>
-.assistant-mobile-header {
+.assistant-dialog-header {
   display: none;
 }
 
@@ -342,6 +359,13 @@ function isMobileAssistantViewport() {
 
 .assistant-shell {
   min-width: 0;
+}
+
+.assistant-dialog-card {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
 }
 
 .ai-prompt-workspace:not(.ai-prompt-workspace--expanded) .assistant-shell {
@@ -377,35 +401,46 @@ function isMobileAssistantViewport() {
   flex: 1;
 }
 
-.assistant-shell--fullscreen {
+.assistant-shell--dialog {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: flex !important;
+  display: grid !important;
+  min-width: 0;
   min-height: 0;
-  flex-direction: column;
-  background: var(--background);
+  place-items: center;
+  padding: clamp(0.75rem, 3vw, 2rem);
+  background: rgb(0 0 0 / 0.52);
 }
 
-.assistant-shell--fullscreen .assistant-mobile-header {
+.assistant-shell--dialog .assistant-dialog-card {
+  height: min(42rem, calc(100dvh - 2rem));
+  width: min(56rem, calc(100vw - 2rem));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 0.34);
+}
+
+.assistant-shell--dialog .assistant-dialog-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   border-bottom: 1px solid var(--border);
-  padding: 0.75rem 1rem;
+  padding: 0.75rem;
 }
 
-.assistant-shell--fullscreen :deep(.prompt-assistant-panel) {
+.assistant-shell--dialog :deep(.prompt-assistant-panel) {
   display: flex;
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  border: 0;
   border-radius: 0;
 }
 
-.assistant-shell--fullscreen :deep(.prompt-assistant-messages) {
+.assistant-shell--dialog :deep(.prompt-assistant-messages) {
   max-height: none;
   min-height: 0;
   flex: 1;
@@ -418,7 +453,7 @@ function isMobileAssistantViewport() {
 }
 
 @media (max-width: 767px) {
-  .assistant-shell {
+  .assistant-shell:not(.assistant-shell--dialog) {
     display: none;
   }
 }

@@ -333,6 +333,7 @@ watch(
         </section>
 
         <AiImagePromptPanel
+          v-if="caseBrowserCollapsed"
           v-model:mode="generation.mode.value"
           :active-failed="generation.activeFailed.value"
           :assistant-enabled="auth.promptAssistantEnabled"
@@ -463,7 +464,7 @@ watch(
   }
 
   .ai-image-grid--selecting {
-    grid-template-columns: minmax(15rem, 19rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-image-grid--generating {
@@ -496,7 +497,7 @@ watch(
   }
 
   .ai-image-grid--selecting {
-    grid-template-columns: 21rem minmax(25rem, 0.9fr) minmax(42rem, 1.1fr);
+    grid-template-columns: minmax(24rem, 0.8fr) minmax(32rem, 1.2fr);
   }
 
   .desktop-case-detail {
