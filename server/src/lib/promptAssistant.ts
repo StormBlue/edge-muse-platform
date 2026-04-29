@@ -5,6 +5,7 @@
  * Workers AI 不可用或输出不合规时，返回静态降级结果，保证页面流程不中断。
  */
 import { z } from "zod";
+import { DEFAULT_PROMPT_ASSISTANT_MODEL, resolvePromptAssistantModel } from "./aiModelSettings";
 import { appError } from "./errors";
 import { logWarn } from "./log";
 import type { AppBindings } from "../types";
@@ -93,7 +94,6 @@ const aiResultSchema = z.object({
   warnings: z.preprocess(normalizeWarnings, z.array(z.string().trim().max(160)).max(6).default([]))
 });
 
-const DEFAULT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 const AI_RETRY_DELAYS_MS = [500, 1500, 3500];
 
 export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
@@ -106,9 +106,10 @@ export async function runPromptAssistantTurn(
   input: PromptAssistantTurnInput
 ): Promise<PromptAssistantResult> {
   assertTotalInputLength(input);
-  const model = env.PROMPT_ASSISTANT_MODEL || DEFAULT_MODEL;
+  let model = DEFAULT_PROMPT_ASSISTANT_MODEL;
   let aiText = "";
   try {
+    model = await resolvePromptAssistantModel(env);
     const result = await runWorkersAiWithRetry(env, model, input);
     aiText = extractAiText(result);
     const parsed = parseAiResult(aiText, input);

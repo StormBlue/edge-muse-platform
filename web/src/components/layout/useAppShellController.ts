@@ -54,34 +54,43 @@ export function useAppShellController() {
       icon: LayoutDashboard,
       show: auth.isSysadmin
     };
-    const sharedEntries = [
-      {
-        to: "/ai-image",
-        label: t("nav.aiImage"),
-        icon: Sparkles,
-        show: auth.isSysadmin || (auth.generationEntry?.showAiImage ?? true)
-      },
-      {
-        to: "/workspace",
-        label: t("nav.workspace"),
-        icon: Image,
-        show: auth.isSysadmin || (auth.generationEntry?.showWorkspace ?? true)
-      },
-      { to: "/history", label: t("nav.history"), icon: History, show: true },
-      { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin }
-    ];
+    const aiImageEntry = {
+      to: "/ai-image",
+      label: t("nav.aiImage"),
+      icon: Sparkles,
+      show: auth.isSysadmin || (auth.generationEntry?.showAiImage ?? true)
+    };
+    const workspaceEntry = {
+      to: "/workspace",
+      label: t("nav.workspace"),
+      icon: Image,
+      show: auth.isSysadmin || (auth.generationEntry?.showWorkspace ?? true)
+    };
+    const historyEntry = { to: "/history", label: t("nav.history"), icon: History, show: true };
+    const adminUsersEntry = {
+      to: "/admin/users",
+      label: t("nav.admin"),
+      icon: Users,
+      show: auth.isAdmin
+    };
     const sysadminEntries = [
-      { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
       {
         to: "/sysadmin/users/_/sessions",
         label: t("nav.sessionAudit"),
         icon: MessagesSquare,
         show: auth.isSysadmin
       },
+      { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
       {
-        to: "/sysadmin/preferences",
-        label: t("nav.preferences"),
+        to: "/sysadmin/settings",
+        label: t("nav.systemSettings"),
         icon: SlidersHorizontal,
+        show: auth.isSysadmin
+      },
+      {
+        to: "/sysadmin/generation-entry",
+        label: t("nav.generationEntry"),
+        icon: FlaskConical,
         show: auth.isSysadmin
       },
       {
@@ -95,17 +104,19 @@ export function useAppShellController() {
         label: t("nav.announcements"),
         icon: Megaphone,
         show: auth.isSysadmin
-      },
-      {
-        to: "/sysadmin/generation-entry",
-        label: t("nav.generationEntry"),
-        icon: FlaskConical,
-        show: auth.isSysadmin
       }
     ];
-    return auth.isSysadmin
-      ? [dashboardEntry, ...sharedEntries, ...sysadminEntries]
-      : [...sharedEntries, dashboardEntry, ...sysadminEntries];
+    if (auth.isSysadmin) {
+      return [
+        dashboardEntry,
+        adminUsersEntry,
+        ...sysadminEntries,
+        aiImageEntry,
+        workspaceEntry,
+        historyEntry
+      ];
+    }
+    return [aiImageEntry, workspaceEntry, historyEntry, adminUsersEntry, dashboardEntry];
   });
 
   const visibleNav = computed(() => nav.value.filter((entry) => entry.show));
