@@ -3,21 +3,28 @@ import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
-import {
-  isSameStringQuery,
-  queryPositiveInt,
-  queryString,
-  type StringQuery
-} from "@/lib/routeQuery";
+import { isSameStringQuery, queryString } from "@/lib/routeQuery";
 import { useAuthStore } from "@/stores/auth";
 import {
-  aggregateAdminUsage,
   createDefaultAdminEditForm,
   createDefaultAdminPasswordForm,
-  createDefaultAdminUserForm,
-  formatAdminUserDateTime,
-  providerKeyDisplayLabel
+  createDefaultAdminUserForm
 } from "./adminUserHelpers";
+import {
+  buildAdminUsersListQuery,
+  clampAdminUsersPageInput,
+  readAdminUsersRoutePage,
+  readAdminUsersRouteRole,
+  readAdminUsersRouteStatus,
+  sanitizeAdminUsersPage
+} from "./adminUserRouteQuery";
+import {
+  fetchAdminProviderKeys,
+  fetchAdminUserQuota,
+  fetchAdminUsers,
+  fetchAdminUserUsage
+} from "./adminUserApi";
+import { buildAdminUserEditPayload, createAdminEditFormForUser } from "./adminUserPayloads";
 import type {
   AdminUser,
   ProviderKeyRow,
@@ -25,6 +32,7 @@ import type {
   QuotaTransaction,
   UsageResponse
 } from "./adminUserTypes";
+import { useAdminUserLabels } from "./useAdminUserLabels";
 
 export function useAdminUsersController() {
   const auth = useAuthStore();
@@ -35,8 +43,8 @@ export function useAdminUsersController() {
   const users = ref<AdminUser[]>([]);
   const keys = ref<ProviderKeyRow[]>([]);
   const q = ref(queryString(route.query.q).trim());
-  const status = ref<"" | "active" | "disabled">(readRouteStatus());
-  const role = ref<"" | "admin" | "user">(readRouteRole());
+  const status = ref<"" | "active" | "disabled">(readAdminUsersRouteStatus(route.query));
+  const role = ref<"" | "admin" | "user">(readAdminUsersRouteRole(route.query));
   const createOpen = ref(false);
   const editOpen = ref(false);
   const quotaOpen = ref(false);
@@ -56,7 +64,7 @@ export function useAdminUsersController() {
   const form = ref(createDefaultAdminUserForm());
   const editForm = ref(createDefaultAdminEditForm());
   const passwordForm = ref(createDefaultAdminPasswordForm());
-  const page = ref(readRoutePage());
+  const page = ref(readAdminUsersRoutePage(route.query));
   const pageInput = ref(String(page.value));
   const pageSize = 20;
   const total = ref(0);
@@ -67,17 +75,24 @@ export function useAdminUsersController() {
     if (!quota.value?.allocatedQuota) return 0;
     return Math.min(100, Math.round((quota.value.usedQuota / quota.value.allocatedQuota) * 100));
   });
-  const statusItems = computed(() => aggregateUsage("status"));
-  const modeItems = computed(() => aggregateUsage("mode"));
   const userListOffset = computed(() => (page.value - 1) * pageSize);
   const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
-  const trendPoints = computed(
-    () =>
-      usage.value?.trend.map((point) => ({
-        label: String(point.day),
-        value: point.count
-      })) ?? []
-  );
+  const {
+    statusItems,
+    modeItems,
+    trendPoints,
+    statusLabel,
+    roleLabel,
+    formatDateTime,
+    keyLabel,
+    tableRowNumber
+  } = useAdminUserLabels({
+    keys,
+    locale,
+    t,
+    usage,
+    userListOffset
+  });
   let syncingListQuery = false;
 
   watch(page, (value) => {
@@ -88,10 +103,10 @@ export function useAdminUsersController() {
     () => [route.query.page, route.query.q, route.query.status, route.query.role],
     async () => {
       if (syncingListQuery) return;
-      const nextPage = readRoutePage();
+      const nextPage = readAdminUsersRoutePage(route.query);
       const nextQ = queryString(route.query.q).trim();
-      const nextStatus = readRouteStatus();
-      const nextRole = readRouteRole();
+      const nextStatus = readAdminUsersRouteStatus(route.query);
+      const nextRole = readAdminUsersRouteRole(route.query);
       if (
         page.value === nextPage &&
         q.value === nextQ &&
@@ -108,26 +123,20 @@ export function useAdminUsersController() {
   );
 
   async function load(nextPage = page.value, options: { syncRoute?: boolean } = {}) {
-    const targetPage = sanitizePage(nextPage);
+    const targetPage = sanitizeAdminUsersPage(nextPage);
     if (options.syncRoute !== false) await replaceListQuery(targetPage);
     loading.value = true;
     try {
-      const params = new URLSearchParams({
-        page: String(targetPage),
-        pageSize: String(pageSize)
+      const body = await fetchAdminUsers({
+        isSysadmin: auth.isSysadmin,
+        page: targetPage,
+        pageSize,
+        q: q.value,
+        role: role.value,
+        status: status.value
       });
-      const trimmedQ = q.value.trim();
-      if (trimmedQ) params.set("q", trimmedQ);
-      if (status.value) params.set("status", status.value);
-      if (auth.isSysadmin && role.value) params.set("role", role.value);
-      const body = await apiFetch<{
-        items: AdminUser[];
-        page: number;
-        pageSize: number;
-        total: number;
-      }>(`/admin/users${params.size ? `?${params.toString()}` : ""}`);
       users.value = body.items;
-      page.value = sanitizePage(body.page);
+      page.value = sanitizeAdminUsersPage(body.page);
       total.value = Math.max(Math.floor(body.total ?? body.items.length), 0);
     } finally {
       loading.value = false;
@@ -135,35 +144,24 @@ export function useAdminUsersController() {
   }
 
   async function jumpToPage() {
-    const targetPage = clampPageInput(pageInput.value);
+    const targetPage = clampAdminUsersPageInput(pageInput.value, page.value, totalPages.value);
     pageInput.value = String(targetPage);
     if (targetPage === page.value) return;
     await load(targetPage);
   }
 
   async function loadKeys() {
-    const body = await apiFetch<{ items: ProviderKeyRow[] }>("/admin/provider-keys");
+    const body = await fetchAdminProviderKeys();
     keys.value = body.items;
     if (!form.value.providerKeyId && keys.value.length) {
       form.value.providerKeyId = keys.value[0].id;
     }
   }
 
-  function setCreateOpen(open: boolean) {
-    if (!createSaving.value) createOpen.value = open;
-  }
-
-  function setEditOpen(open: boolean) {
-    if (!editSaving.value) editOpen.value = open;
-  }
-
-  function setQuotaOpen(open: boolean) {
-    if (!quotaSaving.value) quotaOpen.value = open;
-  }
-
-  function setPasswordOpen(open: boolean) {
-    if (!passwordSaving.value) passwordOpen.value = open;
-  }
+  const setCreateOpen = (open: boolean) => !createSaving.value && (createOpen.value = open);
+  const setEditOpen = (open: boolean) => !editSaving.value && (editOpen.value = open);
+  const setQuotaOpen = (open: boolean) => !quotaSaving.value && (quotaOpen.value = open);
+  const setPasswordOpen = (open: boolean) => !passwordSaving.value && (passwordOpen.value = open);
 
   function openCreateDialog() {
     createSaving.value = false;
@@ -192,37 +190,16 @@ export function useAdminUsersController() {
   function openEditDialog(user: AdminUser) {
     editSaving.value = false;
     editingUser.value = user;
-    editForm.value = {
-      nickname: user.nickname,
-      status: user.status,
-      providerKeyId: user.providerKeyId ?? user.preferredProviderKeyId ?? "",
-      quota: user.allocatedQuota,
-      password: ""
-    };
+    editForm.value = createAdminEditFormForUser(user);
     editOpen.value = true;
     if (!keys.value.length) void loadKeys();
   }
 
-  /** 仅提交差异字段；管理员权限边界由后端 `assertManagedUserAccess` 兜底。 */
   async function saveEdit() {
     if (!editingUser.value || editSaving.value) return;
     editSaving.value = true;
     const user = editingUser.value;
-    const payload: {
-      nickname?: string;
-      status?: "active" | "disabled";
-      providerKeyId?: string;
-      quota?: number | null;
-      password?: string;
-    } = {};
-    if (editForm.value.nickname !== user.nickname) payload.nickname = editForm.value.nickname;
-    if (editForm.value.status !== user.status) payload.status = editForm.value.status;
-    const currentProviderKeyId = user.providerKeyId ?? user.preferredProviderKeyId ?? "";
-    if (editForm.value.providerKeyId && editForm.value.providerKeyId !== currentProviderKeyId) {
-      payload.providerKeyId = editForm.value.providerKeyId;
-    }
-    if (editForm.value.quota !== user.allocatedQuota) payload.quota = editForm.value.quota;
-    if (editForm.value.password) payload.password = editForm.value.password;
+    const payload = buildAdminUserEditPayload(user, editForm.value);
     if (!Object.keys(payload).length) {
       editOpen.value = false;
       editSaving.value = false;
@@ -251,13 +228,7 @@ export function useAdminUsersController() {
 
   async function loadQuota(userId = selectedUser.value?.id) {
     if (!userId) return;
-    const params = new URLSearchParams({ limit: "10" });
-    if (transactionsNextCursor.value) params.set("cursor", String(transactionsNextCursor.value));
-    const body = await apiFetch<{
-      quota: QuotaSnapshot;
-      transactions: QuotaTransaction[];
-      nextCursor: number | null;
-    }>(`/admin/users/${userId}/quota?${params.toString()}`);
+    const body = await fetchAdminUserQuota(userId, transactionsNextCursor.value);
     quota.value = body.quota;
     transactions.value = [...transactions.value, ...body.transactions];
     transactionsNextCursor.value = body.nextCursor;
@@ -265,10 +236,9 @@ export function useAdminUsersController() {
 
   async function loadUsage(userId = selectedUser.value?.id) {
     if (!userId) return;
-    usage.value = await apiFetch<UsageResponse>(`/admin/users/${userId}/usage`);
+    usage.value = await fetchAdminUserUsage(userId);
   }
 
-  /** 给选中用户追加额度；扣减的是当前登录管理员剩余池。 */
   async function grantQuota() {
     const user = selectedUser.value;
     if (!user || quotaSaving.value) return;
@@ -343,70 +313,14 @@ export function useAdminUsersController() {
     if (!quota.value || previousUserId !== user.id) void openDetails(user);
   }
 
-  function aggregateUsage(key: "status" | "mode") {
-    return aggregateAdminUsage(usage.value, key, key === "status" ? statusLabel : modeLabel);
-  }
-
-  function statusLabel(value: string) {
-    if (value === "active") return t("common.enabled");
-    if (value === "disabled") return t("common.disabled");
-    if (value === "succeeded") return t("common.succeeded");
-    if (value === "failed") return t("common.failed");
-    if (value === "running") return t("common.running");
-    if (value === "queued") return t("common.queued");
-    return value;
-  }
-
-  function roleLabel(value: string) {
-    if (value === "admin") return t("adminUsers.roleAdmin");
-    if (value === "user") return t("adminUsers.roleUser");
-    return value;
-  }
-
-  function formatDateTime(value?: number | null) {
-    return formatAdminUserDateTime(locale.value, value);
-  }
-
-  function keyLabel(id?: string | null) {
-    return providerKeyDisplayLabel(keys.value, t("sysadmin.unassigned"), id);
-  }
-
-  function modeLabel(mode: string) {
-    if (mode === "text2image") return t("workspace.text2image");
-    if (mode === "image2image") return t("workspace.image2image");
-    if (mode === "chat") return t("workspace.chat");
-    return mode;
-  }
-
-  function tableRowNumber(index: number) {
-    return userListOffset.value + index + 1;
-  }
-
-  function readRoutePage() {
-    return queryPositiveInt(route.query.page, 1);
-  }
-
-  function readRouteStatus(): "" | "active" | "disabled" {
-    const value = queryString(route.query.status);
-    return value === "active" || value === "disabled" ? value : "";
-  }
-
-  function readRouteRole(): "" | "admin" | "user" {
-    const value = queryString(route.query.role);
-    return value === "admin" || value === "user" ? value : "";
-  }
-
-  function adminListQuery(nextPage = page.value) {
-    const query: StringQuery = { page: String(sanitizePage(nextPage)) };
-    const trimmedQ = q.value.trim();
-    if (trimmedQ) query.q = trimmedQ;
-    if (status.value) query.status = status.value;
-    if (auth.isSysadmin && role.value) query.role = role.value;
-    return query;
-  }
-
   async function replaceListQuery(nextPage = page.value) {
-    const query = adminListQuery(nextPage);
+    const query = buildAdminUsersListQuery({
+      isSysadmin: auth.isSysadmin,
+      page: nextPage,
+      q: q.value,
+      role: role.value,
+      status: status.value
+    });
     if (isSameStringQuery(query, route.query)) return;
     syncingListQuery = true;
     try {
@@ -416,17 +330,6 @@ export function useAdminUsersController() {
     }
   }
 
-  function sanitizePage(value: number) {
-    if (!Number.isFinite(value)) return 1;
-    return Math.max(1, Math.floor(value));
-  }
-
-  function clampPageInput(value: string) {
-    const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return page.value;
-    return Math.min(sanitizePage(parsed), totalPages.value);
-  }
-
   onMounted(() => {
     void load(page.value, { syncRoute: false });
     void loadKeys();
@@ -434,7 +337,6 @@ export function useAdminUsersController() {
 
   return {
     auth,
-    locale,
     t,
     users,
     keys,

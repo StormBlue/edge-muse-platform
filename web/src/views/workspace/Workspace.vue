@@ -87,7 +87,7 @@ const {
       >
         <template v-if="isConversationMode">
           <section
-            class="conversation-panel panel flex min-h-[34rem] min-w-0 flex-col overflow-hidden"
+            class="conversation-panel panel flex min-h-[28rem] min-w-0 flex-col overflow-hidden"
           >
             <div class="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 class="text-sm font-semibold">{{ t("workspace.continuousChat") }}</h2>
@@ -134,7 +134,7 @@ const {
           </section>
 
           <aside class="conversation-side min-h-0">
-            <section class="panel overflow-hidden">
+            <section class="workspace-session-panel panel overflow-hidden">
               <div class="border-b border-border px-4 py-3">
                 <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
               </div>
@@ -157,7 +157,7 @@ const {
 
             <WorkspaceResultPanel
               compact
-              class="min-h-0 flex-1"
+              class="conversation-result-panel"
               :title="t('workspace.latestResult')"
               :active-failed="Boolean(activeFailedMessage)"
               :active-preview-image="activePreviewImage"
@@ -205,7 +205,7 @@ const {
           />
 
           <aside class="task-side min-h-0">
-            <section class="panel thin-scrollbar max-h-64 overflow-y-auto">
+            <section class="workspace-session-panel panel thin-scrollbar max-h-64 overflow-y-auto">
               <div class="border-b border-border px-4 py-3">
                 <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
               </div>
@@ -259,9 +259,10 @@ const {
 <style scoped>
 .workspace-page {
   display: grid;
+  container-type: inline-size;
   min-height: calc(100dvh - 6rem);
-  grid-template-rows: auto auto auto;
-  gap: 1rem;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 0.875rem;
   overflow: visible;
 }
 
@@ -279,14 +280,19 @@ const {
   align-content: start;
 }
 
+.workspace-grid--task .task-side,
+.workspace-grid--chat .conversation-side {
+  order: -1;
+}
+
 @media (min-width: 1024px) {
   .workspace-page {
     height: calc(100dvh - 6rem);
     min-height: 0;
-    grid-template-rows: auto auto minmax(0, 1fr);
-    overflow: hidden;
   }
+}
 
+@container (min-width: 56rem) {
   .workspace-grid,
   .task-side,
   .conversation-side {
@@ -294,14 +300,15 @@ const {
   }
 
   .workspace-grid--task {
-    grid-template-columns: 22rem minmax(0, 1fr);
+    grid-template-columns: minmax(18rem, 23rem) minmax(0, 1fr);
   }
 
   .workspace-grid--chat {
-    grid-template-columns: 22rem minmax(0, 1fr);
+    grid-template-columns: minmax(18rem, 23rem) minmax(0, 1fr);
   }
 
   .workspace-grid--task .task-side {
+    order: 0;
     grid-column: 1;
     grid-row: 1;
   }
@@ -317,22 +324,13 @@ const {
   }
 
   .workspace-grid--chat .conversation-side {
+    order: 0;
     grid-column: 1;
     grid-row: 1;
   }
-}
 
-@media (min-width: 1280px) {
   .workspace-grid {
     height: 100%;
-  }
-
-  .workspace-grid--task {
-    grid-template-columns: 23rem minmax(0, 1fr);
-  }
-
-  .workspace-grid--chat {
-    grid-template-columns: 23rem minmax(0, 1fr);
   }
 
   .task-result-panel,
@@ -352,7 +350,7 @@ const {
 
   .conversation-side {
     grid-column: auto;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(8rem, 0.75fr) minmax(13rem, 1fr);
     align-content: stretch;
     overflow: hidden;
   }
@@ -363,7 +361,7 @@ const {
   }
 }
 
-@media (min-width: 1536px) {
+@container (min-width: 78rem) {
   .workspace-grid--task {
     grid-template-columns: 24rem minmax(0, 1fr);
   }

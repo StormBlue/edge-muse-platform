@@ -10,7 +10,9 @@ import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
+import { getGenerationEntryForUser } from "../lib/generationEntry";
 import { now } from "../lib/id";
+import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { requireAuth } from "../middleware/auth";
@@ -24,7 +26,9 @@ meRoutes.get("/", requireAuth, async (c) => {
   return c.json({
     user,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationEntry: await getGenerationEntryForUser(c.env, user),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 
@@ -50,7 +54,9 @@ meRoutes.patch(
     return c.json({
       user: { ...user, nickname: body.nickname },
       quota: await getQuota(c.env, user.id),
-      providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+      providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+      generationEntry: await getGenerationEntryForUser(c.env, user),
+      promptAssistantEnabled: isPromptAssistantEnabled(c.env)
     });
   }
 );

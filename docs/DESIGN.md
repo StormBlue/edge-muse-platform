@@ -22,10 +22,11 @@
 
 - **鉴权**：服务端以 `middleware/auth` + `middleware/role` 为准；前端路由 meta 仅 UX，不能替代 API 校验。
 - **错误展示**：读取 `error.code` / `message`；网络错误与 401 与 [`docs/API.md`](./API.md) 一致处理。
-- **配额与任务**：业务顺序以 [`server/src/lib/tasks.ts`](../server/src/lib/tasks.ts) 为准；前端乐观更新须与 WebSocket 事件可合并。
+- **配额与任务**：业务顺序以 [`server/src/lib/tasks.ts`](../server/src/lib/tasks.ts)（实现按职责在 [`server/src/lib/tasks/`](../server/src/lib/tasks/)）为准；前端乐观更新须与 WebSocket 事件可合并。
 
 ## 相关文档
 
+- [`EXPERIMENTS.md`](./EXPERIMENTS.md) — 生成入口 A/B 与事件（与 `/api/me`、sysadmin 配合）
 - [`../ARCHITECTURE.md`](../ARCHITECTURE.md) — 运行时与目录级架构
 - [`FRONTEND.md`](./FRONTEND.md) — 前端分层
 - [`DATABASE.md`](./DATABASE.md) — 数据模型与迁移

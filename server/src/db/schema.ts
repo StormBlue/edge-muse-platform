@@ -6,7 +6,14 @@
  * 与产品文档数据模型一致，迁移由 drizzle-kit 生成到 `db/migrations`。
  */
 import { relations, type InferSelectModel, type InferInsertModel } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex
+} from "drizzle-orm/sqlite-core";
 
 /**
  * 用户主表：sysadmin / admin / user；普通用户由租户 admin 在后台创建，`createdBy` 指向创建者。
@@ -265,6 +272,159 @@ export const imageObjects = sqliteTable(
 );
 
 /**
+ * AI 图像生成案例库：由 sysadmin 维护，用户端只读取 `published` 案例。
+ * `modes` / `tags` / `popularity` 存 JSON 文本，路由层统一解析后返回，避免前端接触数据库字符串。
+ */
+export const promptCases = sqliteTable(
+  "prompt_cases",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    category: text("category").notNull(),
+    modes: text("modes").notNull(),
+    recommendedSize: text("recommended_size").notNull(),
+    tags: text("tags").notNull().default("[]"),
+    promptTemplate: text("prompt_template").notNull(),
+    promptSummary: text("prompt_summary").notNull(),
+    thumbnailUrl: text("thumbnail_url"),
+    sourceUrl: text("source_url"),
+    sourceAuthor: text("source_author"),
+    sourceLicense: text("source_license", {
+      enum: ["CC BY 4.0", "original", "internal"]
+    })
+      .notNull()
+      .default("internal"),
+    sourceRepo: text("source_repo"),
+    popularity: text("popularity").notNull().default("{}"),
+    status: text("status", { enum: ["draft", "published", "hidden", "archived"] })
+      .notNull()
+      .default("draft"),
+    featured: integer("featured", { mode: "boolean" }).notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    locale: text("locale", { enum: ["zh-CN", "en-US"] })
+      .notNull()
+      .default("zh-CN"),
+    createdBy: text("created_by").references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => ({
+    statusSortIdx: index("idx_prompt_cases_status_sort").on(table.status, table.sortOrder),
+    localeStatusIdx: index("idx_prompt_cases_locale_status").on(table.locale, table.status),
+    categoryIdx: index("idx_prompt_cases_category").on(table.category),
+    featuredIdx: index("idx_prompt_cases_featured").on(table.featured),
+    sourceUrlIdx: index("idx_prompt_cases_source_url").on(table.sourceUrl)
+  })
+);
+
+/**
+ * 案例导入批次：外部 JSON / 开源项目导入后先进入 draft，导入结果在此留痕供 sysadmin 排查。
+ */
+export const promptCaseImports = sqliteTable(
+  "prompt_case_imports",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    sourceUrl: text("source_url"),
+    status: text("status", { enum: ["completed", "failed", "partial"] }).notNull(),
+    totalCount: integer("total_count").notNull(),
+    importedCount: integer("imported_count").notNull(),
+    failedCount: integer("failed_count").notNull(),
+    errors: text("errors").notNull().default("[]"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => ({
+    createdIdx: index("idx_prompt_case_imports_created").on(table.createdAt),
+    sourceIdx: index("idx_prompt_case_imports_source").on(table.source)
+  })
+);
+
+/**
+ * 生成入口设置：只控制普通用户是否看到旧版「图像生成」与新版「AI 图像生成」。
+ * 单行 key 固定为 `default`；sysadmin 始终能看到两个入口，便于运维。
+ */
+export const generationEntrySettings = sqliteTable("generation_entry_settings", {
+  key: text("key").primaryKey(),
+  showWorkspace: integer("show_workspace", { mode: "boolean" }).notNull().default(true),
+  showAiImage: integer("show_ai_image", { mode: "boolean" }).notNull().default(true),
+  updatedBy: text("updated_by").references(() => users.id),
+  updatedAt: integer("updated_at").notNull()
+});
+
+/** 生成入口用量事件：只保留页面、事件名、任务/案例引用和安全 metadata。 */
+export const generationEvents = sqliteTable(
+  "generation_events",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id),
+    route: text("route", { enum: ["/workspace", "/ai-image"] }).notNull(),
+    eventName: text("event_name").notNull(),
+    caseId: text("case_id"),
+    taskId: text("task_id"),
+    metadata: text("metadata").notNull().default("{}"),
+    isSysadminPreview: integer("is_sysadmin_preview", { mode: "boolean" }).notNull().default(false),
+    createdAt: integer("created_at").notNull()
+  },
+  (table) => ({
+    routeCreatedIdx: index("idx_generation_events_route_created").on(table.route, table.createdAt),
+    eventNameIdx: index("idx_generation_events_name").on(table.eventName),
+    taskEventIdx: index("idx_generation_events_task_name").on(table.taskId, table.eventName)
+  })
+);
+
+/**
+ * 系统公告：sysadmin 发布，普通用户在右上角公告中心查看。
+ * `targetAudience=admins` 面向 admin 与 sysadmin；`all` 面向所有角色。
+ */
+export const announcements = sqliteTable(
+  "announcements",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    targetAudience: text("target_audience", { enum: ["all", "admins"] })
+      .notNull()
+      .default("all"),
+    status: text("status", { enum: ["draft", "published", "archived"] })
+      .notNull()
+      .default("draft"),
+    createdBy: text("created_by").references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
+    publishedAt: integer("published_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (table) => ({
+    statusPublishedIdx: index("idx_announcements_status_published").on(
+      table.status,
+      table.publishedAt
+    ),
+    targetStatusIdx: index("idx_announcements_target_status").on(table.targetAudience, table.status)
+  })
+);
+
+/** 用户已读公告：用于右上角新消息红点和详情页已读状态。 */
+export const announcementReads = sqliteTable(
+  "announcement_reads",
+  {
+    announcementId: text("announcement_id")
+      .notNull()
+      .references(() => announcements.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    readAt: integer("read_at").notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.announcementId, table.userId] }),
+    userReadIdx: index("idx_announcement_reads_user").on(table.userId, table.readAt)
+  })
+);
+
+/**
  * 管理操作审计：actor 可为空（系统任务）；`payload` 建议存 JSON 且敏感字段打码；`ip` 便于溯源。
  */
 export const auditLogs = sqliteTable("audit_logs", {
@@ -309,3 +469,9 @@ export type Session = InferSelectModel<typeof sessions>;
 export type Message = InferSelectModel<typeof messages>;
 export type Task = InferSelectModel<typeof tasks>;
 export type ImageObject = InferSelectModel<typeof imageObjects>;
+export type PromptCase = InferSelectModel<typeof promptCases>;
+export type PromptCaseImport = InferSelectModel<typeof promptCaseImports>;
+export type GenerationEntrySettings = InferSelectModel<typeof generationEntrySettings>;
+export type GenerationEvent = InferSelectModel<typeof generationEvents>;
+export type Announcement = InferSelectModel<typeof announcements>;
+export type AnnouncementRead = InferSelectModel<typeof announcementReads>;

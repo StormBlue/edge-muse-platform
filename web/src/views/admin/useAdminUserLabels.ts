@@ -1,0 +1,74 @@
+import { computed, type Ref } from "vue";
+import {
+  aggregateAdminUsage,
+  formatAdminUserDateTime,
+  providerKeyDisplayLabel
+} from "./adminUserHelpers";
+import type { ProviderKeyRow, UsageResponse } from "./adminUserTypes";
+
+type Translate = (key: string, named?: Record<string, unknown>) => string;
+
+export function useAdminUserLabels(input: {
+  keys: Ref<ProviderKeyRow[]>;
+  locale: Ref<string>;
+  t: Translate;
+  usage: Ref<UsageResponse | null>;
+  userListOffset: Ref<number>;
+}) {
+  const { keys, locale, t, usage, userListOffset } = input;
+  const statusItems = computed(() => aggregateAdminUsage(usage.value, "status", statusLabel));
+  const modeItems = computed(() => aggregateAdminUsage(usage.value, "mode", modeLabel));
+  const trendPoints = computed(
+    () =>
+      usage.value?.trend.map((point) => ({
+        label: String(point.day),
+        value: point.count
+      })) ?? []
+  );
+
+  function statusLabel(value: string) {
+    if (value === "active") return t("common.enabled");
+    if (value === "disabled") return t("common.disabled");
+    if (value === "succeeded") return t("common.succeeded");
+    if (value === "failed") return t("common.failed");
+    if (value === "running") return t("common.running");
+    if (value === "queued") return t("common.queued");
+    return value;
+  }
+
+  function roleLabel(value: string) {
+    if (value === "admin") return t("adminUsers.roleAdmin");
+    if (value === "user") return t("adminUsers.roleUser");
+    return value;
+  }
+
+  function formatDateTime(value?: number | null) {
+    return formatAdminUserDateTime(locale.value, value);
+  }
+
+  function keyLabel(id?: string | null) {
+    return providerKeyDisplayLabel(keys.value, t("sysadmin.unassigned"), id);
+  }
+
+  function modeLabel(mode: string) {
+    if (mode === "text2image") return t("workspace.text2image");
+    if (mode === "image2image") return t("workspace.image2image");
+    if (mode === "chat") return t("workspace.chat");
+    return mode;
+  }
+
+  function tableRowNumber(index: number) {
+    return userListOffset.value + index + 1;
+  }
+
+  return {
+    statusItems,
+    modeItems,
+    trendPoints,
+    statusLabel,
+    roleLabel,
+    formatDateTime,
+    keyLabel,
+    tableRowNumber
+  };
+}

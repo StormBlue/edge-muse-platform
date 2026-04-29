@@ -4,6 +4,7 @@ import { messages } from "../../db/schema";
 import { now } from "../id";
 import { stringifyJson } from "../json";
 import { logInfo, logWarn } from "../log";
+import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { finishRunningTaskIfCurrent } from "./state";
 import { cleanupTaskGeneratedImagesExcept, loadTaskGeneratedImages } from "./taskImages";
 import type { AppBindings, GenerateParams, TaskStatus } from "../../types";
@@ -19,6 +20,7 @@ export async function recoverTaskFromPersistedImages(
       id: string;
       messageId: string;
       sessionId: string;
+      userId: string;
     };
     params: GenerateParams;
     startedAt: number;
@@ -104,6 +106,31 @@ export async function recoverTaskFromPersistedImages(
     persistedImageCount: persistedImages.length,
     recoveredImageCount: images.length
   });
+  try {
+    await recordTaskResultGenerationEvent(env, {
+      userId: input.task.userId,
+      taskId: input.task.id,
+      eventName: hasExpectedImages ? "generate_succeeded" : "generate_failed",
+      metadata: {
+        recoveredImageCount: images.length,
+        expectedImageCount,
+        resultRecoverySource: "persisted_images"
+      }
+    });
+    logInfo("task.recovery.generation_event_result_written", {
+      taskId: input.task.id,
+      userId: input.task.userId,
+      status,
+      recoveredImageCount: images.length
+    });
+  } catch (eventError) {
+    logWarn("task.recovery.generation_event_result_failed", {
+      taskId: input.task.id,
+      userId: input.task.userId,
+      status,
+      message: eventError instanceof Error ? eventError.message : "unknown"
+    });
+  }
   for (const image of images) {
     await input.notify({
       type: "task.image",

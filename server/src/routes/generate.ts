@@ -7,7 +7,7 @@
  *
  * 生图主链路时序（符号）：
  *   Client --POST /api/generate--> Worker
- *     → createGenerateTask(D1: tasks=queued, 配额扣减)
+ *     → createGenerateTask(校验 + 配额预扣 + D1: tasks=queued)
  *     → startGenerateTask → waitUntil(workflow 或 runGenerateTask)
  *   Client <--202-- { taskId, wsUrl, ... }
  *   Client --WS /ws/task/taskId--> TaskRoom（后续事件由 Workflow/runGenerateTask → broadcastTaskEvent → DO）
@@ -21,6 +21,13 @@ import { tasks } from "../db/schema";
 import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
+import {
+  assertGenerationRouteEnabledForUser,
+  assertRetryGenerationRouteEnabledForUser,
+  generationRouteSchema,
+  recordGenerationEvent,
+  recordRetrySubmittedGenerationEvent
+} from "../lib/generationEntry";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
 import { logInfo, logWarn, promptSummary } from "../lib/log";
 import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
@@ -52,6 +59,14 @@ const optionalSessionIdSchema = z.preprocess(
   z.string().min(1).optional()
 );
 
+const generateGenerationEventSchema = z
+  .object({
+    route: generationRouteSchema,
+    caseId: z.string().trim().max(120).optional(),
+    metadata: z.record(z.string(), z.unknown()).default({})
+  })
+  .optional();
+
 /** POST 体：可选 session（无则新建）、张数经 `resolveImageCountForRole` 再压一道 */
 const generateSchema = z.object({
   sessionId: optionalSessionIdSchema,
@@ -64,7 +79,13 @@ const generateSchema = z.object({
     .default("1024x1024"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional(),
-  referenceImageIds: z.array(z.string()).max(5).optional()
+  referenceImageIds: z.array(z.string()).max(5).optional(),
+  /** AI 图像生成页的提交事件由服务端在任务启动前写入，避免 WS 结果事件先到导致归因回退。 */
+  generationEvent: generateGenerationEventSchema
+});
+
+const retrySchema = z.object({
+  generationEvent: generateGenerationEventSchema
 });
 
 export const generateRoutes = new Hono<AppEnv>();
@@ -79,35 +100,36 @@ generateRoutes.post(
   async (c) => {
     const user = c.get("user");
     const rawBody = c.req.valid("json");
+    const { generationEvent, ...generateBody } = rawBody;
     const traceId = c.get("traceId");
     logInfo("generate.request.received", {
       traceId,
       userId: user.id,
       role: user.role,
-      sessionId: rawBody.sessionId ?? null,
-      mode: rawBody.mode,
-      size: rawBody.size,
-      requestedImageCount: rawBody.n,
-      model: rawBody.model ?? null,
-      referenceImageCount: rawBody.referenceImageIds?.length ?? 0,
-      ...promptSummary(rawBody.prompt)
+      sessionId: generateBody.sessionId ?? null,
+      mode: generateBody.mode,
+      size: generateBody.size,
+      requestedImageCount: generateBody.n,
+      model: generateBody.model ?? null,
+      referenceImageCount: generateBody.referenceImageIds?.length ?? 0,
+      ...promptSummary(generateBody.prompt)
     });
     // 图生图：去重参考图 id；文生/对话不传 reference
     const referenceImageIds =
-      rawBody.mode === "image2image" ? [...new Set(rawBody.referenceImageIds ?? [])] : [];
-    if (rawBody.mode === "image2image" && referenceImageIds.length === 0) {
+      generateBody.mode === "image2image" ? [...new Set(generateBody.referenceImageIds ?? [])] : [];
+    if (generateBody.mode === "image2image" && referenceImageIds.length === 0) {
       logWarn("generate.request.rejected", {
         traceId,
         userId: user.id,
-        mode: rawBody.mode,
+        mode: generateBody.mode,
         reason: "missing_reference_image"
       });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
     // 非 sysadmin 的 n 可能被压到 1（多轮 chat 等策略见 lib/generationPolicy）
     const body = {
-      ...rawBody,
-      n: resolveImageCountForRole(user.role, rawBody.mode, rawBody.n),
+      ...generateBody,
+      n: resolveImageCountForRole(user.role, generateBody.mode, generateBody.n),
       referenceImageIds
     };
     logInfo("generate.request.normalized", {
@@ -120,6 +142,7 @@ generateRoutes.post(
       resolvedImageCount: body.n,
       referenceImageCount: body.referenceImageIds.length
     });
+    await assertGenerationRouteEnabledForUser(c.env, user, generationEvent?.route);
     const result = await createGenerateTask(c.env, {
       userId: user.id,
       sessionId: body.sessionId,
@@ -135,18 +158,51 @@ generateRoutes.post(
       size: body.size,
       imageCount: body.n
     });
-    await audit(c.env, {
-      actorId: user.id,
-      action: "task.create",
-      targetType: "task",
-      targetId: result.taskId,
-      payload: { mode: body.mode, size: body.size, n: body.n }
-    });
-    logInfo("generate.task.audit_written", {
-      traceId,
-      userId: user.id,
-      taskId: result.taskId
-    });
+    try {
+      await audit(c.env, {
+        actorId: user.id,
+        action: "task.create",
+        targetType: "task",
+        targetId: result.taskId,
+        payload: { mode: body.mode, size: body.size, n: body.n }
+      });
+      logInfo("generate.task.audit_written", {
+        traceId,
+        userId: user.id,
+        taskId: result.taskId
+      });
+    } catch (error) {
+      logWarn("generate.task.audit_failed", {
+        traceId,
+        userId: user.id,
+        taskId: result.taskId,
+        message: error instanceof Error ? error.message : "unknown"
+      });
+    }
+    if (generationEvent) {
+      try {
+        await recordGenerationEvent(c.env, user, {
+          eventName: "generate_submitted",
+          route: generationEvent.route,
+          caseId: generationEvent.caseId,
+          taskId: result.taskId,
+          metadata: generationEvent.metadata
+        });
+        logInfo("generate.event_submitted_written", {
+          traceId,
+          userId: user.id,
+          taskId: result.taskId
+        });
+      } catch (error) {
+        // 事件不应阻断已创建的任务；失败只影响 sysadmin 用量统计。
+        logWarn("generate.event_submitted_failed", {
+          traceId,
+          userId: user.id,
+          taskId: result.taskId,
+          message: error instanceof Error ? error.message : "unknown"
+        });
+      }
+    }
     // `startGenerateTask` 仅 `waitUntil` 子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
     startGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
@@ -195,19 +251,60 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
 // ---------- 失败任务用原 params 再建一条任务（`retryOf` 记血缘），不重复用旧 message 行 ----------
 generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   const user = c.get("user");
+  const retryBody = await c.req.json().catch(() => ({}));
+  const parsedRetry = retrySchema.safeParse(retryBody);
+  if (!parsedRetry.success) {
+    throw appError("VALIDATION_ERROR", "Invalid retry payload", parsedRetry.error.flatten());
+  }
   const task = await assertTaskAccess(c.env, c.req.param("id"), user);
   if (task.status !== "failed")
     throw appError("VALIDATION_ERROR", "Only failed tasks can be retried");
+  await assertRetryGenerationRouteEnabledForUser(c.env, user, {
+    sourceTaskId: task.id,
+    route: parsedRetry.data.generationEvent?.route
+  });
   const params = generateSchema.parse(JSON.parse(task.params));
+  const retryParams = {
+    ...params,
+    n: resolveImageCountForRole(user.role, params.mode, params.n)
+  };
   const result = await createGenerateTask(c.env, {
     userId: user.id,
     sessionId: task.sessionId,
-    params: {
-      ...params,
-      n: resolveImageCountForRole(user.role, params.mode, params.n)
-    },
+    params: retryParams,
     retryOf: task.id
   });
+  try {
+    await recordRetrySubmittedGenerationEvent(c.env, {
+      user,
+      sourceTaskId: task.id,
+      taskId: result.taskId,
+      route: parsedRetry.data.generationEvent?.route,
+      caseId: parsedRetry.data.generationEvent?.caseId,
+      metadata: {
+        ...parsedRetry.data.generationEvent?.metadata,
+        mode: retryParams.mode,
+        size: retryParams.size,
+        n: retryParams.n,
+        referenceImageCount: retryParams.referenceImageIds?.length ?? 0
+      }
+    });
+    logInfo("task.retry.generation_event_submitted_written", {
+      traceId: c.get("traceId"),
+      userId: user.id,
+      retryOf: task.id,
+      taskId: result.taskId
+    });
+  } catch (error) {
+    // 重试任务已经创建，用量事件写入失败不能影响用户继续接收任务结果。
+    logWarn("task.retry.generation_event_submitted_failed", {
+      traceId: c.get("traceId"),
+      userId: user.id,
+      retryOf: task.id,
+      taskId: result.taskId,
+      message: error instanceof Error ? error.message : "unknown"
+    });
+  }
   startGenerateTask(c.env, c.executionCtx, result.taskId);
   logInfo("task.retry.created", {
     traceId: c.get("traceId"),
@@ -221,17 +318,18 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
 });
 
 /** 注意：全局路由在 index.ts 注册为 `GET /ws/task/:id`（无 /api 前缀），与返回给前端的 wsUrl 一致 */
-generateRoutes.get("/ws/task/:id", handleTaskWebSocket);
+generateRoutes.get("/ws/task/:id", requireAuth, handleTaskWebSocket);
 
 /**
  * WebSocket 升级：按 taskId 派发到对应 Durable Object 实例（`idFromName(taskId)`）。
- * 鉴权若需加强，可在此校验 Cookie/JWT 与 task.userId（当前依赖 DO 侧或上游中间件策略时见项目演进）。
+ * 在进入 DO 前校验 Cookie/JWT 与 task.userId，避免匿名随机 taskId 占用 DO 连接。
  */
 export async function handleTaskWebSocket(c: AppContext) {
   if (c.req.header("Upgrade") !== "websocket") return c.text("Expected websocket", 426);
   if (!c.env.TASK_ROOM) throw appError("INTERNAL", "Task room binding is missing");
   const taskId = c.req.param("id");
   if (!taskId) throw appError("VALIDATION_ERROR", "Task id required");
+  await assertTaskAccess(c.env, taskId, c.get("user"));
   // 每个 taskId 一个 DO 实例，与 `broadcastTaskEvent` 的 idFromName 一致
   const id = c.env.TASK_ROOM.idFromName(taskId);
   const stub = c.env.TASK_ROOM.get(id);

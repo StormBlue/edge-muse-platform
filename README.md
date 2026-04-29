@@ -51,6 +51,8 @@ pnpm -F server db:migrate:local
 pnpm -F server seed:local
 ```
 
+本地 `pnpm -F server dev` 会显式注入 `ENVIRONMENT=dev`，登录页不会渲染 Turnstile；`.dev.vars` 里的 Turnstile 测试 key 仅用于保留环境结构。
+
 本地默认账号: `sysadmin@example.com` / `password123`。
 
 ## 部署

@@ -3,10 +3,10 @@
  * 历史会话列表与详情：按 API 分页拉会话，点进展开消息与任务信息；封面图来自接口 `coverImage`。
  */
 import { ArrowLeft, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from "lucide-vue-next";
-import PaginationControls from "@/components/admin/PaginationControls.vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import HistoryGrid from "./HistoryGrid.vue";
 import { useHistoryController } from "./useHistoryController";
 
 const {
@@ -334,103 +334,25 @@ const {
       </div>
     </template>
 
-    <template v-else>
-      <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <h1 class="text-xl font-semibold leading-8">{{ t("history.title") }}</h1>
-        <form
-          class="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
-          @submit.prevent="load(1)"
-        >
-          <select
-            v-model="order"
-            class="ui-field h-10 !w-full px-3 text-sm sm:!w-40"
-            @change="load(1)"
-          >
-            <option value="recent">{{ t("history.recent") }}</option>
-            <option value="oldest">{{ t("history.oldest") }}</option>
-            <option value="task_count">{{ t("history.taskCountOrder") }}</option>
-          </select>
-          <input
-            v-model="q"
-            class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-80"
-            :placeholder="t('history.searchPlaceholder')"
-          />
-          <button class="ui-button ui-button-secondary h-10" type="submit">
-            {{ t("common.search") }}
-          </button>
-        </form>
-      </div>
-
-      <div
-        v-if="loading"
-        class="panel flex min-h-80 items-center justify-center gap-2 text-sm text-muted-foreground"
-      >
-        <Loader2 class="h-4 w-4 animate-spin" />
-        {{ t("common.loading") }}
-      </div>
-      <div v-else-if="!items.length" class="panel p-8 text-center text-sm text-muted-foreground">
-        {{ t("history.noHistory") }}
-      </div>
-      <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-        <button
-          v-for="session in items"
-          :key="session.id"
-          class="panel overflow-hidden text-left transition hover:bg-muted/40"
-          type="button"
-          @click="openDetail(session)"
-        >
-          <div class="relative aspect-[4/3] bg-muted">
-            <img
-              v-if="session.coverImage"
-              class="h-full w-full object-cover"
-              :src="session.coverImage.url"
-              alt=""
-              loading="lazy"
-            />
-            <div
-              v-else
-              class="flex h-full w-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground"
-            >
-              <ImageIcon class="h-7 w-7" />
-              {{ t("history.noCover") }}
-            </div>
-            <span
-              class="absolute bottom-2 right-2 rounded-full bg-background/90 px-2 py-1 text-xs shadow-sm"
-            >
-              {{ sessionImageCountLabel(session) }}
-            </span>
-            <span
-              :class="[
-                'absolute left-2 top-2 rounded-full border px-2.5 py-1 text-xs font-medium shadow-sm',
-                taskStatusTone(session.status)
-              ]"
-            >
-              {{ sessionStatusLabel(session.status) }}
-            </span>
-          </div>
-          <div class="p-4">
-            <h2 class="truncate font-semibold">{{ session.title }}</h2>
-            <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>{{ formatDateTime(session.lastMessageAt) }}</span>
-              <span aria-hidden="true">/</span>
-              <span>{{ t("history.sessionStatus") }} {{ sessionStatusLabel(session.status) }}</span>
-            </div>
-          </div>
-        </button>
-      </div>
-
-      <PaginationControls
-        v-model:page-input="pageInput"
-        input-id="history-page-jump"
-        :page="page"
-        :total-pages="totalPages"
-        :total="total"
-        :loading="loading"
-        @previous="load(page - 1)"
-        @next="load(page + 1)"
-        @jump="jumpToPage"
-      />
-    </template>
+    <HistoryGrid
+      v-else
+      v-model:order="order"
+      v-model:page-input="pageInput"
+      v-model:q="q"
+      :format-date-time="formatDateTime"
+      :items="items"
+      :loading="loading"
+      :page="page"
+      :session-image-count-label="sessionImageCountLabel"
+      :session-status-label="sessionStatusLabel"
+      :task-status-tone="taskStatusTone"
+      :t="t"
+      :total="total"
+      :total-pages="totalPages"
+      @jump="jumpToPage"
+      @load="load"
+      @open-detail="openDetail"
+    />
 
     <ImageViewer
       :image="selectedImage"

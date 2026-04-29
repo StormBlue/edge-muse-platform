@@ -23,16 +23,18 @@ import {
 } from "../lib/cookies";
 import { appError } from "../lib/errors";
 import { randomBytes, base64UrlEncode } from "../lib/encoding";
+import { getGenerationEntryForUser } from "../lib/generationEntry";
 import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
 import { logWarn } from "../lib/log";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
 import { verifyTurnstile } from "../lib/turnstile";
 import { requireAuth } from "../middleware/auth";
 import { consumeRateLimit } from "../middleware/rateLimit";
-import type { AppEnv } from "../types";
+import type { AppEnv, AuthUser } from "../types";
 
 /** 登录体：邮箱或用户名 + 密码；Turnstile 由环境决定是否强制 */
 const loginSchema = z.object({
@@ -106,7 +108,9 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
     user: publicUser(user),
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationEntry: await getGenerationEntryForUser(c.env, publicUser(user)),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 
@@ -136,7 +140,13 @@ authRoutes.post("/logout", requireAuth, async (c) => {
 authRoutes.post("/refresh", async (c) => {
   const token = readRefreshToken(c);
   if (!token) throw appError("UNAUTHORIZED", "Refresh token required");
-  const payload = await verifyJwt(c.env.JWT_SECRET, token, "refresh");
+  let payload;
+  try {
+    payload = await verifyJwt(c.env.JWT_SECRET, token, "refresh");
+  } catch {
+    clearAuthCookies(c);
+    throw appError("UNAUTHORIZED", "Invalid or expired refresh token");
+  }
   const user = await getDb(c.env).query.users.findFirst({ where: eq(users.id, payload.sub) });
   if (!user || user.status !== "active") throw appError("UNAUTHORIZED", "User disabled or missing");
   const accessToken = await signJwt(
@@ -159,7 +169,9 @@ authRoutes.post("/refresh", async (c) => {
     user: publicUser(user),
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
-    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id)
+    providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationEntry: await getGenerationEntryForUser(c.env, publicUser(user)),
+    promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
 });
 
@@ -196,10 +208,10 @@ function publicUser(user: {
   email: string;
   username: string;
   nickname: string;
-  role: string;
-  status: string;
+  role: AuthUser["role"];
+  status: AuthUser["status"];
   preferredProviderKeyId?: string | null;
-}) {
+}): AuthUser {
   return {
     id: user.id,
     email: user.email,

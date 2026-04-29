@@ -1,9 +1,9 @@
 /**
- * Cloudflare Workflows 入口：把「可能超过单次 Worker 子请求时限」的生图 + 落库包进 **可重试的 step**。
+ * Cloudflare Workflows 入口：把「可能超过单次 Worker 子请求时限」的生图 + 落库包进 Workflow step。
  *
  * 为何需要 Workflow？
  * - 第三方 gpt-image-2 可能 30–120s+；Worker 内同步 await 长 fetch 易触发平台限制，且进程中断需可恢复。
- * - `step.do` 在失败时按平台策略重试；最终失败由 `failGenerateTask` 写 D1 + 推 DO。
+ * - 额度按任务预扣，Workflow step 显式关闭平台自动重试；失败后只允许用户手动 retry 新建任务。
  *
  * 与内联 `runGenerateTask` 关系：
  * - `startGenerateTask` 优先 `GEN_WORKFLOW.create`；若 Workflow 未配置或启动失败，会 **fallback** 到内联 `waitUntil(runGenerateTask)`（见 lib/tasks.ts）。
@@ -23,6 +23,7 @@ import {
   type TaskEvent
 } from "../lib/tasks";
 import { logError, logInfo } from "../lib/log";
+import { GENERATE_WORKFLOW_STEP_CONFIG } from "../lib/tasks/workflowConfig";
 import type { AppBindings } from "../types";
 
 /** 工作流入参：与 D1 中 `tasks.id` 一致，用于重试与幂等 */
@@ -44,16 +45,52 @@ export class GenerateImageWorkflow extends WorkflowEntrypoint<
     const notify = (payload: TaskEvent) => broadcastTaskEvent(this.env, taskId, payload);
     logInfo("workflow.generate.started", { taskId });
     try {
-      await step.do("generate-and-persist", async () => {
-        logInfo("workflow.generate.step_started", { taskId, step: "generate-and-persist" });
-        await runGenerateTask(this.env, taskId, notify);
-        logInfo("workflow.generate.step_finished", { taskId, step: "generate-and-persist" });
-        return { ok: true };
-      });
+      const result = await step.do(
+        "generate-and-persist",
+        GENERATE_WORKFLOW_STEP_CONFIG,
+        async () => {
+          try {
+            logInfo("workflow.generate.step_started", { taskId, step: "generate-and-persist" });
+            await runGenerateTask(this.env, taskId, notify);
+            logInfo("workflow.generate.step_finished", { taskId, step: "generate-and-persist" });
+            return { ok: true as const };
+          } catch (error) {
+            logError("workflow.generate.step_failed", error, { taskId });
+            return { ok: false as const, error: serializeWorkflowStepError(error) };
+          }
+        }
+      );
+      if (!result.ok) {
+        const error = workflowStepError(result.error);
+        logError("workflow.generate.failed", error, { taskId });
+        await failGenerateTask(this.env, taskId, error, notify);
+        return;
+      }
       logInfo("workflow.generate.finished", { taskId });
     } catch (error) {
       logError("workflow.generate.failed", error, { taskId });
       await failGenerateTask(this.env, taskId, error, notify);
     }
   }
+}
+
+type SerializedWorkflowStepError = {
+  name: string;
+  message: string;
+  code?: string;
+};
+
+function serializeWorkflowStepError(error: unknown): SerializedWorkflowStepError {
+  return {
+    name: error instanceof Error ? error.name : "Error",
+    message: error instanceof Error ? error.message : "Generation failed",
+    ...(error && typeof error === "object" && "code" in error ? { code: String(error.code) } : {})
+  };
+}
+
+function workflowStepError(serialized: SerializedWorkflowStepError): Error & { code?: string } {
+  const error = new Error(serialized.message) as Error & { code?: string };
+  error.name = serialized.name;
+  if (serialized.code) error.code = serialized.code;
+  return error;
 }

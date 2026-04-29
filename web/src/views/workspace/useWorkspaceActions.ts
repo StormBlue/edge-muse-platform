@@ -103,7 +103,8 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
         size: input.size,
         n: input.n,
         referenceImageIds,
-        referenceImages
+        referenceImages,
+        ...workspaceGenerationEvent(input, referenceImageIds.length)
       });
       connect(task.wsUrl);
       draftTitle.value = task.title;
@@ -130,7 +131,18 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     try {
       const body = await apiFetch<{ taskId: string; sessionId: string; messageId: string }>(
         `/tasks/${message.taskId}/retry`,
-        { method: "POST" }
+        {
+          method: "POST",
+          body: JSON.stringify({
+            generationEvent: {
+              route: "/workspace",
+              metadata: {
+                isRetry: true,
+                retryTrigger: "workspace"
+              }
+            }
+          })
+        }
       );
       const createdAt = Date.now();
       sessions.messages.push({
@@ -211,6 +223,24 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       if (candidate?.sessionId === message.sessionId && candidate.role === "user") return candidate;
     }
     return null;
+  }
+
+  function workspaceGenerationEvent(
+    input: { mode: SessionMode; size: string; n: number },
+    referenceImageCount: number
+  ) {
+    return {
+      generationEvent: {
+        route: "/workspace",
+        metadata: {
+          mode: input.mode,
+          size: input.size,
+          n: input.n,
+          referenceImageCount,
+          promptSource: "user"
+        }
+      }
+    };
   }
 
   function activeGenerationFromError(error: unknown): ActiveGeneration | null {

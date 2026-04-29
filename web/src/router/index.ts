@@ -5,6 +5,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { getCookie } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
+import { routeAccessDecision, shouldBootstrapRoute } from "./routeGuard";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -12,6 +13,7 @@ const router = createRouter({
     { path: "/", component: { render: () => null } },
     // 公开：无需已登录；其余默认需鉴权
     { path: "/login", component: () => import("@/views/auth/Login.vue"), meta: { public: true } },
+    { path: "/ai-image", component: () => import("@/views/ai-image/AiImageGeneration.vue") },
     { path: "/workspace", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/workspace/s/:sessionId", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/history", component: () => import("@/views/history/History.vue") },
@@ -49,6 +51,21 @@ const router = createRouter({
       meta: { role: "sysadmin" }
     },
     {
+      path: "/sysadmin/prompt-cases",
+      component: () => import("@/views/sysadmin/PromptCases.vue"),
+      meta: { role: "sysadmin" }
+    },
+    {
+      path: "/sysadmin/announcements",
+      component: () => import("@/views/sysadmin/Announcements.vue"),
+      meta: { role: "sysadmin" }
+    },
+    {
+      path: "/sysadmin/generation-entry",
+      component: () => import("@/views/sysadmin/GenerationEntry.vue"),
+      meta: { role: "sysadmin" }
+    },
+    {
       path: "/sysadmin/users/:userId/sessions",
       component: () => import("@/views/sysadmin/UserSessions.vue"),
       meta: { role: "sysadmin" }
@@ -67,22 +84,13 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore();
   if (!auth.loaded) {
     // 有 CSRF 的公开页也 bootstrap：可能已带会话 Cookie，避免误判未登录
-    if (!to.meta.public || auth.isAuthenticated || getCookie("em_csrf")) {
+    if (shouldBootstrapRoute(to, auth, Boolean(getCookie("em_csrf")))) {
       await auth.bootstrap();
     } else {
       auth.loaded = true;
     }
   }
-  if (!to.meta.public && !auth.isAuthenticated)
-    return `/login?redirect=${encodeURIComponent(to.fullPath)}`;
-  if (to.path === "/" || (to.path === "/login" && auth.isAuthenticated)) return homePath(auth);
-  if (to.meta.role === "admin" && !auth.isAdmin) return "/403";
-  if (to.meta.role === "sysadmin" && !auth.isSysadmin) return "/403";
-  return true;
+  return routeAccessDecision(to, auth);
 });
-
-function homePath(auth: ReturnType<typeof useAuthStore>) {
-  return auth.isSysadmin ? "/sysadmin/dashboard" : "/workspace";
-}
 
 export default router;

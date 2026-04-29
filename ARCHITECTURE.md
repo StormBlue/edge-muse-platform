@@ -42,10 +42,23 @@ flowchart LR
 - **内置服务商目录**：[`server/src/providers/catalog.ts`](server/src/providers/catalog.ts) 自动补齐/恢复「米醋API」与 Cubence 元数据；独立「服务商管理页」已移除，密钥在系统管理 → 密钥中创建。
 - **密钥解析**：[`server/src/lib/providerKeys.ts`](server/src/lib/providerKeys.ts)——用户须具备**明确**偏好密钥或 `user_provider_keys` 绑定；**无**「全局最新 key」兜底。
 
+## 生图任务管线（模块化）
+
+[`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 为对外稳定导出面；实现按目录拆分在 [`server/src/lib/tasks/`](server/src/lib/tasks/)（`create`、`dispatch`、`run`、`recovery`、`failure` 等）。路由、Workflow、DO 仅需依赖 `tasks.ts`，不需关心子路径。
+
+## 生成入口实验（A/B）
+
+- **持久化**：D1 表 `experiments`、`experiment_assignments`、`experiment_events`（见 [`docs/DATABASE.md`](docs/DATABASE.md)）。
+- **业务聚合**：[`server/src/lib/experiments.ts`](server/src/lib/experiments.ts) re-export `experimentCore`、分配、事件写入与 Schema；事件名 catalog 见 [`server/src/lib/generationExperimentEvents.ts`](server/src/lib/generationExperimentEvents.ts)。
+- **用户侧**：[`GET /api/me`](server/src/routes/me.ts) / 登录响应携带 `generationExperience`（导航目标如 `/ai-image`）；[`POST /api/experiments/events`](server/src/routes/experiments.ts) 采集客户端事件；[`POST /api/generate`](server/src/routes/generate.ts) 可附 `experimentEvent`。
+- **系统管理**：[`/api/sysadmin/experiments/generation*`](server/src/routes/sysadmin/generationExperiment.ts) 配置实验、指标与按用户覆盖。
+
+详见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。
+
 ## 请求与数据流（摘要）
 
 1. 浏览器调用 `POST /api/generate`（[`server/src/routes/generate.ts`](server/src/routes/generate.ts)）→ 创建任务、预扣配额、返回 `taskId` / WebSocket URL。
-2. Workflow 或 `waitUntil` 执行 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 中的生成管线 → 调 provider → 图片入 R2 → 更新消息附件。
+2. Workflow 或 `waitUntil` 执行 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 导出的生成管线（实现见 `lib/tasks/*`）→ 调 provider → 图片入 R2 → 更新消息附件。
 3. 任务事件经 DO 广播，前端 [`web/src/composables/useTaskWebSocket.ts`](web/src/composables/useTaskWebSocket.ts) / [`web/src/stores/session.ts`](web/src/stores/session.ts) 合并状态。
 
 ## 横切关注点
@@ -67,4 +80,5 @@ flowchart LR
 - [`docs/FRONTEND.md`](docs/FRONTEND.md) — 前端结构
 - [`docs/SECURITY.md`](docs/SECURITY.md) — 安全模型
 - [`docs/OPERATIONS.md`](docs/OPERATIONS.md) — 运维与排障
+- [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) — 生成实验与事件
 - [`AGENTS.md`](AGENTS.md) — 文档地图（给 AI 助手）

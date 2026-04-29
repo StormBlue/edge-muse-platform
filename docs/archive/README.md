@@ -7,6 +7,7 @@
 | [`开发需求.md`](./开发需求.md)                                   | v1.0 产品/技术 PRD（2026-04-25）；细节以当前代码与根目录 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) 为准                             |
 | [`开发任务清单.md`](./开发任务清单.md)                           | 分阶段任务勾选清单；状态可能滞后于主线                                                                                               |
 | [`CUBENCE_INTEGRATION_TASKS.md`](./CUBENCE_INTEGRATION_TASKS.md) | Cubence gpt-image-2 接入全过程任务、风险与代码索引；文内部分 `docs/...` 路径为当时结构，现以仓库根 `ARCHITECTURE.md` 与 `docs/` 为准 |
+| [`LARGE_FILE_REFACTOR_TASKS.md`](./LARGE_FILE_REFACTOR_TASKS.md) | 超大文件拆分与可维护性任务（T1–T8 已全部完成）；行数复扫快照仅供历史对照                                                             |
 
 ## 引用说明
 

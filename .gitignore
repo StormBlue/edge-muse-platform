@@ -26,6 +26,7 @@ yarn-error.log*
 .cache/
 tmp/
 temp/
+.tmp-*/
 
 # Tooling/editor
 .idea/
@@ -34,3 +35,4 @@ temp/
 # Local generated uploads and binaries
 uploads/
 
+.test-artifacts/

@@ -15,16 +15,16 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <section class="panel p-3">
-    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+  <section class="panel p-2.5 sm:p-3">
+    <div class="flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
       <div class="min-w-0">
         <h2 class="text-sm font-semibold">{{ t("workspace.generationMode") }}</h2>
       </div>
-      <div class="grid gap-2 sm:grid-cols-3 lg:w-auto lg:min-w-[30rem]">
+      <div class="grid w-full grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2 xl:max-w-3xl">
         <button
           v-for="option in modeOptions"
           :key="option.value"
-          class="flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition"
+          class="flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition"
           :class="[
             activeMode === option.value
               ? 'border-primary bg-primary/10 text-foreground'

@@ -29,17 +29,17 @@ const { t } = useI18n();
 
 <template>
   <section
-    class="panel flex min-h-[34rem] min-w-0 flex-col overflow-hidden"
-    :class="compact ? '' : 'task-result-panel'"
+    class="panel flex min-w-0 flex-col overflow-hidden"
+    :class="compact ? 'compact-result-panel min-h-32' : 'task-result-panel min-h-[24rem]'"
   >
-    <div class="flex items-center justify-between border-b border-border px-4 py-3">
-      <div>
+    <div class="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+      <div class="min-w-0">
         <h2 class="text-sm font-semibold">{{ title }}</h2>
-        <p v-if="subtitle !== undefined" class="mt-1 text-xs text-muted-foreground">
+        <p v-if="subtitle !== undefined" class="mt-1 truncate text-xs text-muted-foreground">
           {{ subtitle || t("workspace.oneShotEmpty") }}
         </p>
       </div>
-      <div v-if="compact" class="flex flex-wrap items-center justify-end gap-2">
+      <div v-if="compact" class="flex shrink-0 flex-wrap items-center justify-end gap-2">
         <span
           v-if="hasRunningTask"
           class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-foreground"
@@ -137,7 +137,7 @@ const { t } = useI18n();
           type="button"
           @click="$emit('selectImageId', image.id)"
         >
-          <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
+          <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
         </button>
       </div>
     </div>

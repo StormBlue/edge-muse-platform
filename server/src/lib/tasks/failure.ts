@@ -4,6 +4,7 @@ import { messages, tasks } from "../../db/schema";
 import { now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn } from "../log";
+import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { refundQuota } from "../quota";
 import { notifyTaskEvent } from "./events";
 import { markGenerateTaskFailed } from "./state";
@@ -85,6 +86,31 @@ export async function failGenerateTask(
       userId: task.userId,
       imageCount: params.n,
       code
+    });
+  }
+  try {
+    await recordTaskResultGenerationEvent(env, {
+      userId: task.userId,
+      taskId,
+      eventName: "generate_failed",
+      metadata: {
+        code,
+        preservedImageCount: preservedImages.length
+      }
+    });
+    logInfo("task.fail.generation_event_result_written", {
+      taskId,
+      userId: task.userId,
+      code,
+      preservedImageCount: preservedImages.length
+    });
+  } catch (eventError) {
+    // 任务失败状态已经落库，用量事件失败不能再影响业务终态。
+    logWarn("task.fail.generation_event_result_failed", {
+      taskId,
+      userId: task.userId,
+      code,
+      message: eventError instanceof Error ? eventError.message : "unknown"
     });
   }
   await notifyTaskEvent(taskId, notify, {

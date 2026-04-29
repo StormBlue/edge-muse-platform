@@ -12,6 +12,7 @@
 | [FRONTEND.md](./FRONTEND.md)       | Vue 3 应用结构                     |
 | [SECURITY.md](./SECURITY.md)       | 认证、密钥、数据与威胁边界         |
 | [RELIABILITY.md](./RELIABILITY.md) | 任务恢复、cron、备份与降级         |
+| [EXPERIMENTS.md](./EXPERIMENTS.md) | 生成入口 A/B、实验事件与配置       |
 | [DEPLOYMENT.md](./DEPLOYMENT.md)   | Wrangler、CI/CD、环境              |
 | [TESTING.md](./TESTING.md)         | 测试命令与范围                     |
 
@@ -27,13 +28,15 @@
 
 ## 质量与历史
 
-| 文件                                           | 用途                         |
-| ---------------------------------------------- | ---------------------------- |
-| [QUALITY_SCORE.md](./QUALITY_SCORE.md)         | 模块质量与已知债             |
-| [design-docs/index.md](./design-docs/index.md) | 设计决策索引                 |
-| [archive/README.md](./archive/README.md)       | 已归档 PRD、Cubence 任务全书 |
+| 文件                                           | 用途                               |
+| ---------------------------------------------- | ---------------------------------- |
+| [QUALITY_SCORE.md](./QUALITY_SCORE.md)         | 模块质量与已知债                   |
+| [design-docs/index.md](./design-docs/index.md) | 设计决策索引                       |
+| [exec-plans/README.md](./exec-plans/README.md) | 活跃开发计划与任务清单             |
+| [archive/README.md](./archive/README.md)       | 已归档 PRD、Cubence 与拆分任务全书 |
 
 ## 已合并 / 迁移说明
 
 - **安全**：原 `SECURITY_REVIEW.md` 的要点已并入 [`SECURITY.md`](./SECURITY.md)；旧文件改为重定向。
-- **架构**：权威内容在根目录 [`ARCHITECTURE.md`](../ARCHITECTURE.md)。
+- **架构**：权威内容在根目录 [`ARCHITECTURE.md`](../ARCHITECTURE.md)；`docs/ARCHITECTURE.md` 仅保留跳转。
+- **超大文件拆分任务**：全文在 [`archive/LARGE_FILE_REFACTOR_TASKS.md`](./archive/LARGE_FILE_REFACTOR_TASKS.md)；[`LARGE_FILE_REFACTOR_TASKS.md`](./LARGE_FILE_REFACTOR_TASKS.md) 为短链跳转。

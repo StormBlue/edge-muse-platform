@@ -26,7 +26,7 @@
   "observability": {
     "logs": {
       "enabled": true,
-      "invocation_logs": true
+      "invocation_logs": false
     },
     "traces": {
       "enabled": false
@@ -38,8 +38,13 @@
   "vars": {
     "ENVIRONMENT": "production",
     "AI_GATEWAY_URL": "",
+    "PROMPT_ASSISTANT_ENABLED": "true",
+    "PROMPT_ASSISTANT_MODEL": "@cf/meta/llama-3.1-8b-instruct",
     "TURNSTILE_SITE_KEY": "0x4AAAAAADDgU0ueTVgP8AUe",
     "ALERT_EMAIL": ""
+  },
+  "ai": {
+    "binding": "AI"
   },
   "d1_databases": [
     {

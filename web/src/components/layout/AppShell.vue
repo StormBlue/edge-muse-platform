@@ -6,166 +6,34 @@
  * - **配额**：侧栏底部卡片展示「剩余/总额」或无限；
  * - **路由高亮**：`isActiveNav` 用路径前三段前缀匹配，避免 `/sysadmin/foo` 与子路径全等失败。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useI18n } from "vue-i18n";
-import { RouterLink, useRoute, useRouter } from "vue-router";
-import {
-  History,
-  Image,
-  KeyRound,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  MessagesSquare,
-  Monitor,
-  Moon,
-  Settings,
-  SlidersHorizontal,
-  Sun,
-  Users
-} from "lucide-vue-next";
+import { RouterLink } from "vue-router";
+import { LogOut, Menu, Settings } from "lucide-vue-next";
+import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useAuthStore } from "@/stores/auth";
-import { type ThemeMode, useUiStore } from "@/stores/ui";
+import { useAppShellController } from "./useAppShellController";
 
-const auth = useAuthStore();
-const ui = useUiStore();
-const route = useRoute();
-const router = useRouter();
-const { t } = useI18n();
-const themeMenuOpen = ref(false);
-const themeMenuRef = ref<HTMLElement | null>(null);
-/** ≥1024px 视为桌面：用折叠侧栏而非抽屉 */
-const isDesktopSidebar = ref(false);
-let sidebarModeQuery: MediaQueryList | null = null;
-let stopSidebarModeSync: (() => void) | null = null;
-
-const quotaLabel = computed(() => {
-  if (!auth.quota) return "--";
-  if (auth.quota.allocatedQuota === null) return t("common.unlimited");
-  return `${Math.max(auth.quota.allocatedQuota - auth.quota.usedQuota, 0)}/${auth.quota.allocatedQuota}`;
-});
-
-/** 全量导航项；sysadmin 把系统看板放首位，其它角色仍从图像生成开始。 */
-const nav = computed(() => {
-  const dashboardEntry = {
-    to: "/sysadmin/dashboard",
-    label: t("nav.dashboard"),
-    icon: LayoutDashboard,
-    show: auth.isSysadmin
-  };
-  const sharedEntries = [
-    { to: "/workspace", label: t("nav.workspace"), icon: Image, show: true },
-    { to: "/history", label: t("nav.history"), icon: History, show: true },
-    { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin }
-  ];
-  const sysadminEntries = [
-    { to: "/sysadmin/keys", label: t("nav.keys"), icon: KeyRound, show: auth.isSysadmin },
-    {
-      to: "/sysadmin/users/_/sessions",
-      label: t("nav.sessionAudit"),
-      icon: MessagesSquare,
-      show: auth.isSysadmin
-    },
-    {
-      to: "/sysadmin/preferences",
-      label: t("nav.preferences"),
-      icon: SlidersHorizontal,
-      show: auth.isSysadmin
-    }
-  ];
-  return auth.isSysadmin
-    ? [dashboardEntry, ...sharedEntries, ...sysadminEntries]
-    : [...sharedEntries, dashboardEntry, ...sysadminEntries];
-});
-
-const visibleNav = computed(() => nav.value.filter((entry) => entry.show));
-
-const themeOptions = computed(() => [
-  { value: "auto" as ThemeMode, label: t("theme.system"), icon: Monitor },
-  { value: "light" as ThemeMode, label: t("theme.light"), icon: Sun },
-  { value: "dark" as ThemeMode, label: t("theme.dark"), icon: Moon }
-]);
-
-const currentTheme = computed(
-  () => themeOptions.value.find((option) => option.value === ui.theme) ?? themeOptions.value[0]
-);
-
-const themeTitle = computed(() => `${t("theme.label")}: ${currentTheme.value.label}`);
-
-const sidebarToggleLabel = computed(() => {
-  if (isDesktopSidebar.value) {
-    return ui.sidebarCollapsed ? t("shell.expandSidebar") : t("shell.collapseSidebar");
-  }
-  return ui.sidebarOpen ? t("shell.closeSidebar") : t("shell.openSidebar");
-});
-
-const userInitial = computed(() => auth.user?.nickname?.trim().charAt(0).toUpperCase() || "U");
-
-const userSummaryTitle = computed(() =>
-  [auth.user?.nickname, auth.user?.email].filter(Boolean).join(" · ")
-);
-
-function selectTheme(theme: ThemeMode) {
-  ui.setTheme(theme);
-  themeMenuOpen.value = false;
-}
-
-/** 取 `to` 的前三级 path 作前缀，避免子路由丢高亮（如 /sysadmin/users/xxx/sessions） */
-function isActiveNav(to: string) {
-  return route.path.startsWith(to.split("/").slice(0, 3).join("/"));
-}
-
-function syncSidebarMode() {
-  isDesktopSidebar.value = sidebarModeQuery?.matches ?? false;
-  if (isDesktopSidebar.value) ui.closeSidebar();
-}
-
-/** 桌面：折叠/展开侧栏宽；移动：开关抽屉 */
-function toggleSidebarNav() {
-  if (isDesktopSidebar.value) {
-    ui.toggleSidebarCollapsed();
-    return;
-  }
-  ui.toggleSidebar();
-}
-
-/** 点导航链接触发：仅移动关抽屉，避免桌面误关折叠态 */
-function closeMobileSidebar() {
-  if (!isDesktopSidebar.value) ui.closeSidebar();
-}
-
-async function logout() {
-  await auth.logout();
-  await router.push("/login");
-}
-
-/** 点击主题菜单外关闭；目标在 ref 内则忽略 */
-function closeThemeMenu(event: PointerEvent) {
-  if (!themeMenuOpen.value) return;
-  if (themeMenuRef.value?.contains(event.target as Node)) return;
-  themeMenuOpen.value = false;
-}
-
-// 换页后收起移动侧栏，避免挡内容
-watch(
-  () => route.fullPath,
-  () => closeMobileSidebar()
-);
-
-onMounted(() => {
-  document.addEventListener("pointerdown", closeThemeMenu);
-  sidebarModeQuery = window.matchMedia("(min-width: 1024px)");
-  syncSidebarMode();
-  sidebarModeQuery.addEventListener("change", syncSidebarMode);
-  stopSidebarModeSync = () => sidebarModeQuery?.removeEventListener("change", syncSidebarMode);
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener("pointerdown", closeThemeMenu);
-  stopSidebarModeSync?.();
-});
+const {
+  auth,
+  ui,
+  t,
+  themeMenuOpen,
+  themeMenuRef,
+  isDesktopSidebar,
+  quotaLabel,
+  visibleNav,
+  themeOptions,
+  currentTheme,
+  themeTitle,
+  sidebarToggleLabel,
+  userInitial,
+  userSummaryTitle,
+  selectTheme,
+  isActiveNav,
+  toggleSidebarNav,
+  closeMobileSidebar,
+  logout
+} = useAppShellController();
 </script>
 
 <template>
@@ -260,6 +128,7 @@ onBeforeUnmount(() => {
           {{ t("shell.tagline") }}
         </div>
         <div class="flex items-center gap-2">
+          <AnnouncementBell />
           <select
             class="ui-field h-9 w-24 px-2 text-sm"
             :value="ui.locale"

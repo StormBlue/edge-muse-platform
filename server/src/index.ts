@@ -1,19 +1,24 @@
 /**
  * Cloudflare Worker 入口：Hono 挂载 REST `/api/*`，**以及** 根路径 WebSocket `GET /ws/task/:id`（与 POST /api/generate 返回的 wsUrl 一致）。
  *
- * `fetch` 导出上在特定路径会 `scheduleInterruptedTaskRecovery`：对「排队中未消费」的任务做轻量重试入口（详见 lib/tasks `recoverInterruptedGenerateTasks`）。
+ * `fetch` 导出上在特定路径会 `scheduleInterruptedTaskRecovery`：对「已预扣配额但尚未点火」的 queued 任务做中断恢复（详见 lib/tasks）。
  * `scheduled`：Cron 触发的维护任务（中断恢复、R2 清理、运维摘要等）。
  */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { announcementRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
 import { meRoutes } from "./routes/me";
 import { sessionRoutes, historyRoutes } from "./routes/sessions";
 import { generateRoutes, handleTaskWebSocket } from "./routes/generate";
 import { imageRoutes } from "./routes/images";
+import { generationEventRoutes } from "./routes/generationEvents";
+import { promptAssistantRoutes } from "./routes/promptAssistant";
+import { promptCaseRoutes } from "./routes/promptCases";
 import { uploadRoutes } from "./routes/uploads";
 import { adminRoutes } from "./routes/admin";
 import { sysadminRoutes } from "./routes/sysadmin";
+import { requireAuth } from "./middleware/auth";
 import { requestLogger } from "./middleware/logger";
 import { securityHeaders } from "./middleware/security";
 import { csrf } from "./middleware/csrf";
@@ -21,6 +26,7 @@ import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
+import { getPublicTurnstileSiteKey } from "./lib/turnstile";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -41,7 +47,7 @@ app.use(
 );
 app.use("/api/*", csrf);
 
-// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框）----------
+// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框；dev 环境返回 null）----------
 app.get("/api/health", (c) =>
   c.json({
     ok: true,
@@ -53,7 +59,7 @@ app.get("/api/health", (c) =>
 
 app.get("/api/config", (c) =>
   c.json({
-    turnstileSiteKey: c.env.TURNSTILE_SITE_KEY || null
+    turnstileSiteKey: getPublicTurnstileSiteKey(c.env)
   })
 );
 
@@ -65,10 +71,14 @@ app.route("/api/history", historyRoutes);
 app.route("/api", generateRoutes);
 app.route("/api", imageRoutes);
 app.route("/api", uploadRoutes);
+app.route("/api/generation", generationEventRoutes);
+app.route("/api/prompt-assistant", promptAssistantRoutes);
+app.route("/api/prompt-cases", promptCaseRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/announcements", announcementRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
 /** 浏览器 WebSocket 连接点：`wss://<host>/ws/task/<taskId>`（无前缀 /api） */
-app.get("/ws/task/:id", handleTaskWebSocket);
+app.get("/ws/task/:id", requireAuth, handleTaskWebSocket);
 
 export default {
   fetch: (request, env, ctx) => {
