@@ -56,8 +56,13 @@ const router = createRouter({
       meta: { role: "sysadmin" }
     },
     {
-      path: "/sysadmin/experiments/generation",
-      component: () => import("@/views/sysadmin/GenerationExperiment.vue"),
+      path: "/sysadmin/announcements",
+      component: () => import("@/views/sysadmin/Announcements.vue"),
+      meta: { role: "sysadmin" }
+    },
+    {
+      path: "/sysadmin/generation-entry",
+      component: () => import("@/views/sysadmin/GenerationEntry.vue"),
       meta: { role: "sysadmin" }
     },
     {

@@ -6,7 +6,16 @@
  * 外层页面只负责案例选择和实验事件，避免页面组件继续膨胀。
  */
 import { computed, ref } from "vue";
-import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles, X } from "lucide-vue-next";
+import {
+  Copy,
+  Image as ImageIcon,
+  Loader2,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  WandSparkles,
+  X
+} from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import AiImageFailurePanel from "./AiImageFailurePanel.vue";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
@@ -40,6 +49,9 @@ const props = defineProps<{
   activeFailed: boolean;
   failedTitle: string;
   failedMessage: string;
+  generationProgress: number;
+  generationPrompt: string;
+  generationStatusLabel: string;
   submitting: boolean;
   hasRunningTask: boolean;
   workflowExpanded: boolean;
@@ -56,6 +68,7 @@ const emit = defineEmits<{
   fillAssistant: [value: { prompt: string; recommendedSize: string; turnCount: number }];
   openAssistant: [];
   retryFailed: [];
+  openImage: [image: ImageAttachment];
   submit: [];
 }>();
 
@@ -67,8 +80,9 @@ const referenceDescription = ref("");
 const assistantOpenTrackedKeys = new Set<string>();
 
 const hasPrompt = computed(() => props.prompt.trim().length > 0);
+const interactionLocked = computed(() => props.submitting || props.hasRunningTask);
 const canAcceptReferenceFiles = computed(
-  () => props.mode === "image2image" && !props.submitting && !props.hasRunningTask
+  () => props.mode === "image2image" && !interactionLocked.value
 );
 const submitDisabled = computed(() =>
   Boolean(
@@ -114,7 +128,7 @@ function addReferenceFiles(files: File[]) {
 }
 
 function openAssistantView() {
-  if (!props.assistantEnabled) return;
+  if (!props.assistantEnabled || interactionLocked.value) return;
   trackAssistantOpen();
   if (!props.workflowExpanded || isMobileAssistantViewport()) {
     assistantDialogOpen.value = true;
@@ -152,8 +166,10 @@ function isMobileAssistantViewport() {
   >
     <section class="prompt-compose-panel panel flex min-h-[32rem] flex-col overflow-hidden">
       <div class="border-b border-border px-4 py-3">
-        <h2 class="text-sm font-semibold">{{ t("aiImage.promptPanel") }}</h2>
-        <p class="mt-1 truncate text-xs text-muted-foreground">{{ selectedCaseTitle }}</p>
+        <h2 class="truncate text-sm font-semibold">{{ selectedCaseTitle }}</h2>
+        <p class="mt-1 truncate text-xs text-muted-foreground">
+          {{ caseItem ? caseItem.category : t("aiImage.creationMode") }}
+        </p>
       </div>
       <div class="thin-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto p-4">
         <div>
@@ -167,6 +183,7 @@ function isMobileAssistantViewport() {
               class="h-10 rounded-lg border text-sm font-semibold"
               :class="mode === item ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'"
               type="button"
+              :disabled="interactionLocked"
               @click="emit('update:mode', item)"
             >
               {{ t(`workspace.${item}`) }}
@@ -193,6 +210,7 @@ function isMobileAssistantViewport() {
                 size === option.value ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'
               "
               type="button"
+              :disabled="interactionLocked"
               @click="emit('update:size', option.value)"
             >
               <span class="block text-sm font-semibold">{{ option.ratio }}</span>
@@ -209,6 +227,7 @@ function isMobileAssistantViewport() {
             class="ui-field min-h-44 resize-none p-3 text-sm leading-6"
             :placeholder="t('aiImage.promptPlaceholder')"
             :value="prompt"
+            :disabled="interactionLocked"
             @input="onPromptInput"
           />
         </label>
@@ -217,6 +236,7 @@ function isMobileAssistantViewport() {
           v-if="assistantEnabled && hasPrompt && !workflowExpanded"
           class="ui-button ui-button-secondary h-9 text-xs"
           type="button"
+          :disabled="interactionLocked"
           @click="openAssistantView"
         >
           <WandSparkles class="h-3.5 w-3.5" />
@@ -232,18 +252,52 @@ function isMobileAssistantViewport() {
           @remove-file="(index) => emit('removeFile', index)"
         />
 
-        <div v-if="resultImages.length" class="grid grid-cols-2 gap-2">
-          <img
+        <div v-if="hasRunningTask" class="rounded-lg border border-primary/30 bg-primary/10 p-4">
+          <div class="flex items-center gap-3">
+            <span
+              class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
+            >
+              <Loader2 class="h-5 w-5 animate-spin" />
+            </span>
+            <div class="min-w-0 flex-1">
+              <p class="text-sm font-semibold">{{ generationStatusLabel }}</p>
+              <p class="mt-1 truncate text-xs text-muted-foreground">
+                {{ generationPrompt || t("workspace.generationHint") }}
+              </p>
+            </div>
+            <span class="text-sm font-semibold tabular-nums">
+              {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+            </span>
+          </div>
+          <div class="mt-3 h-2.5 overflow-hidden rounded-full bg-primary/15">
+            <div
+              class="h-full rounded-full bg-primary transition-all duration-500"
+              :style="{ width: `${generationProgress}%` }"
+            ></div>
+          </div>
+        </div>
+
+        <div v-if="resultImages.length" class="ai-result-grid">
+          <button
             v-for="image in resultImages"
             :key="image.id"
-            class="aspect-square rounded-lg border border-border object-cover"
-            :src="image.url"
-            :alt="image.prompt ?? ''"
-          />
+            class="ai-result-tile group"
+            type="button"
+            :disabled="interactionLocked"
+            :title="t('workspace.openPreview')"
+            @click="emit('openImage', image)"
+          >
+            <img class="h-full w-full object-contain" :src="image.url" :alt="image.prompt ?? ''" />
+            <span
+              class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/85 text-foreground opacity-0 transition group-hover:opacity-100"
+            >
+              <ImageIcon class="h-4 w-4" />
+            </span>
+          </button>
         </div>
 
         <AiImageFailurePanel
-          v-if="activeFailed"
+          v-if="activeFailed && !hasRunningTask"
           :message="failedMessage"
           :title="failedTitle"
           @retry="emit('retryFailed')"
@@ -252,11 +306,21 @@ function isMobileAssistantViewport() {
 
       <div class="flex flex-wrap justify-between gap-2 border-t border-border p-4">
         <div class="flex gap-2">
-          <button class="ui-button ui-button-secondary" type="button" @click="emit('copyPrompt')">
+          <button
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="interactionLocked || !hasPrompt"
+            @click="emit('copyPrompt')"
+          >
             <Copy class="h-4 w-4" />
             {{ t("promptCases.copyPrompt") }}
           </button>
-          <button class="ui-button ui-button-secondary" type="button" @click="emit('clearPrompt')">
+          <button
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="interactionLocked || !hasPrompt"
+            @click="emit('clearPrompt')"
+          >
             <Trash2 class="h-4 w-4" />
             {{ t("aiImage.clearPrompt") }}
           </button>
@@ -291,15 +355,17 @@ function isMobileAssistantViewport() {
             <button
               class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
               type="button"
+              :disabled="interactionLocked"
               @click="assistantPanelRef?.reset()"
             >
               <RotateCcw class="h-3.5 w-3.5" />
-              {{ t("common.retry") }}
+              {{ t("aiImage.restartAssistant") }}
             </button>
             <button
               class="ui-button ui-button-secondary h-8 w-8 p-0"
               type="button"
               :aria-label="t('viewer.close')"
+              :disabled="interactionLocked"
               @click="assistantDialogOpen = false"
             >
               <X class="h-4 w-4" />
@@ -315,6 +381,7 @@ function isMobileAssistantViewport() {
           :reference-count="referenceCount"
           :reference-description="referenceDescription"
           :reference-context-key="referenceContextKey"
+          :disabled="interactionLocked"
           @fill="fillAssistantPrompt"
           @open="trackAssistantOpen"
         />
@@ -326,6 +393,25 @@ function isMobileAssistantViewport() {
 <style scoped>
 .assistant-dialog-header {
   display: none;
+}
+
+.ai-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 0.75rem;
+}
+
+.ai-result-tile {
+  position: relative;
+  display: flex;
+  aspect-ratio: 1 / 1;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--muted), transparent 55%);
 }
 
 .ai-prompt-workspace {

@@ -4,7 +4,7 @@ import { messages } from "../../db/schema";
 import { now } from "../id";
 import { stringifyJson } from "../json";
 import { logInfo, logWarn } from "../log";
-import { recordTaskResultExperimentEvent } from "../experiments";
+import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { finishRunningTaskIfCurrent } from "./state";
 import { cleanupTaskGeneratedImagesExcept, loadTaskGeneratedImages } from "./taskImages";
 import type { AppBindings, GenerateParams, TaskStatus } from "../../types";
@@ -107,7 +107,7 @@ export async function recoverTaskFromPersistedImages(
     recoveredImageCount: images.length
   });
   try {
-    await recordTaskResultExperimentEvent(env, {
+    await recordTaskResultGenerationEvent(env, {
       userId: input.task.userId,
       taskId: input.task.id,
       eventName: hasExpectedImages ? "generate_succeeded" : "generate_failed",
@@ -117,14 +117,14 @@ export async function recoverTaskFromPersistedImages(
         resultRecoverySource: "persisted_images"
       }
     });
-    logInfo("task.recovery.experiment_result_written", {
+    logInfo("task.recovery.generation_event_result_written", {
       taskId: input.task.id,
       userId: input.task.userId,
       status,
       recoveredImageCount: images.length
     });
   } catch (eventError) {
-    logWarn("task.recovery.experiment_result_failed", {
+    logWarn("task.recovery.generation_event_result_failed", {
       taskId: input.task.id,
       userId: input.task.userId,
       status,

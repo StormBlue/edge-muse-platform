@@ -6,7 +6,14 @@
  * 与产品文档数据模型一致，迁移由 drizzle-kit 生成到 `db/migrations`。
  */
 import { relations, type InferSelectModel, type InferInsertModel } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex
+} from "drizzle-orm/sqlite-core";
 
 /**
  * 用户主表：sysadmin / admin / user；普通用户由租户 admin 在后台创建，`createdBy` 指向创建者。
@@ -335,61 +342,25 @@ export const promptCaseImports = sqliteTable(
 );
 
 /**
- * 固定生成体验实验：MVP 不做通用实验平台，先围绕 generation_experience 管理入口策略与流量。
+ * 生成入口设置：只控制普通用户是否看到旧版「图像生成」与新版「AI 图像生成」。
+ * 单行 key 固定为 `default`；sysadmin 始终能看到两个入口，便于运维。
  */
-export const experiments = sqliteTable("experiments", {
+export const generationEntrySettings = sqliteTable("generation_entry_settings", {
   key: text("key").primaryKey(),
-  status: text("status", { enum: ["draft", "running", "paused", "archived"] }).notNull(),
-  strategy: text("strategy", {
-    enum: ["parallel", "force_legacy", "force_ai", "ab_test"]
-  }).notNull(),
-  trafficPercent: integer("traffic_percent").notNull().default(50),
-  salt: text("salt").notNull(),
-  scope: text("scope").notNull().default("{}"),
-  createdBy: text("created_by").references(() => users.id),
+  showWorkspace: integer("show_workspace", { mode: "boolean" }).notNull().default(true),
+  showAiImage: integer("show_ai_image", { mode: "boolean" }).notNull().default(true),
   updatedBy: text("updated_by").references(() => users.id),
-  createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull()
 });
 
-/** 用户到实验变体的稳定分配；手工覆盖预留给后续灰度白名单。 */
-export const experimentAssignments = sqliteTable(
-  "experiment_assignments",
+/** 生成入口用量事件：只保留页面、事件名、任务/案例引用和安全 metadata。 */
+export const generationEvents = sqliteTable(
+  "generation_events",
   {
     id: text("id").primaryKey(),
-    experimentKey: text("experiment_key")
-      .notNull()
-      .references(() => experiments.key),
-    userId: text("user_id")
-      .notNull()
-      .references(() => users.id),
-    variant: text("variant", { enum: ["A", "B"] }).notNull(),
-    manualOverride: integer("manual_override", { mode: "boolean" }).notNull().default(false),
-    assignedAt: integer("assigned_at").notNull(),
-    updatedAt: integer("updated_at").notNull()
-  },
-  (table) => ({
-    userExperimentIdx: uniqueIndex("idx_experiment_assignments_user_key").on(
-      table.userId,
-      table.experimentKey
-    ),
-    experimentVariantIdx: index("idx_experiment_assignments_variant").on(
-      table.experimentKey,
-      table.variant
-    )
-  })
-);
-
-/** 实验事件只存结构化字段；metadata 禁止写完整 prompt 或参考图内容。 */
-export const experimentEvents = sqliteTable(
-  "experiment_events",
-  {
-    id: text("id").primaryKey(),
-    experimentKey: text("experiment_key").notNull(),
     userId: text("user_id").references(() => users.id),
-    variant: text("variant", { enum: ["A", "B", "parallel", "sysadmin"] }).notNull(),
+    route: text("route", { enum: ["/workspace", "/ai-image"] }).notNull(),
     eventName: text("event_name").notNull(),
-    route: text("route"),
     caseId: text("case_id"),
     taskId: text("task_id"),
     metadata: text("metadata").notNull().default("{}"),
@@ -397,18 +368,59 @@ export const experimentEvents = sqliteTable(
     createdAt: integer("created_at").notNull()
   },
   (table) => ({
-    experimentCreatedIdx: index("idx_experiment_events_created").on(
-      table.experimentKey,
-      table.createdAt
+    routeCreatedIdx: index("idx_generation_events_route_created").on(table.route, table.createdAt),
+    eventNameIdx: index("idx_generation_events_name").on(table.eventName),
+    taskEventIdx: index("idx_generation_events_task_name").on(table.taskId, table.eventName)
+  })
+);
+
+/**
+ * 系统公告：sysadmin 发布，普通用户在右上角公告中心查看。
+ * `targetAudience=admins` 面向 admin 与 sysadmin；`all` 面向所有角色。
+ */
+export const announcements = sqliteTable(
+  "announcements",
+  {
+    id: text("id").primaryKey(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    targetAudience: text("target_audience", { enum: ["all", "admins"] })
+      .notNull()
+      .default("all"),
+    status: text("status", { enum: ["draft", "published", "archived"] })
+      .notNull()
+      .default("draft"),
+    createdBy: text("created_by").references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
+    publishedAt: integer("published_at"),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (table) => ({
+    statusPublishedIdx: index("idx_announcements_status_published").on(
+      table.status,
+      table.publishedAt
     ),
-    experimentEventIdx: index("idx_experiment_events_name").on(
-      table.experimentKey,
-      table.eventName
-    ),
-    experimentVariantIdx: index("idx_experiment_events_variant").on(
-      table.experimentKey,
-      table.variant
-    )
+    targetStatusIdx: index("idx_announcements_target_status").on(table.targetAudience, table.status)
+  })
+);
+
+/** 用户已读公告：用于右上角新消息红点和详情页已读状态。 */
+export const announcementReads = sqliteTable(
+  "announcement_reads",
+  {
+    announcementId: text("announcement_id")
+      .notNull()
+      .references(() => announcements.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    readAt: integer("read_at").notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.announcementId, table.userId] }),
+    userReadIdx: index("idx_announcement_reads_user").on(table.userId, table.readAt)
   })
 );
 
@@ -459,6 +471,7 @@ export type Task = InferSelectModel<typeof tasks>;
 export type ImageObject = InferSelectModel<typeof imageObjects>;
 export type PromptCase = InferSelectModel<typeof promptCases>;
 export type PromptCaseImport = InferSelectModel<typeof promptCaseImports>;
-export type Experiment = InferSelectModel<typeof experiments>;
-export type ExperimentAssignment = InferSelectModel<typeof experimentAssignments>;
-export type ExperimentEvent = InferSelectModel<typeof experimentEvents>;
+export type GenerationEntrySettings = InferSelectModel<typeof generationEntrySettings>;
+export type GenerationEvent = InferSelectModel<typeof generationEvents>;
+export type Announcement = InferSelectModel<typeof announcements>;
+export type AnnouncementRead = InferSelectModel<typeof announcementReads>;

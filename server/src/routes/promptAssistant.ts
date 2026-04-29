@@ -13,7 +13,7 @@ import {
 } from "../lib/promptAssistant";
 import { appError } from "../lib/errors";
 import { logWarn } from "../lib/log";
-import { recordExperimentEvent } from "../lib/experiments";
+import { recordGenerationEvent } from "../lib/generationEntry";
 import { consumeRateLimit } from "../middleware/rateLimit";
 import { requireAuth } from "../middleware/auth";
 import type { AppEnv } from "../types";
@@ -36,7 +36,7 @@ promptAssistantRoutes.post(
     const user = c.get("user");
     const input = c.req.valid("json");
     const result = await runPromptAssistantTurn(c.env, input);
-    await recordAssistantExperimentEvents(c.env, user, input, result, c.get("traceId"));
+    await recordAssistantGenerationEvents(c.env, user, input, result, c.get("traceId"));
     console.info("prompt_assistant_turn", {
       traceId: c.get("traceId"),
       userId: user.id,
@@ -46,11 +46,11 @@ promptAssistantRoutes.post(
   }
 );
 
-type PromptAssistantUser = Parameters<typeof recordExperimentEvent>[1];
+type PromptAssistantUser = Parameters<typeof recordGenerationEvent>[1];
 type PromptAssistantInput = Parameters<typeof assistantLogPayload>[0];
 type PromptAssistantResult = Parameters<typeof assistantLogPayload>[1];
 
-async function recordAssistantExperimentEvents(
+async function recordAssistantGenerationEvents(
   env: Cloudflare.Env,
   user: PromptAssistantUser,
   input: PromptAssistantInput,
@@ -65,14 +65,14 @@ async function recordAssistantExperimentEvents(
     model: result.model
   };
   try {
-    await recordExperimentEvent(env, user, {
+    await recordGenerationEvent(env, user, {
       eventName: "assistant_turn_requested",
       route: "/ai-image",
       caseId: input.caseId,
       metadata
     });
     if (result.degraded) {
-      await recordExperimentEvent(env, user, {
+      await recordGenerationEvent(env, user, {
         eventName: "assistant_turn_degraded",
         route: "/ai-image",
         caseId: input.caseId,
@@ -80,7 +80,7 @@ async function recordAssistantExperimentEvents(
       });
     }
   } catch (error) {
-    logWarn("prompt_assistant.experiment_event_failed", {
+    logWarn("prompt_assistant.generation_event_failed", {
       traceId,
       userId: user.id,
       message: error instanceof Error ? error.message : "unknown"

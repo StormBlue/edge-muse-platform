@@ -27,7 +27,11 @@ export const promptAssistantTurnSchema = z.object({
     .max(MAX_PROMPT_ASSISTANT_TURNS - 1),
   caseId: z.string().trim().max(120).optional(),
   caseTitle: z.string().trim().max(120).optional(),
+  casePromptSummary: z.string().trim().max(1000).optional(),
   casePromptTemplate: z.string().trim().max(4000).optional(),
+  caseCategory: z.string().trim().max(120).optional(),
+  caseTags: z.array(z.string().trim().max(40)).max(20).optional(),
+  caseRecommendedSize: z.string().trim().max(40).optional(),
   provider: z
     .object({
       model: z.string().trim().max(120).optional(),
@@ -135,7 +139,12 @@ function assertTotalInputLength(input: PromptAssistantTurnInput) {
 function totalInputLength(input: PromptAssistantTurnInput) {
   return (
     input.messages.reduce((sum, message) => sum + message.content.length, 0) +
+    (input.caseTitle?.length ?? 0) +
+    (input.casePromptSummary?.length ?? 0) +
     (input.casePromptTemplate?.length ?? 0) +
+    (input.caseCategory?.length ?? 0) +
+    (input.caseTags?.join("").length ?? 0) +
+    (input.caseRecommendedSize?.length ?? 0) +
     (input.referenceBrief?.length ?? 0)
   );
 }
@@ -146,6 +155,9 @@ function systemPrompt(input: PromptAssistantTurnInput) {
     `你是 GPT-Image 2 图片生成提示词顾问，必须使用${language}回答。`,
     "只帮助 text2image 与 image2image，不处理视频生成或连续 chat 模式。",
     "像自然聊天一样追问，不要提到轮次编号；最多追问 8 次，信息足够就输出 finalPrompt。",
+    "如果提供了 selectedCase，把案例模板、摘要、分类、标签和推荐画幅视为创作基底。",
+    "围绕所选案例只追问缺失的用户变量，例如主体、品牌/产品、文案、受众、禁忌和必须保留的细节；不要重复询问案例上下文已经明确的信息。",
+    "finalPrompt 需要继承案例模板的结构、用途和风格，并融合用户补充，而不是重新发散到无关方向。",
     "finalPrompt 必须面向图片生成，包含用途、主体、场景、构图、风格光线、文字和约束。",
     "不要输出 Markdown；只输出 JSON。",
     'JSON 字段：assistantMessage, readiness("collecting"|"ready"), brief, finalPrompt, recommendedSize, warnings。'
@@ -156,12 +168,34 @@ function userPrompt(input: PromptAssistantTurnInput) {
   return JSON.stringify({
     mode: input.mode,
     turnIndex: input.turnIndex,
-    caseTitle: input.caseTitle,
-    casePromptTemplate: input.casePromptTemplate,
+    selectedCase: selectedCaseContext(input),
     provider: input.provider,
     referenceBrief: input.referenceBrief,
     messages: input.messages
   });
+}
+
+function selectedCaseContext(input: PromptAssistantTurnInput) {
+  if (
+    !input.caseId &&
+    !input.caseTitle &&
+    !input.casePromptSummary &&
+    !input.casePromptTemplate &&
+    !input.caseCategory &&
+    !input.caseTags?.length &&
+    !input.caseRecommendedSize
+  ) {
+    return undefined;
+  }
+  return {
+    id: input.caseId,
+    title: input.caseTitle,
+    category: input.caseCategory,
+    tags: input.caseTags,
+    recommendedSize: input.caseRecommendedSize,
+    promptSummary: input.casePromptSummary,
+    promptTemplate: input.casePromptTemplate
+  };
 }
 
 function extractAiText(result: unknown): string {
@@ -215,12 +249,25 @@ function summarizeMessages(input: PromptAssistantTurnInput): PromptAssistantResu
     .map((message) => message.content)
     .join("；")
     .slice(0, 600);
+  const caseStyle = [
+    input.casePromptSummary,
+    input.caseTags?.length ? `标签：${input.caseTags.join("、")}` : undefined
+  ]
+    .filter(Boolean)
+    .join("；");
   return {
-    useCase: input.caseTitle || "自由创作",
+    useCase: input.caseTitle
+      ? [input.caseTitle, input.caseCategory ? `分类：${input.caseCategory}` : undefined]
+          .filter(Boolean)
+          .join("；")
+      : "自由创作",
     subject: userText || "用户尚未提供主体",
-    style: input.casePromptTemplate ? "参考所选案例风格" : "待确认",
-    scene: input.referenceBrief || "待确认",
-    composition: "保持主体清晰、层次明确",
+    style: caseStyle || (input.casePromptTemplate ? "参考所选案例模板" : "待确认"),
+    scene:
+      input.referenceBrief || (input.caseCategory ? `适合${input.caseCategory}场景` : "待确认"),
+    composition: input.caseRecommendedSize
+      ? `遵循案例推荐画幅 ${input.caseRecommendedSize}，保持主体清晰、层次明确`
+      : "保持主体清晰、层次明确",
     constraints: ["无水印", "无无关 Logo", "无额外乱码文字"]
   };
 }

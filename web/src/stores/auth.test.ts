@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import { apiFetch } from "@/api/client";
-import { useAuthStore, type GenerationExperience } from "./auth";
+import type { GenerationEntry } from "@/api/generation";
+import { useAuthStore } from "./auth";
 
 vi.mock("@/api/client", () => ({
   apiFetch: vi.fn()
@@ -9,17 +10,13 @@ vi.mock("@/api/client", () => ({
 
 const mockedApiFetch = vi.mocked(apiFetch);
 
-const generationExperience: GenerationExperience = {
-  experimentKey: "generation_experience",
-  status: "running",
-  strategy: "ab_test",
-  variant: "B",
+const generationEntry: GenerationEntry = {
   navTarget: "/ai-image",
-  showLegacy: false,
-  showAi: true
+  showWorkspace: false,
+  showAiImage: true
 };
 
-describe("auth store generation experience", () => {
+describe("auth store generation entry", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     mockedApiFetch.mockReset();
@@ -37,7 +34,7 @@ describe("auth store generation experience", () => {
       },
       quota: { allocatedQuota: 10, usedQuota: 2, remainingQuota: 8 },
       providerCapabilities: null,
-      generationExperience,
+      generationEntry,
       promptAssistantEnabled: false
     });
 
@@ -45,7 +42,7 @@ describe("auth store generation experience", () => {
     await auth.bootstrap();
 
     expect(mockedApiFetch).toHaveBeenCalledWith("/me");
-    expect(auth.generationExperience).toEqual(generationExperience);
+    expect(auth.generationEntry).toEqual(generationEntry);
     expect(auth.promptAssistantEnabled).toBe(false);
     expect(auth.loaded).toBe(true);
   });
@@ -53,12 +50,12 @@ describe("auth store generation experience", () => {
   it("clears generation assignment when logout resets local auth state", async () => {
     mockedApiFetch.mockResolvedValueOnce(undefined);
     const auth = useAuthStore();
-    auth.generationExperience = generationExperience;
+    auth.generationEntry = generationEntry;
     auth.promptAssistantEnabled = false;
 
     await auth.logout();
 
-    expect(auth.generationExperience).toBeNull();
+    expect(auth.generationEntry).toBeNull();
     expect(auth.promptAssistantEnabled).toBe(true);
     expect(auth.user).toBeNull();
   });

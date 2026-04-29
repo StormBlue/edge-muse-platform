@@ -3,19 +3,19 @@ import { homePath } from "./homePath";
 
 describe("homePath", () => {
   it("sends sysadmin users to the sysadmin dashboard", () => {
-    expect(homePath({ isSysadmin: true, generationExperience: null })).toBe("/sysadmin/dashboard");
+    expect(homePath({ isSysadmin: true, generationEntry: null })).toBe("/sysadmin/dashboard");
   });
 
   it("uses the assigned generation target for regular users", () => {
     expect(
       homePath({
         isSysadmin: false,
-        generationExperience: { navTarget: "/ai-image" }
+        generationEntry: { navTarget: "/ai-image" }
       })
     ).toBe("/ai-image");
   });
 
-  it("falls back to the legacy workspace before an assignment exists", () => {
-    expect(homePath({ isSysadmin: false, generationExperience: null })).toBe("/workspace");
+  it("falls back to the workspace before settings load", () => {
+    expect(homePath({ isSysadmin: false, generationEntry: null })).toBe("/workspace");
   });
 });

@@ -4,11 +4,12 @@
  *
  * 页面把“选案例、改 Prompt、提交生成”串成一个轻量流程；真实生图仍复用现有任务链路。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { ArrowLeft, Maximize2, WandSparkles, X } from "lucide-vue-next";
+import { ArrowLeft, Maximize2, WandSparkles } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
+import ImageViewer from "@/components/image/ImageViewer.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
 import PromptCaseGallery from "./PromptCaseGallery.vue";
@@ -16,9 +17,11 @@ import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveAiImageRecommendedSize, type AiImageSizeFallback } from "./aiImageSizeFallback";
-import { useAiImageExperimentTracking } from "./useAiImageExperimentTracking";
+import { useAiImageGenerationTracking } from "./useAiImageGenerationTracking";
 import { useAiImageCases } from "./useAiImageCases";
 import { useAiImageGenerationSubmit } from "./useAiImageGenerationSubmit";
+import { promptCasePreviewImage } from "./promptCasePreviewImage";
+import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase } from "@/types/promptCases";
 
 const { t } = useI18n();
@@ -26,26 +29,29 @@ const auth = useAuthStore();
 const generation = useAiImageGenerationSubmit();
 const cases = useAiImageCases({ supportedModes: generation.supportedModes });
 const {
-  directAccess,
   trackPromptCaseSelected,
   trackAssistantStarted,
   trackAssistantPromptFilled,
-  buildSubmitExperimentEvent
-} = useAiImageExperimentTracking(auth);
+  buildSubmitGenerationEvent
+} = useAiImageGenerationTracking();
 const mobileCaseSheetOpen = ref(false);
 const caseBrowserCollapsed = ref(false);
-const selectedCasePreviewOpen = ref(false);
+const selectedImage = ref<ImageAttachment | null>(null);
 const sizeFallback = ref<AiImageSizeFallback | null>(null);
-
-const quotaLabel = computed(() => {
-  if (!auth.quota) return "--";
-  if (auth.quota.remainingQuota === null) return t("common.unlimited");
-  return auth.quota.remainingQuota;
-});
 
 const activeCase = computed(() => cases.caseContext.value);
 const activeCaseThumbnail = computed(() => activeCase.value?.thumbnailUrl ?? null);
 const selectedCaseTitle = computed(() => activeCase.value?.title ?? t("aiImage.blankCase"));
+const pageInteractionLocked = computed(
+  () => generation.submitting.value || generation.hasRunningTask.value
+);
+const viewerImages = computed(() =>
+  selectedImage.value?.id.startsWith("case:")
+    ? selectedImage.value
+      ? [selectedImage.value]
+      : []
+    : generation.resultImages.value
+);
 const sizeFallbackNotice = computed(() =>
   sizeFallback.value
     ? t("aiImage.sizeFallback", {
@@ -54,11 +60,6 @@ const sizeFallbackNotice = computed(() =>
       })
     : ""
 );
-const providerLabel = computed(() => {
-  const capabilities = auth.providerCapabilities;
-  if (!capabilities) return t("aiImage.providerUnknown");
-  return `${capabilities.providerName} · ${capabilities.model} · ${generation.status.value}`;
-});
 
 function selectCase(item: PromptCase) {
   caseBrowserCollapsed.value = false;
@@ -75,21 +76,17 @@ function applyCase(item: PromptCase) {
 }
 
 function startBlankAssistantFlow() {
+  if (pageInteractionLocked.value) return;
   cases.startBlankCase();
   sizeFallback.value = null;
   caseBrowserCollapsed.value = true;
   mobileCaseSheetOpen.value = false;
-  closeSelectedCasePreview();
   openAssistant();
 }
 
 function reopenCaseBrowser() {
+  if (pageInteractionLocked.value) return;
   caseBrowserCollapsed.value = false;
-  closeSelectedCasePreview();
-}
-
-function closeSelectedCasePreview() {
-  selectedCasePreviewOpen.value = false;
 }
 
 function syncGenerationFromCase(item: PromptCase, mode: PromptCase["modes"][number]) {
@@ -153,40 +150,49 @@ function openAssistant() {
   });
 }
 
+function openGeneratedImage(image: ImageAttachment) {
+  if (pageInteractionLocked.value) return;
+  selectedImage.value = image;
+}
+
+function openSelectedCasePreview() {
+  if (pageInteractionLocked.value || !activeCase.value) return;
+  selectedImage.value = promptCasePreviewImage(activeCase.value);
+}
+
 async function submitGeneration() {
-  const experimentEvent = currentSubmitExperimentEvent();
+  const generationEvent = currentSubmitGenerationEvent();
   const promptSource = cases.finalPromptSource.value ?? "unknown";
   const caseContext = cases.caseContext.value;
   await generation.submit(
     cases.finalPrompt.value,
     promptSource === "case" ? caseContext?.title : undefined,
-    experimentEvent
+    generationEvent
   );
 }
 
 async function retryFailedGeneration() {
-  const experimentEvent = currentSubmitExperimentEvent();
+  const generationEvent = currentSubmitGenerationEvent();
   await generation.retry({
-    ...experimentEvent,
+    ...generationEvent,
     metadata: {
-      ...experimentEvent.metadata,
+      ...generationEvent.metadata,
       isRetry: true,
       retryTrigger: "ai-image"
     }
   });
 }
 
-function currentSubmitExperimentEvent() {
+function currentSubmitGenerationEvent() {
   const promptSource = cases.finalPromptSource.value ?? "unknown";
   const caseContext = cases.caseContext.value;
-  return buildSubmitExperimentEvent({
+  return buildSubmitGenerationEvent({
     promptSource,
     selectedCaseId: caseContext?.id,
     mode: generation.mode.value,
     size: generation.size.value,
     n: 1,
-    referenceImageCount: generation.files.value.length,
-    directAccess: directAccess.value
+    referenceImageCount: generation.files.value.length
   });
 }
 
@@ -194,17 +200,9 @@ function shouldOpenMobileCaseSheet() {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 1535px)").matches;
 }
 
-function onSelectedCasePreviewKeydown(event: KeyboardEvent) {
-  if (event.key !== "Escape" || !selectedCasePreviewOpen.value) return;
-  closeSelectedCasePreview();
-}
-
 onMounted(() => {
-  window.addEventListener("keydown", onSelectedCasePreviewKeydown);
   void cases.load();
 });
-
-onBeforeUnmount(() => window.removeEventListener("keydown", onSelectedCasePreviewKeydown));
 
 watch(
   () => [
@@ -221,7 +219,7 @@ watch(
 watch(
   () => cases.caseContext.value?.id,
   () => {
-    closeSelectedCasePreview();
+    if (selectedImage.value?.id.startsWith("case:")) selectedImage.value = null;
   }
 );
 </script>
@@ -247,43 +245,31 @@ watch(
               {{ t("aiImage.startBlankAssistantAction") }}
             </span>
           </button>
-
-          <div class="case-picker-controls">
-            <div class="thin-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
-              <button
-                class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-                :class="
-                  !cases.category.value ? 'border-primary bg-primary/10' : 'border-border bg-card'
-                "
-                type="button"
-                @click="cases.category.value = ''"
-              >
-                {{ t("aiImage.allCategories") }}
-              </button>
-              <button
-                v-for="category in cases.categories.value"
-                :key="category"
-                class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-                :class="
-                  cases.category.value === category
-                    ? 'border-primary bg-primary/10'
-                    : 'border-border bg-card'
-                "
-                type="button"
-                @click="cases.category.value = category"
-              >
-                {{ category }}
-              </button>
-            </div>
-            <div class="flex shrink-0 flex-wrap gap-2 text-sm">
-              <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-                {{ t("common.quota") }}:
-                {{ quotaLabel }}
-              </span>
-              <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-                {{ providerLabel }}
-              </span>
-            </div>
+          <div class="thin-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
+            <button
+              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
+              :class="
+                !cases.category.value ? 'border-primary bg-primary/10' : 'border-border bg-card'
+              "
+              type="button"
+              @click="cases.category.value = ''"
+            >
+              {{ t("aiImage.allCategories") }}
+            </button>
+            <button
+              v-for="category in cases.categories.value"
+              :key="category"
+              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
+              :class="
+                cases.category.value === category
+                  ? 'border-primary bg-primary/10'
+                  : 'border-border bg-card'
+              "
+              type="button"
+              @click="cases.category.value = category"
+            >
+              {{ category }}
+            </button>
           </div>
         </div>
       </section>
@@ -293,6 +279,7 @@ watch(
           <button
             class="ui-button ui-button-secondary h-10 shrink-0 px-4 text-sm"
             type="button"
+            :disabled="pageInteractionLocked"
             @click="reopenCaseBrowser"
           >
             <ArrowLeft class="h-4 w-4" />
@@ -304,15 +291,6 @@ watch(
             </p>
             <h1 class="truncate text-lg font-semibold leading-7">{{ selectedCaseTitle }}</h1>
           </div>
-        </div>
-        <div class="flex shrink-0 flex-wrap gap-2 text-sm">
-          <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-            {{ t("common.quota") }}:
-            {{ quotaLabel }}
-          </span>
-          <span class="rounded-full border border-border px-3 py-1.5 text-muted-foreground">
-            {{ providerLabel }}
-          </span>
         </div>
       </section>
 
@@ -336,7 +314,8 @@ watch(
             class="group relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-border bg-muted"
             type="button"
             :title="t('aiImage.openCasePreview')"
-            @click="selectedCasePreviewOpen = true"
+            :disabled="pageInteractionLocked"
+            @click="openSelectedCasePreview"
           >
             <PromptCaseThumbnail
               :src="activeCaseThumbnail"
@@ -372,6 +351,9 @@ watch(
           :case-item="cases.caseContext.value"
           :failed-message="generation.failedMessage.value"
           :failed-title="generation.failedTitle.value"
+          :generation-progress="generation.generationProgress.value"
+          :generation-prompt="generation.generationPrompt.value"
+          :generation-status-label="generation.generationStatusLabel.value"
           :has-running-task="generation.hasRunningTask.value"
           :prompt="cases.finalPrompt.value"
           :previews="generation.previews.value"
@@ -394,6 +376,7 @@ watch(
           @update:size="setGenerationSize"
           @remove-file="generation.removeFile"
           @retry-failed="retryFailedGeneration"
+          @open-image="openGeneratedImage"
           @submit="submitGeneration"
         />
       </div>
@@ -405,43 +388,13 @@ watch(
         @close="mobileCaseSheetOpen = false"
       />
 
-      <Teleport to="body">
-        <div
-          v-if="activeCase && activeCaseThumbnail && selectedCasePreviewOpen"
-          class="fixed inset-0 z-50 grid grid-rows-[auto_minmax(0,1fr)] bg-black/90 text-white"
-          role="dialog"
-          aria-modal="true"
-          @click.self="closeSelectedCasePreview"
-        >
-          <header
-            class="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-4 py-2"
-          >
-            <div class="min-w-0">
-              <p class="truncate text-sm font-semibold">{{ selectedCaseTitle }}</p>
-              <p class="truncate text-xs text-white/65">
-                {{ activeCase.category }} · {{ activeCase.recommendedSize }}
-              </p>
-            </div>
-            <button
-              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/10 text-white hover:bg-white/18"
-              type="button"
-              :title="t('viewer.close')"
-              @click="closeSelectedCasePreview"
-            >
-              <X class="h-4 w-4" />
-            </button>
-          </header>
-          <main class="min-h-0 overflow-auto p-4" @click.self="closeSelectedCasePreview">
-            <div class="flex min-h-full items-center justify-center">
-              <img
-                class="max-h-[calc(100dvh-6rem)] max-w-full rounded-lg object-contain shadow-2xl shadow-black/50"
-                :src="activeCaseThumbnail"
-                :alt="selectedCaseTitle"
-              />
-            </div>
-          </main>
-        </div>
-      </Teleport>
+      <ImageViewer
+        :can-delete="false"
+        :image="selectedImage"
+        :images="viewerImages"
+        @close="selectedImage = null"
+        @select="selectedImage = $event"
+      />
     </div>
   </AppShell>
 </template>
@@ -457,14 +410,6 @@ watch(
 .case-picker-toolbar {
   display: grid;
   min-width: 0;
-  gap: 0.75rem;
-}
-
-.case-picker-controls {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  justify-content: center;
   gap: 0.75rem;
 }
 

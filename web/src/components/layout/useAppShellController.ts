@@ -8,6 +8,7 @@ import {
   FlaskConical,
   Library,
   LayoutDashboard,
+  Megaphone,
   MessagesSquare,
   Monitor,
   Moon,
@@ -16,12 +17,12 @@ import {
   Sun,
   Users
 } from "lucide-vue-next";
-import { trackExperimentEvent } from "@/api/experiments";
+import { trackGenerationEvent } from "@/api/generation";
 import {
   buildGenerationEntryExposureEvents,
   buildGenerationHistoryReturnEvents,
   buildGenerationRouteOpenEvents
-} from "@/components/layout/generationExperimentEvents";
+} from "@/components/layout/generationEntryEvents";
 import { useAuthStore } from "@/stores/auth";
 import { type ThemeMode, useUiStore } from "@/stores/ui";
 
@@ -38,7 +39,6 @@ export function useAppShellController() {
   let stopSidebarModeSync: (() => void) | null = null;
   const exposedGenerationEntries = new Set<string>();
   const openedGenerationRoutes = new Set<string>();
-  const directGenerationRoutes = new Set<string>();
   const returnedHistoryRoutes = new Set<string>();
 
   const quotaLabel = computed(() => {
@@ -59,13 +59,13 @@ export function useAppShellController() {
         to: "/ai-image",
         label: t("nav.aiImage"),
         icon: Sparkles,
-        show: auth.isSysadmin || (auth.generationExperience?.showAi ?? true)
+        show: auth.isSysadmin || (auth.generationEntry?.showAiImage ?? true)
       },
       {
         to: "/workspace",
         label: t("nav.workspace"),
         icon: Image,
-        show: auth.isSysadmin || (auth.generationExperience?.showLegacy ?? true)
+        show: auth.isSysadmin || (auth.generationEntry?.showWorkspace ?? true)
       },
       { to: "/history", label: t("nav.history"), icon: History, show: true },
       { to: "/admin/users", label: t("nav.admin"), icon: Users, show: auth.isAdmin }
@@ -91,8 +91,14 @@ export function useAppShellController() {
         show: auth.isSysadmin
       },
       {
-        to: "/sysadmin/experiments/generation",
-        label: t("nav.generationExperiment"),
+        to: "/sysadmin/announcements",
+        label: t("nav.announcements"),
+        icon: Megaphone,
+        show: auth.isSysadmin
+      },
+      {
+        to: "/sysadmin/generation-entry",
+        label: t("nav.generationEntry"),
         icon: FlaskConical,
         show: auth.isSysadmin
       }
@@ -152,12 +158,10 @@ export function useAppShellController() {
   function trackGenerationEntryExposure() {
     const events = buildGenerationEntryExposureEvents(visibleNav.value);
     for (const event of events) {
-      const key = `${event.metadata?.variant ?? "unknown"}:${event.route}:${
-        auth.generationExperience?.variant ?? "unknown"
-      }`;
+      const key = `${event.route}:${auth.generationEntry?.showWorkspace}:${auth.generationEntry?.showAiImage}`;
       if (exposedGenerationEntries.has(key)) continue;
       exposedGenerationEntries.add(key);
-      void trackExperimentEvent(event);
+      void trackGenerationEvent(event);
     }
   }
 
@@ -165,12 +169,10 @@ export function useAppShellController() {
     const events = buildGenerationRouteOpenEvents(
       route.path,
       route.fullPath,
-      auth.generationExperience,
-      auth.isSysadmin,
-      openedGenerationRoutes,
-      directGenerationRoutes
+      auth.generationEntry,
+      openedGenerationRoutes
     );
-    for (const event of events) void trackExperimentEvent(event);
+    for (const event of events) void trackGenerationEvent(event);
   }
 
   function trackGenerationHistoryReturn(previous: { path: string; fullPath: string } | undefined) {
@@ -180,11 +182,9 @@ export function useAppShellController() {
       previous.fullPath,
       route.path,
       route.fullPath,
-      auth.generationExperience,
-      auth.isSysadmin,
       returnedHistoryRoutes
     );
-    for (const event of events) void trackExperimentEvent(event);
+    for (const event of events) void trackGenerationEvent(event);
   }
 
   async function logout() {
@@ -210,10 +210,9 @@ export function useAppShellController() {
 
   watch(
     () => [
-      auth.generationExperience?.variant,
-      auth.generationExperience?.navTarget,
-      auth.generationExperience?.showAi,
-      auth.generationExperience?.showLegacy,
+      auth.generationEntry?.navTarget,
+      auth.generationEntry?.showAiImage,
+      auth.generationEntry?.showWorkspace,
       ui.locale
     ],
     () => {

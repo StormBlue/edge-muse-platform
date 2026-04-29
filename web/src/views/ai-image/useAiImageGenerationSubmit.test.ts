@@ -72,7 +72,7 @@ describe("useAiImageGenerationSubmit", () => {
 
     await generation.submit("失败后重试的 prompt", undefined, {
       route: "/ai-image",
-      metadata: { mode: "text2image", size: "1024x1024", n: 1, directAccess: false }
+      metadata: { mode: "text2image", size: "1024x1024", n: 1 }
     });
     mocks.taskCallback?.({
       type: "task.failed",
@@ -87,19 +87,18 @@ describe("useAiImageGenerationSubmit", () => {
 
     await generation.retry({
       route: "/ai-image",
-      metadata: { mode: "text2image", size: "1024x1024", n: 1, directAccess: false }
+      metadata: { mode: "text2image", size: "1024x1024", n: 1 }
     });
 
     expect(mockedApiFetch).toHaveBeenCalledWith("/tasks/tsk_1/retry", {
       method: "POST",
       body: JSON.stringify({
-        experimentEvent: {
+        generationEvent: {
           route: "/ai-image",
           metadata: {
             mode: "text2image",
             size: "1024x1024",
             n: 1,
-            directAccess: false,
             isRetry: true,
             retryTrigger: "ai-image"
           }

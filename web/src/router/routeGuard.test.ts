@@ -11,7 +11,7 @@ const guest: RouteAccessAuthState = {
   isAuthenticated: false,
   isAdmin: false,
   isSysadmin: false,
-  generationExperience: null
+  generationEntry: null
 };
 
 const user: RouteAccessAuthState = {
@@ -19,13 +19,13 @@ const user: RouteAccessAuthState = {
   isAuthenticated: true,
   isAdmin: false,
   isSysadmin: false,
-  generationExperience: { navTarget: "/ai-image" }
+  generationEntry: { navTarget: "/ai-image", showWorkspace: false, showAiImage: true }
 };
 
 const admin: RouteAccessAuthState = {
   ...user,
   isAdmin: true,
-  generationExperience: { navTarget: "/workspace" }
+  generationEntry: { navTarget: "/workspace", showWorkspace: true, showAiImage: true }
 };
 
 const sysadmin: RouteAccessAuthState = {
@@ -52,9 +52,15 @@ describe("route guard decisions", () => {
     );
   });
 
-  it("uses the generation experiment target as the regular user home", () => {
+  it("uses the configured generation entry target as the regular user home", () => {
     expect(routeAccessDecision(route("/"), user)).toBe("/ai-image");
     expect(routeAccessDecision(route("/login", { public: true }), user)).toBe("/ai-image");
+  });
+
+  it("redirects regular users away from disabled generation pages", () => {
+    expect(routeAccessDecision(route("/workspace"), user)).toBe("/ai-image");
+    expect(routeAccessDecision(route("/workspace/s/ses_1"), user)).toBe("/ai-image");
+    expect(routeAccessDecision(route("/ai-image"), user)).toBe(true);
   });
 
   it("sends sysadmin users to the system dashboard", () => {

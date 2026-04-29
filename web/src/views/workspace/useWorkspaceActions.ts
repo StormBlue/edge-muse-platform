@@ -2,7 +2,6 @@ import type { ComputedRef, Ref } from "vue";
 import type { Router } from "vue-router";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
-import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import { useAuthStore } from "@/stores/auth";
 import {
   useSessionStore,
@@ -105,7 +104,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
         n: input.n,
         referenceImageIds,
         referenceImages,
-        ...workspaceGenerationExperimentEvent(input, referenceImageIds.length)
+        ...workspaceGenerationEvent(input, referenceImageIds.length)
       });
       connect(task.wsUrl);
       draftTitle.value = task.title;
@@ -135,16 +134,11 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
         {
           method: "POST",
           body: JSON.stringify({
-            experimentEvent: {
+            generationEvent: {
               route: "/workspace",
               metadata: {
                 isRetry: true,
-                retryTrigger: "workspace",
-                directAccess: isDirectGenerationAccess(
-                  "/workspace",
-                  auth.generationExperience,
-                  auth.isSysadmin
-                )
+                retryTrigger: "workspace"
               }
             }
           })
@@ -231,26 +225,19 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     return null;
   }
 
-  function workspaceGenerationExperimentEvent(
+  function workspaceGenerationEvent(
     input: { mode: SessionMode; size: string; n: number },
     referenceImageCount: number
   ) {
-    // AI 图像生成 A/B 只比较文生图、图生图；连续对话另行聚合，避免污染 A 变体口径。
-    if (input.mode === "chat") return {};
     return {
-      experimentEvent: {
+      generationEvent: {
         route: "/workspace",
         metadata: {
           mode: input.mode,
           size: input.size,
           n: input.n,
           referenceImageCount,
-          promptSource: "user",
-          directAccess: isDirectGenerationAccess(
-            "/workspace",
-            auth.generationExperience,
-            auth.isSysadmin
-          )
+          promptSource: "user"
         }
       }
     };

@@ -4,7 +4,7 @@ import { messages, tasks } from "../../db/schema";
 import { now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn } from "../log";
-import { recordTaskResultExperimentEvent } from "../experiments";
+import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { refundQuota } from "../quota";
 import { notifyTaskEvent } from "./events";
 import { markGenerateTaskFailed } from "./state";
@@ -89,7 +89,7 @@ export async function failGenerateTask(
     });
   }
   try {
-    await recordTaskResultExperimentEvent(env, {
+    await recordTaskResultGenerationEvent(env, {
       userId: task.userId,
       taskId,
       eventName: "generate_failed",
@@ -98,15 +98,15 @@ export async function failGenerateTask(
         preservedImageCount: preservedImages.length
       }
     });
-    logInfo("task.fail.experiment_result_written", {
+    logInfo("task.fail.generation_event_result_written", {
       taskId,
       userId: task.userId,
       code,
       preservedImageCount: preservedImages.length
     });
   } catch (eventError) {
-    // 任务失败状态已经落库，实验事件失败不能再影响业务终态。
-    logWarn("task.fail.experiment_result_failed", {
+    // 任务失败状态已经落库，用量事件失败不能再影响业务终态。
+    logWarn("task.fail.generation_event_result_failed", {
       taskId,
       userId: task.userId,
       code,

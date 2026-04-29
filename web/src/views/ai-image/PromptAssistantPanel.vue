@@ -25,9 +25,10 @@ const props = withDefaults(
     referenceCount: number;
     referenceDescription: string;
     referenceContextKey: string;
+    disabled?: boolean;
     chrome?: "panel" | "embedded";
   }>(),
-  { chrome: "panel" }
+  { chrome: "panel", disabled: false }
 );
 
 const emit = defineEmits<{
@@ -52,6 +53,7 @@ const canSend = computed(
   () =>
     input.value.trim().length > 0 &&
     !loading.value &&
+    !props.disabled &&
     completedAssistantReplies.value < MAX_ASSISTANT_TURNS
 );
 const finalPrompt = computed(() => latest.value?.finalPrompt ?? "");
@@ -59,9 +61,22 @@ const limitReached = computed(
   () =>
     !loading.value && !finalPrompt.value && completedAssistantReplies.value >= MAX_ASSISTANT_TURNS
 );
+const caseContextKey = computed(() =>
+  props.caseItem
+    ? [
+        props.caseItem.id,
+        props.caseItem.title,
+        props.caseItem.category,
+        props.caseItem.recommendedSize,
+        props.caseItem.tags.join("|"),
+        props.caseItem.promptSummary,
+        props.caseItem.promptTemplate
+      ].join("::")
+    : ""
+);
 const contextKey = computed(() =>
   [
-    props.caseItem?.id ?? "",
+    caseContextKey.value,
     props.mode,
     props.provider?.model ?? "",
     props.provider?.supportedSizes?.join("|") ?? "",
@@ -110,7 +125,11 @@ async function sendTurn() {
         turnIndex: completedAssistantReplies.value,
         caseId: props.caseItem?.id,
         caseTitle: props.caseItem?.title,
+        casePromptSummary: props.caseItem?.promptSummary,
         casePromptTemplate: props.caseItem?.promptTemplate,
+        caseCategory: props.caseItem?.category,
+        caseTags: props.caseItem?.tags,
+        caseRecommendedSize: props.caseItem?.recommendedSize,
         provider: props.provider
           ? {
               model: props.provider.model,
@@ -137,7 +156,14 @@ async function sendTurn() {
   }
 }
 
+function onInputEnter(event: KeyboardEvent) {
+  if (event.isComposing || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  event.preventDefault();
+  void sendTurn();
+}
+
 function fillPrompt() {
+  if (props.disabled) return;
   const prompt = editableFinalPrompt.value.trim();
   if (!prompt) return;
   emit("fill", {
@@ -149,6 +175,7 @@ function fillPrompt() {
 }
 
 function notifyOpen() {
+  if (props.disabled) return;
   emit("open");
 }
 
@@ -160,6 +187,7 @@ function copyFinalPrompt() {
 }
 
 function reset() {
+  if (props.disabled) return;
   requestSeq += 1;
   messages.value = [];
   input.value = "";
@@ -191,10 +219,11 @@ defineExpose({ reset });
       <button
         class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
         type="button"
+        :disabled="disabled"
         @click="reset"
       >
         <RotateCcw class="h-3.5 w-3.5" />
-        {{ t("common.retry") }}
+        {{ t("aiImage.restartAssistant") }}
       </button>
     </div>
 
@@ -208,9 +237,13 @@ defineExpose({ reset });
         v-model="input"
         class="ui-field min-h-20 resize-none p-3 text-sm leading-6"
         :placeholder="t('aiImage.assistantInputPlaceholder')"
-        :disabled="loading || completedAssistantReplies >= MAX_ASSISTANT_TURNS"
+        :disabled="disabled || loading || completedAssistantReplies >= MAX_ASSISTANT_TURNS"
+        @keydown.enter="onInputEnter"
       />
-      <div class="mt-2 flex justify-end">
+      <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <p class="text-xs leading-5 text-muted-foreground">
+          {{ t("aiImage.assistantInputShortcutHint") }}
+        </p>
         <button class="ui-button ui-button-primary" type="submit" :disabled="!canSend">
           <Send class="h-4 w-4" />
           {{ t("aiImage.sendAssistantMessage") }}
@@ -232,6 +265,7 @@ defineExpose({ reset });
 
     <PromptAssistantFinalPrompt
       v-model="editableFinalPrompt"
+      :disabled="disabled"
       :visible="Boolean(finalPrompt)"
       @copy="copyFinalPrompt"
       @fill="fillPrompt"

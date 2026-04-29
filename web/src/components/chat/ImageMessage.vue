@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 消息内图片缩略图网格：纯展示 + 点击展开；**不**内置 Viewer，由父组件根据 `open` 传当前 `ImageAttachment`。
- * 单张时一列满宽，多张时 2/3 列响应式栅格，`object-cover` 裁切为正方形缩略。
+ * 单张时一列满宽，多张时 2/3 列响应式栅格，图片完整适配缩略框。
  */
 import type { ImageAttachment } from "@/stores/session";
 
@@ -23,7 +23,7 @@ const emit = defineEmits<{ open: [image: ImageAttachment] }>();
       type="button"
       @click="emit('open', image)"
     >
-      <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
+      <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
     </button>
   </div>
 </template>

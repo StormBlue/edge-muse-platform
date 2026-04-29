@@ -21,8 +21,13 @@ import { tasks } from "../db/schema";
 import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
-import { recordExperimentEvent, recordRetrySubmittedExperimentEvent } from "../lib/experiments";
-import { SERVER_GENERATE_SUBMIT_SOURCE } from "../lib/generationExperimentConstants";
+import {
+  assertGenerationRouteEnabledForUser,
+  assertRetryGenerationRouteEnabledForUser,
+  generationRouteSchema,
+  recordGenerationEvent,
+  recordRetrySubmittedGenerationEvent
+} from "../lib/generationEntry";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
 import { logInfo, logWarn, promptSummary } from "../lib/log";
 import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
@@ -54,9 +59,9 @@ const optionalSessionIdSchema = z.preprocess(
   z.string().min(1).optional()
 );
 
-const generateExperimentEventSchema = z
+const generateGenerationEventSchema = z
   .object({
-    route: z.string().trim().max(120).optional(),
+    route: generationRouteSchema,
     caseId: z.string().trim().max(120).optional(),
     metadata: z.record(z.string(), z.unknown()).default({})
   })
@@ -76,11 +81,11 @@ const generateSchema = z.object({
   model: z.string().optional(),
   referenceImageIds: z.array(z.string()).max(5).optional(),
   /** AI 图像生成页的提交事件由服务端在任务启动前写入，避免 WS 结果事件先到导致归因回退。 */
-  experimentEvent: generateExperimentEventSchema
+  generationEvent: generateGenerationEventSchema
 });
 
 const retrySchema = z.object({
-  experimentEvent: generateExperimentEventSchema
+  generationEvent: generateGenerationEventSchema
 });
 
 export const generateRoutes = new Hono<AppEnv>();
@@ -95,7 +100,7 @@ generateRoutes.post(
   async (c) => {
     const user = c.get("user");
     const rawBody = c.req.valid("json");
-    const { experimentEvent, ...generateBody } = rawBody;
+    const { generationEvent, ...generateBody } = rawBody;
     const traceId = c.get("traceId");
     logInfo("generate.request.received", {
       traceId,
@@ -137,6 +142,7 @@ generateRoutes.post(
       resolvedImageCount: body.n,
       referenceImageCount: body.referenceImageIds.length
     });
+    await assertGenerationRouteEnabledForUser(c.env, user, generationEvent?.route);
     const result = await createGenerateTask(c.env, {
       userId: user.id,
       sessionId: body.sessionId,
@@ -173,26 +179,23 @@ generateRoutes.post(
         message: error instanceof Error ? error.message : "unknown"
       });
     }
-    if (experimentEvent) {
+    if (generationEvent) {
       try {
-        await recordExperimentEvent(c.env, user, {
+        await recordGenerationEvent(c.env, user, {
           eventName: "generate_submitted",
-          route: experimentEvent.route,
-          caseId: experimentEvent.caseId,
+          route: generationEvent.route,
+          caseId: generationEvent.caseId,
           taskId: result.taskId,
-          metadata: {
-            ...experimentEvent.metadata,
-            submitEventSource: SERVER_GENERATE_SUBMIT_SOURCE
-          }
+          metadata: generationEvent.metadata
         });
-        logInfo("generate.experiment_submitted_written", {
+        logInfo("generate.event_submitted_written", {
           traceId,
           userId: user.id,
           taskId: result.taskId
         });
       } catch (error) {
-        // 事件不应阻断已创建的任务；失败会让后续结果事件带 attributionFallback，便于排查。
-        logWarn("generate.experiment_submitted_failed", {
+        // 事件不应阻断已创建的任务；失败只影响 sysadmin 用量统计。
+        logWarn("generate.event_submitted_failed", {
           traceId,
           userId: user.id,
           taskId: result.taskId,
@@ -256,6 +259,10 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), user);
   if (task.status !== "failed")
     throw appError("VALIDATION_ERROR", "Only failed tasks can be retried");
+  await assertRetryGenerationRouteEnabledForUser(c.env, user, {
+    sourceTaskId: task.id,
+    route: parsedRetry.data.generationEvent?.route
+  });
   const params = generateSchema.parse(JSON.parse(task.params));
   const retryParams = {
     ...params,
@@ -268,29 +275,29 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
     retryOf: task.id
   });
   try {
-    await recordRetrySubmittedExperimentEvent(c.env, {
-      userId: user.id,
+    await recordRetrySubmittedGenerationEvent(c.env, {
+      user,
       sourceTaskId: task.id,
       taskId: result.taskId,
-      route: parsedRetry.data.experimentEvent?.route,
-      caseId: parsedRetry.data.experimentEvent?.caseId,
+      route: parsedRetry.data.generationEvent?.route,
+      caseId: parsedRetry.data.generationEvent?.caseId,
       metadata: {
-        ...parsedRetry.data.experimentEvent?.metadata,
+        ...parsedRetry.data.generationEvent?.metadata,
         mode: retryParams.mode,
         size: retryParams.size,
         n: retryParams.n,
         referenceImageCount: retryParams.referenceImageIds?.length ?? 0
       }
     });
-    logInfo("task.retry.experiment_submitted_written", {
+    logInfo("task.retry.generation_event_submitted_written", {
       traceId: c.get("traceId"),
       userId: user.id,
       retryOf: task.id,
       taskId: result.taskId
     });
   } catch (error) {
-    // 重试任务已经创建，指标写入失败不能影响用户继续接收任务结果。
-    logWarn("task.retry.experiment_submitted_failed", {
+    // 重试任务已经创建，用量事件写入失败不能影响用户继续接收任务结果。
+    logWarn("task.retry.generation_event_submitted_failed", {
       traceId: c.get("traceId"),
       userId: user.id,
       retryOf: task.id,

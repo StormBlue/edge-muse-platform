@@ -7,7 +7,6 @@ import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
-import { isDirectGenerationAccess } from "@/components/layout/generationExperimentEvents";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import { useSessionStore, type ImageAttachment, type Message } from "@/stores/session";
@@ -20,7 +19,7 @@ import {
 import { defaultSessionTitle, sizeOptionsForProvider } from "@/views/workspace/workspaceOptions";
 import type { PromptCaseMode } from "@/types/promptCases";
 
-export type AiImageSubmitExperimentEvent = {
+export type AiImageSubmitGenerationEvent = {
   route?: string;
   caseId?: string;
   metadata?: Record<string, unknown>;
@@ -69,6 +68,21 @@ export function useAiImageGenerationSubmit() {
     return message.status === "failed" ? message : null;
   });
   const activeFailed = computed(() => Boolean(activeFailedMessage.value));
+  const activeRunningMessage = computed(() => {
+    const messages = runningMessages.value;
+    return messages[messages.length - 1] ?? null;
+  });
+  const generationProgress = computed(() => {
+    const progress = activeRunningMessage.value?.progress;
+    if (typeof progress === "number") return Math.min(99, Math.max(6, Math.round(progress * 100)));
+    return activeRunningMessage.value?.status === "queued" ? 6 : 28;
+  });
+  const generationStatusLabel = computed(() =>
+    activeRunningMessage.value?.status === "queued"
+      ? t("common.queued")
+      : t("workspace.generationRunning")
+  );
+  const generationPrompt = computed(() => activeRunningMessage.value?.prompt ?? "");
   const failedTitle = computed(() =>
     activeFailedMessage.value?.error?.code?.startsWith("PROVIDER")
       ? t("workspace.providerGenerationFailed")
@@ -133,7 +147,7 @@ export function useAiImageGenerationSubmit() {
   async function submit(
     prompt: string,
     title?: string,
-    experimentEvent?: AiImageSubmitExperimentEvent
+    generationEvent?: AiImageSubmitGenerationEvent
   ) {
     const trimmed = prompt.trim();
     const blockReason = getAiImageSubmitBlockReason({
@@ -166,7 +180,7 @@ export function useAiImageGenerationSubmit() {
         n: 1,
         referenceImageIds: uploaded.referenceImageIds,
         referenceImages: uploaded.referenceImages,
-        experimentEvent
+        generationEvent
       });
       activeTaskId.value = task.taskId;
       activeSessionId.value = task.sessionId;
@@ -186,7 +200,7 @@ export function useAiImageGenerationSubmit() {
     }
   }
 
-  async function retry(experimentEvent?: AiImageSubmitExperimentEvent) {
+  async function retry(generationEvent?: AiImageSubmitGenerationEvent) {
     const failed = activeFailedMessage.value;
     if (!failed?.taskId || submitting.value || hasRunningTask.value) return;
     submitting.value = true;
@@ -196,16 +210,13 @@ export function useAiImageGenerationSubmit() {
         {
           method: "POST",
           body: JSON.stringify({
-            experimentEvent: {
-              route: experimentEvent?.route ?? "/ai-image",
-              caseId: experimentEvent?.caseId,
+            generationEvent: {
+              route: generationEvent?.route ?? "/ai-image",
+              caseId: generationEvent?.caseId,
               metadata: {
-                ...experimentEvent?.metadata,
+                ...generationEvent?.metadata,
                 isRetry: true,
-                retryTrigger: "ai-image",
-                directAccess:
-                  experimentEvent?.metadata?.directAccess ??
-                  isDirectGenerationAccess("/ai-image", auth.generationExperience, auth.isSysadmin)
+                retryTrigger: "ai-image"
               }
             }
           })
@@ -298,6 +309,9 @@ export function useAiImageGenerationSubmit() {
     failedMessage,
     failedTitle,
     files,
+    generationProgress,
+    generationPrompt,
+    generationStatusLabel,
     hasRunningTask,
     maxReferenceFiles,
     mode,

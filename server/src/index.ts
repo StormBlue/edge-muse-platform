@@ -6,12 +6,13 @@
  */
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { announcementRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
 import { meRoutes } from "./routes/me";
 import { sessionRoutes, historyRoutes } from "./routes/sessions";
 import { generateRoutes, handleTaskWebSocket } from "./routes/generate";
 import { imageRoutes } from "./routes/images";
-import { experimentRoutes } from "./routes/experiments";
+import { generationEventRoutes } from "./routes/generationEvents";
 import { promptAssistantRoutes } from "./routes/promptAssistant";
 import { promptCaseRoutes } from "./routes/promptCases";
 import { uploadRoutes } from "./routes/uploads";
@@ -70,10 +71,11 @@ app.route("/api/history", historyRoutes);
 app.route("/api", generateRoutes);
 app.route("/api", imageRoutes);
 app.route("/api", uploadRoutes);
-app.route("/api/experiments", experimentRoutes);
+app.route("/api/generation", generationEventRoutes);
 app.route("/api/prompt-assistant", promptAssistantRoutes);
 app.route("/api/prompt-cases", promptCaseRoutes);
 app.route("/api/admin", adminRoutes);
+app.route("/api/announcements", announcementRoutes);
 app.route("/api/sysadmin", sysadminRoutes);
 /** 浏览器 WebSocket 连接点：`wss://<host>/ws/task/<taskId>`（无前缀 /api） */
 app.get("/ws/task/:id", requireAuth, handleTaskWebSocket);

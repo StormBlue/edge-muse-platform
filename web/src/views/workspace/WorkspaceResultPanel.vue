@@ -137,7 +137,7 @@ const { t } = useI18n();
           type="button"
           @click="$emit('selectImageId', image.id)"
         >
-          <img class="h-full w-full object-cover" :src="image.url" alt="" loading="lazy" />
+          <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
         </button>
       </div>
     </div>

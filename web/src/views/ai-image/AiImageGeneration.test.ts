@@ -10,11 +10,11 @@ const mocks = vi.hoisted(() => ({
   generation: null as unknown,
   cases: null as unknown,
   authStore: null as unknown,
-  trackExperimentEvent: vi.fn()
+  trackGenerationEvent: vi.fn()
 }));
 
-vi.mock("@/api/experiments", () => ({
-  trackExperimentEvent: mocks.trackExperimentEvent
+vi.mock("@/api/generation", () => ({
+  trackGenerationEvent: mocks.trackGenerationEvent
 }));
 
 vi.mock("@/components/layout/AppShell.vue", () => ({
@@ -57,6 +57,7 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
       "copyPrompt",
       "fillAssistant",
       "openAssistant",
+      "openImage",
       "removeFile",
       "retryFailed",
       "submit",
@@ -110,7 +111,7 @@ vi.mock("./useAiImageCases", () => ({
 
 describe("AiImageGeneration", () => {
   beforeEach(() => {
-    mocks.trackExperimentEvent.mockReset();
+    mocks.trackGenerationEvent.mockReset();
     mocks.authStore = authStore();
     mocks.generation = generationState();
     mocks.cases = casesState();
@@ -179,24 +180,12 @@ describe("AiImageGeneration", () => {
         n: 1,
         referenceImageCount: 0,
         promptSource: "user",
-        caseContextId: "case_user_context",
-        directAccess: false
+        caseContextId: "case_user_context"
       }
     });
   });
 
-  it("tracks direct-access case selection and assistant prompt fill metadata", async () => {
-    mocks.authStore = authStore({
-      generationExperience: {
-        experimentKey: "generation_experience",
-        status: "running",
-        strategy: "ab_test",
-        variant: "A",
-        navTarget: "/workspace",
-        showLegacy: true,
-        showAi: false
-      }
-    });
+  it("tracks case selection and assistant prompt fill metadata", async () => {
     const wrapper = mount(AiImageGeneration);
     const cases = mocks.cases as ReturnType<typeof casesState>;
     const selected = promptCase({ id: "case_direct", sourceRepo: "internal_repo" });
@@ -204,14 +193,13 @@ describe("AiImageGeneration", () => {
     await nextTick();
 
     await wrapper.get('[data-testid="select-case"]').trigger("click");
-    expect(mocks.trackExperimentEvent).toHaveBeenNthCalledWith(1, {
+    expect(mocks.trackGenerationEvent).toHaveBeenNthCalledWith(1, {
       eventName: "prompt_case_selected",
       route: "/ai-image",
       caseId: "case_direct",
       metadata: {
         category: selected.category,
-        sourceRepo: "internal_repo",
-        directAccess: true
+        sourceRepo: "internal_repo"
       }
     });
 
@@ -219,14 +207,13 @@ describe("AiImageGeneration", () => {
     await nextTick();
 
     await wrapper.get('[data-testid="fill-assistant"]').trigger("click");
-    expect(mocks.trackExperimentEvent).toHaveBeenNthCalledWith(2, {
+    expect(mocks.trackGenerationEvent).toHaveBeenNthCalledWith(2, {
       eventName: "assistant_prompt_filled",
       route: "/ai-image",
       caseId: "case_direct",
       metadata: {
         promptLength: "助手改写 prompt".length,
-        turnCount: 3,
-        directAccess: true
+        turnCount: 3
       }
     });
   });
@@ -247,13 +234,12 @@ describe("AiImageGeneration", () => {
 
     await wrapper.get('[data-testid="open-assistant"]').trigger("click");
 
-    expect(mocks.trackExperimentEvent).toHaveBeenCalledWith({
+    expect(mocks.trackGenerationEvent).toHaveBeenCalledWith({
       eventName: "assistant_started",
       route: "/ai-image",
       caseId: "case_open",
       metadata: {
-        mode: "image2image",
-        directAccess: false
+        mode: "image2image"
       }
     });
   });
@@ -268,6 +254,9 @@ function generationState() {
     failedMessage: ref(""),
     failedTitle: ref(""),
     files: ref([]),
+    generationProgress: ref(6),
+    generationPrompt: ref(""),
+    generationStatusLabel: ref("workspace.generationRunning"),
     hasRunningTask: ref(false),
     maxReferenceFiles: ref(5),
     mode: ref<PromptCaseMode>("text2image"),
@@ -346,7 +335,7 @@ function authStore(overrides: Record<string, unknown> = {}) {
   return {
     quota: { allocatedQuota: null, usedQuota: 0, remainingQuota: null },
     providerCapabilities: null,
-    generationExperience: null,
+    generationEntry: { navTarget: "/workspace", showWorkspace: true, showAiImage: true },
     promptAssistantEnabled: true,
     isSysadmin: false,
     ...overrides

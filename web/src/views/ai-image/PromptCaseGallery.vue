@@ -46,22 +46,22 @@ const { t } = useI18n();
       <button
         v-for="item in items"
         :key="item.id"
-        class="group grid h-32 grid-cols-[5.75rem_minmax(0,1fr)] gap-3 overflow-hidden rounded-lg border border-border bg-card p-2 text-left transition hover:border-primary/60 hover:bg-muted/35 2xl:grid-cols-[6.5rem_minmax(0,1fr)]"
+        class="group grid h-32 grid-cols-[6.25rem_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg border border-border bg-card p-0 text-left transition hover:border-primary/60 hover:bg-muted/35 2xl:grid-cols-[7rem_minmax(0,1fr)]"
         :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
         type="button"
         @click="emit('select', item)"
       >
-        <div class="relative h-full overflow-hidden rounded-md bg-muted">
+        <div class="relative h-full overflow-hidden border-r border-border bg-muted">
           <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-6 w-6" />
           <span
             v-if="item.featured"
-            class="absolute left-0 top-0 z-10 inline-flex items-center gap-1 rounded-br-md rounded-tl-md bg-background/90 px-2 py-1 text-xs shadow-sm"
+            class="absolute left-0 top-0 z-10 inline-flex items-center gap-1 rounded-br-md bg-background/90 px-2 py-1 text-xs shadow-sm"
           >
             <Star class="h-3 w-3 text-primary" />
             {{ t("promptCases.featured") }}
           </span>
         </div>
-        <div class="flex min-w-0 flex-col overflow-hidden">
+        <div class="flex min-w-0 flex-col overflow-hidden p-3">
           <p class="truncate text-sm font-semibold">{{ item.title }}</p>
           <p class="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
             {{ item.promptSummary }}

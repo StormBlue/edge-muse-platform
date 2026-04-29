@@ -11,6 +11,7 @@ const editablePrompt = defineModel<string>({ required: true });
 
 defineProps<{
   visible: boolean;
+  disabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -37,14 +38,25 @@ const { t } = useI18n();
         v-model="editablePrompt"
         class="ui-field min-h-36 resize-y p-3 text-xs leading-5"
         spellcheck="false"
+        :disabled="disabled"
       />
     </label>
     <div class="flex flex-wrap justify-end gap-2">
-      <button class="ui-button ui-button-secondary h-8 text-xs" type="button" @click="emit('copy')">
+      <button
+        class="ui-button ui-button-secondary h-8 text-xs"
+        type="button"
+        :disabled="disabled"
+        @click="emit('copy')"
+      >
         <Copy class="h-3.5 w-3.5" />
         {{ t("promptCases.copyPrompt") }}
       </button>
-      <button class="ui-button ui-button-primary h-8 text-xs" type="button" @click="emit('fill')">
+      <button
+        class="ui-button ui-button-primary h-8 text-xs"
+        type="button"
+        :disabled="disabled"
+        @click="emit('fill')"
+      >
         <WandSparkles class="h-3.5 w-3.5" />
         {{ t("aiImage.fillFinalPrompt") }}
       </button>

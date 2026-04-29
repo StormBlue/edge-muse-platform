@@ -23,7 +23,7 @@ describe("useWorkspaceActions", () => {
     mockedApiFetch.mockReset();
   });
 
-  it("passes workspace experiment metadata when submitting a generation task", async () => {
+  it("passes workspace generation metadata when submitting a generation task", async () => {
     const { actions, sessions, router, connect } = createActions();
 
     await actions.submit({
@@ -40,15 +40,14 @@ describe("useWorkspaceActions", () => {
         mode: "text2image",
         size: "1024x1024",
         n: 2,
-        experimentEvent: {
+        generationEvent: {
           route: "/workspace",
           metadata: {
             mode: "text2image",
             size: "1024x1024",
             n: 2,
             referenceImageCount: 0,
-            promptSource: "user",
-            directAccess: false
+            promptSource: "user"
           }
         }
       })
@@ -57,7 +56,7 @@ describe("useWorkspaceActions", () => {
     expect(router.replace).toHaveBeenCalledWith("/workspace/s/ses_1");
   });
 
-  it("does not send generation experiment metadata for continuous chat mode", async () => {
+  it("passes generation metadata for continuous chat mode", async () => {
     const { actions, sessions } = createActions();
 
     await actions.submit({
@@ -69,13 +68,19 @@ describe("useWorkspaceActions", () => {
     });
 
     expect(sessions.generate).toHaveBeenCalledWith(
-      expect.not.objectContaining({
-        experimentEvent: expect.anything()
+      expect.objectContaining({
+        generationEvent: expect.objectContaining({
+          route: "/workspace",
+          metadata: expect.objectContaining({
+            mode: "chat",
+            promptSource: "user"
+          })
+        })
       })
     );
   });
 
-  it("sends retry experiment context when retrying a failed task", async () => {
+  it("sends retry generation context when retrying a failed task", async () => {
     const { actions, sessions, connect } = createActions();
     const failedMessage = message({
       id: "msg_failed",
@@ -110,9 +115,9 @@ describe("useWorkspaceActions", () => {
     expect(mockedApiFetch).toHaveBeenCalledWith("/tasks/tsk_failed/retry", {
       method: "POST",
       body: JSON.stringify({
-        experimentEvent: {
+        generationEvent: {
           route: "/workspace",
-          metadata: { isRetry: true, retryTrigger: "workspace", directAccess: false }
+          metadata: { isRetry: true, retryTrigger: "workspace" }
         }
       })
     });
@@ -122,39 +127,6 @@ describe("useWorkspaceActions", () => {
       taskId: "tsk_retry",
       status: "queued"
     });
-  });
-
-  it("marks workspace submissions as direct access for users assigned to the AI image entry", async () => {
-    const { actions, sessions } = createActions({
-      auth: {
-        isSysadmin: false,
-        generationExperience: {
-          experimentKey: "generation_experience",
-          status: "running",
-          strategy: "ab_test",
-          variant: "B",
-          navTarget: "/ai-image",
-          showLegacy: false,
-          showAi: true
-        }
-      }
-    });
-
-    await actions.submit({
-      prompt: "仍然使用专业工作台",
-      mode: "text2image",
-      size: "1024x1024",
-      n: 1,
-      files: []
-    });
-
-    expect(sessions.generate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        experimentEvent: expect.objectContaining({
-          metadata: expect.objectContaining({ directAccess: true })
-        })
-      })
-    );
   });
 });
 
@@ -176,7 +148,7 @@ function createActions(overrides: { auth?: unknown } = {}) {
     t: (key) => key,
     router: router as never,
     sessions: sessions as never,
-    auth: (overrides.auth ?? { isSysadmin: false, generationExperience: null }) as never,
+    auth: (overrides.auth ?? { isSysadmin: false, generationEntry: null }) as never,
     connect,
     draftTitle: ref(""),
     submitting: ref(false),

@@ -61,7 +61,7 @@ describe("session store task events", () => {
     });
   });
 
-  it("sends AI image experiment submission metadata with generate requests", async () => {
+  it("sends AI image generation submission metadata with generate requests", async () => {
     mockedApiFetch.mockResolvedValueOnce({
       taskId: "tsk_1",
       sessionId: "ses_1",
@@ -77,7 +77,7 @@ describe("session store task events", () => {
       mode: "text2image",
       size: "1024x1024",
       n: 1,
-      experimentEvent: {
+      generationEvent: {
         route: "/ai-image",
         caseId: "case_1",
         metadata: { mode: "text2image" }
@@ -86,7 +86,7 @@ describe("session store task events", () => {
 
     const request = mockedApiFetch.mock.calls[0]?.[1] as { body: string };
     expect(JSON.parse(request.body)).toMatchObject({
-      experimentEvent: {
+      generationEvent: {
         route: "/ai-image",
         caseId: "case_1",
         metadata: { mode: "text2image" }

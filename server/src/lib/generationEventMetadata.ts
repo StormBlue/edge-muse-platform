@@ -1,4 +1,4 @@
-export function sanitizeExperimentEventMetadata(value: Record<string, unknown>) {
+export function sanitizeGenerationEventMetadata(value: Record<string, unknown>) {
   const blocked = new Set(["prompt", "finalPrompt", "apiKey", "referenceImage", "referenceImages"]);
   const output: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) {

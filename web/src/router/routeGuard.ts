@@ -2,10 +2,10 @@
  * 路由守卫纯逻辑。
  *
  * `index.ts` 负责读取 Pinia 与 Cookie；这里只判断是否需要 bootstrap 和最终跳转结果，
- * 让登录态、角色权限、A/B 首页落点可以用单元测试稳定覆盖。
+ * 让登录态、角色权限、默认首页落点可以用单元测试稳定覆盖。
  */
 import { homePath } from "./homePath";
-import type { GenerationExperience } from "@/stores/auth";
+import type { GenerationEntry } from "@/api/generation";
 
 export type RouteAccessRole = "admin" | "sysadmin";
 
@@ -23,7 +23,7 @@ export type RouteAccessAuthState = {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isSysadmin: boolean;
-  generationExperience: Pick<GenerationExperience, "navTarget"> | null;
+  generationEntry: GenerationEntry | null;
 };
 
 export function shouldBootstrapRoute(
@@ -44,5 +44,13 @@ export function routeAccessDecision(to: RouteAccessTarget, auth: RouteAccessAuth
   }
   if (to.meta.role === "admin" && !auth.isAdmin) return "/403";
   if (to.meta.role === "sysadmin" && !auth.isSysadmin) return "/403";
+  if (!auth.isSysadmin && auth.generationEntry) {
+    if (to.path.startsWith("/ai-image") && !auth.generationEntry.showAiImage) {
+      return auth.generationEntry.navTarget;
+    }
+    if (to.path.startsWith("/workspace") && !auth.generationEntry.showWorkspace) {
+      return auth.generationEntry.navTarget;
+    }
+  }
   return true;
 }

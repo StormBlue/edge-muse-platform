@@ -8,6 +8,7 @@
  */
 import { RouterLink } from "vue-router";
 import { LogOut, Menu, Settings } from "lucide-vue-next";
+import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAppShellController } from "./useAppShellController";
@@ -127,6 +128,7 @@ const {
           {{ t("shell.tagline") }}
         </div>
         <div class="flex items-center gap-2">
+          <AnnouncementBell />
           <select
             class="ui-field h-9 w-24 px-2 text-sm"
             :value="ui.locale"

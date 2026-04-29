@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { messages, tasks, users } from "../../db/schema";
-import { recordTaskResultExperimentEvent } from "../experiments";
+import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn, promptSummary } from "../log";
@@ -168,7 +168,7 @@ export async function runGenerateTask(
       textResponseCount: textResponses.length
     });
     try {
-      await recordTaskResultExperimentEvent(env, {
+      await recordTaskResultGenerationEvent(env, {
         userId: task.userId,
         taskId,
         eventName: finalStatus === "succeeded" ? "generate_succeeded" : "generate_failed",
@@ -178,14 +178,14 @@ export async function runGenerateTask(
           providerImageCount
         }
       });
-      logInfo("task.finish.experiment_result_written", {
+      logInfo("task.finish.generation_event_result_written", {
         ...baseLogFields,
         finalStatus,
         imageCount: finalImages.length
       });
     } catch (error) {
-      // 实验事件不能影响任务终态；失败由日志暴露，指标侧会缺少该结果事件。
-      logWarn("task.finish.experiment_result_failed", {
+      // 用量事件不能影响任务终态；失败由日志暴露，指标侧会缺少该结果事件。
+      logWarn("task.finish.generation_event_result_failed", {
         ...baseLogFields,
         finalStatus,
         message: error instanceof Error ? error.message : "unknown"
