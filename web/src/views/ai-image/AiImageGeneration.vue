@@ -7,14 +7,13 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { ArrowLeft, Maximize2, WandSparkles } from "lucide-vue-next";
+import { ArrowLeft, WandSparkles } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
 import PromptCaseGallery from "./PromptCaseGallery.vue";
 import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
-import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveAiImageRecommendedSize, type AiImageSizeFallback } from "./aiImageSizeFallback";
 import { useAiImageGenerationTracking } from "./useAiImageGenerationTracking";
@@ -40,7 +39,6 @@ const selectedImage = ref<ImageAttachment | null>(null);
 const sizeFallback = ref<AiImageSizeFallback | null>(null);
 
 const activeCase = computed(() => cases.caseContext.value);
-const activeCaseThumbnail = computed(() => activeCase.value?.thumbnailUrl ?? null);
 const selectedCaseTitle = computed(() => activeCase.value?.title ?? t("aiImage.blankCase"));
 const pageInteractionLocked = computed(
   () => generation.submitting.value || generation.hasRunningTask.value
@@ -309,41 +307,6 @@ watch(
         <div v-if="!caseBrowserCollapsed" class="desktop-case-detail">
           <PromptCaseDetail :item="cases.selected.value" @apply="applyCase" />
         </div>
-        <section v-else class="case-browser-collapsed panel">
-          <button
-            v-if="activeCaseThumbnail"
-            class="group relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-border bg-muted"
-            type="button"
-            :title="t('aiImage.openCasePreview')"
-            :disabled="pageInteractionLocked"
-            @click="openSelectedCasePreview"
-          >
-            <PromptCaseThumbnail
-              :src="activeCaseThumbnail"
-              :alt="selectedCaseTitle"
-              icon-class="h-6 w-6"
-            />
-            <span
-              class="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/85 text-foreground opacity-0 transition group-hover:opacity-100"
-            >
-              <Maximize2 class="h-3.5 w-3.5" />
-            </span>
-          </button>
-          <div
-            v-else
-            class="flex aspect-[4/3] w-full items-center justify-center rounded-lg border border-dashed border-border bg-muted/35 text-muted-foreground"
-          >
-            <WandSparkles class="h-7 w-7" />
-          </div>
-          <p class="mt-3 text-xs font-medium text-muted-foreground">
-            {{ activeCase ? t("aiImage.selectedCase") : t("aiImage.creationMode") }}
-          </p>
-          <p class="mt-1 truncate text-sm font-semibold">{{ selectedCaseTitle }}</p>
-          <p class="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-            {{ activeCase?.promptSummary || t("aiImage.blankCaseSummary") }}
-          </p>
-        </section>
-
         <AiImagePromptPanel
           v-if="caseBrowserCollapsed"
           v-model:mode="generation.mode.value"
@@ -380,6 +343,7 @@ watch(
           @remove-file="generation.removeFile"
           @retry-failed="retryFailedGeneration"
           @open-image="openGeneratedImage"
+          @open-case-preview="openSelectedCasePreview"
           @submit="submitGeneration"
         />
       </div>
@@ -483,15 +447,6 @@ watch(
   gap: 1rem;
 }
 
-.case-browser-collapsed {
-  align-self: start;
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  overflow: hidden;
-  padding: 1rem;
-}
-
 .desktop-case-detail {
   display: none;
 }
@@ -529,7 +484,7 @@ watch(
   }
 
   .ai-image-grid--generating {
-    grid-template-columns: 16rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ai-image-page--generating :deep(.ai-prompt-workspace) {
@@ -540,11 +495,6 @@ watch(
     height: 100%;
     min-height: 0;
     max-height: none;
-  }
-
-  .case-browser-collapsed {
-    min-height: 0;
-    max-height: 100%;
   }
 }
 
@@ -568,7 +518,7 @@ watch(
   }
 
   .ai-image-grid--generating {
-    grid-template-columns: 17rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>
