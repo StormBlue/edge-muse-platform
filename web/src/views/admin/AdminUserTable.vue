@@ -102,7 +102,7 @@ const emit = defineEmits<{
                   type="button"
                   @click="emit('openQuota', user)"
                 >
-                  {{ t("adminUsers.changeQuota") }}
+                  {{ t("adminUsers.addQuota") }}
                 </button>
                 <button
                   class="ui-button ui-button-secondary h-8 text-xs"

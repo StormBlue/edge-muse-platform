@@ -300,7 +300,7 @@ const {
     <Dialog :open="quotaOpen" @update:open="setQuotaOpen">
       <DialogContent v-if="selectedUser" class="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{{ t("adminUsers.adjustQuota") }}</DialogTitle>
+          <DialogTitle>{{ t("adminUsers.addQuota") }}</DialogTitle>
         </DialogHeader>
         <form class="flex flex-col gap-3" :aria-busy="quotaSaving" @submit.prevent="grantQuota">
           <p class="text-sm text-muted-foreground">
@@ -311,7 +311,7 @@ const {
             }}
           </p>
           <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.quotaAmount") }}</span>
+            <span>{{ t("adminUsers.addQuotaAmount") }}</span>
             <input
               v-model.number="quotaAmount"
               class="ui-field mt-1.5 h-10 px-3"
@@ -327,7 +327,7 @@ const {
             </DialogClose>
             <button class="ui-button ui-button-primary" type="submit" :disabled="quotaSaving">
               <Loader2 v-if="quotaSaving" class="h-4 w-4 animate-spin" />
-              {{ t("adminUsers.confirm") }}
+              {{ t("adminUsers.confirmAddQuota") }}
             </button>
           </DialogFooter>
         </form>
