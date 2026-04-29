@@ -47,7 +47,9 @@ const dragState = ref<{
   startY: number;
   originX: number;
   originY: number;
+  moved: boolean;
 } | null>(null);
+const ignoreNextBackdropClick = ref(false);
 /** 在 `images` 里定位当前 `image.id`；无集合时为 -1，左右不可用 */
 const currentIndex = computed(() =>
   props.image && props.images?.length
@@ -128,7 +130,8 @@ function onStagePointerDown(event: PointerEvent) {
     startX: event.clientX,
     startY: event.clientY,
     originX: offset.value.x,
-    originY: offset.value.y
+    originY: offset.value.y,
+    moved: false
   };
   stageRef.value?.setPointerCapture(event.pointerId);
 }
@@ -136,6 +139,9 @@ function onStagePointerDown(event: PointerEvent) {
 function onStagePointerMove(event: PointerEvent) {
   const drag = dragState.value;
   if (!drag || drag.pointerId !== event.pointerId) return;
+  if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
+    drag.moved = true;
+  }
   offset.value = clampOffsetValue({
     x: drag.originX + event.clientX - drag.startX,
     y: drag.originY + event.clientY - drag.startY
@@ -145,9 +151,27 @@ function onStagePointerMove(event: PointerEvent) {
 function onStagePointerEnd(event: PointerEvent) {
   const drag = dragState.value;
   if (!drag || drag.pointerId !== event.pointerId) return;
-  stageRef.value?.releasePointerCapture(event.pointerId);
+  if (stageRef.value?.hasPointerCapture(event.pointerId)) {
+    stageRef.value.releasePointerCapture(event.pointerId);
+  }
+  if (drag.moved) {
+    ignoreNextBackdropClick.value = true;
+    window.setTimeout(() => {
+      ignoreNextBackdropClick.value = false;
+    }, 200);
+  }
   dragState.value = null;
   clampOffset();
+}
+
+function closeFromBackdrop(event: MouseEvent) {
+  if (ignoreNextBackdropClick.value) {
+    event.preventDefault();
+    event.stopPropagation();
+    ignoreNextBackdropClick.value = false;
+    return;
+  }
+  emit("close");
 }
 
 function onStageWheel(event: WheelEvent) {
@@ -197,7 +221,7 @@ function formatBytes(bytes: number) {
   <div
     v-if="image"
     class="image-viewer fixed inset-0 z-50 grid bg-black/90 text-white"
-    @click.self="emit('close')"
+    @click.self="closeFromBackdrop"
   >
     <header
       class="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 sm:px-4"
@@ -268,7 +292,7 @@ function formatBytes(bytes: number) {
       </div>
     </header>
 
-    <main class="relative min-h-0 overflow-hidden p-2 sm:p-4" @click.self="emit('close')">
+    <main class="relative min-h-0 overflow-hidden p-2 sm:p-4" @click.self="closeFromBackdrop">
       <button
         v-if="hasPrevious"
         class="viewer-nav left-4"
@@ -287,7 +311,7 @@ function formatBytes(bytes: number) {
         @pointerup="onStagePointerEnd"
         @pointercancel="onStagePointerEnd"
         @wheel="onStageWheel"
-        @click.self="emit('close')"
+        @click.self="closeFromBackdrop"
       >
         <img
           ref="imageRef"

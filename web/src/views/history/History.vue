@@ -125,24 +125,21 @@ const {
                 <div
                   class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(14rem,22rem)] lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_24rem]"
                 >
-                  <ScrollArea class="h-full min-h-0 bg-muted/15">
+                  <div class="h-full min-h-0 overflow-hidden bg-muted/15">
                     <div class="flex h-full min-h-0 flex-col p-3 sm:p-4">
                       <div
                         v-if="message.attachments.length"
                         :class="[
-                          'grid gap-3',
+                          'grid min-h-0 flex-1 gap-3',
                           message.attachments.length === 1
-                            ? 'min-h-0 flex-1 grid-cols-1'
-                            : 'shrink-0 grid-cols-2 2xl:grid-cols-3'
+                            ? 'grid-cols-1'
+                            : 'auto-rows-fr grid-cols-2 2xl:grid-cols-3'
                         ]"
                       >
                         <button
                           v-for="image in message.attachments"
                           :key="image.id"
-                          :class="[
-                            'w-full overflow-hidden rounded-lg border border-border bg-muted',
-                            message.attachments.length === 1 ? 'h-full min-h-0' : 'aspect-square'
-                          ]"
+                          class="h-full min-h-0 w-full overflow-hidden rounded-lg border border-border bg-muted"
                           type="button"
                           :title="t('workspace.openPreview')"
                           @click="openImage(image)"
@@ -181,7 +178,7 @@ const {
                         </div>
                       </ScrollArea>
                     </div>
-                  </ScrollArea>
+                  </div>
 
                   <aside
                     class="h-full min-h-0 min-w-0 overflow-hidden border-t border-border bg-background lg:border-l lg:border-t-0"

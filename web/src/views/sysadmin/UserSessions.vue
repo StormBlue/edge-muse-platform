@@ -102,33 +102,25 @@ const {
               <div
                 class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(16rem,24rem)] lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_26rem]"
               >
-                <ScrollArea class="h-full min-h-0 bg-muted/15">
+                <div class="h-full min-h-0 overflow-hidden bg-muted/15">
                   <div class="flex h-full min-h-0 flex-col gap-4 p-3 sm:p-4">
-                    <section
-                      :class="message.attachments.length <= 1 ? 'min-h-0 flex-1' : 'shrink-0'"
-                    >
+                    <section class="min-h-0 flex-1 overflow-hidden">
                       <div
                         v-if="message.attachments.length"
                         :class="[
-                          'grid gap-3',
+                          'grid h-full min-h-0 gap-3',
                           message.attachments.length === 1
-                            ? 'h-full min-h-0 grid-cols-1'
-                            : 'grid-cols-2 2xl:grid-cols-3'
+                            ? 'grid-cols-1'
+                            : 'auto-rows-fr grid-cols-2 2xl:grid-cols-3'
                         ]"
                       >
                         <div
                           v-for="image in message.attachments"
                           :key="image.id"
-                          :class="[
-                            'min-w-0',
-                            message.attachments.length === 1 ? 'flex h-full min-h-0 flex-col' : ''
-                          ]"
+                          class="flex h-full min-h-0 min-w-0 flex-col"
                         >
                           <button
-                            :class="[
-                              'w-full overflow-hidden rounded-lg border border-border bg-muted',
-                              message.attachments.length === 1 ? 'min-h-0 flex-1' : 'aspect-square'
-                            ]"
+                            class="min-h-0 w-full flex-1 overflow-hidden rounded-lg border border-border bg-muted"
                             type="button"
                             :title="imageTitle(image)"
                             @click="openImage(image)"
@@ -187,7 +179,7 @@ const {
                       :task-failure-message="taskFailureMessage"
                     />
                   </div>
-                </ScrollArea>
+                </div>
 
                 <aside
                   class="h-full min-h-0 min-w-0 overflow-hidden border-t border-border bg-background lg:border-l lg:border-t-0"
