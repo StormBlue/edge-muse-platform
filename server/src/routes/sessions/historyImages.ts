@@ -53,10 +53,7 @@ export async function loadPersistedGeneratedImagesByMessageId(
   return imagesByMessageId;
 }
 
-/**
- * 以 messages.attachments JSON 为主序，把 D1 多出的 `persistedImages` 追加在末尾不重复。
- * 这是“部分成功图片保留”的关键兜底：即使任务最终失败，已落库图片仍应出现在历史详情。
- */
+/** 以 messages.attachments JSON 为准，只用 D1 持久化行补齐元数据；额外落库图仅供 sysadmin 审计。 */
 export function mergePersistedGeneratedImages(
   attachments: Array<Partial<HistoryImageAttachment> & { id: string }>,
   persistedImages: HistoryImageAttachment[],
@@ -67,14 +64,10 @@ export function mergePersistedGeneratedImages(
     prompt?: string | null;
   }
 ): HistoryImageAttachment[] {
-  const merged = attachments.map((image) => normalizeHistoryImageAttachment(image, context));
-  const seenIds = new Set(merged.map((image) => image.id));
-  for (const image of persistedImages) {
-    if (seenIds.has(image.id)) continue;
-    merged.push(normalizeHistoryImageAttachment(image, context));
-    seenIds.add(image.id);
-  }
-  return merged;
+  const persistedById = new Map(persistedImages.map((image) => [image.id, image]));
+  return attachments.map((image) =>
+    normalizeHistoryImageAttachment({ ...persistedById.get(image.id), ...image }, context)
+  );
 }
 
 /** 补齐 url/mime/外键，与前台 `ImageAttachment` 展示一致。 */
