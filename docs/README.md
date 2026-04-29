@@ -16,6 +16,8 @@
 | [DEPLOYMENT.md](./DEPLOYMENT.md)   | Wrangler、CI/CD、环境              |
 | [TESTING.md](./TESTING.md)         | 测试命令与范围                     |
 
+本地 Worker 启动后可访问交互式 API 文档：`http://localhost:8787/api/docs`；机器可读 OpenAPI JSON 为 `http://localhost:8787/api/openapi.json`。OpenAPI 源码维护在 [`server/src/docs/openapi.ts`](../server/src/docs/openapi.ts)。
+
 ## 运维与产品
 
 | 文件                                   | 用途                       |
