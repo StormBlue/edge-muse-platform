@@ -5,7 +5,7 @@
  * 助手只负责生成最终 prompt；回填后仍需要用户点击“生成”，不会直接消耗生图配额。
  */
 import { computed, ref, watch } from "vue";
-import { RotateCcw, Send } from "lucide-vue-next";
+import { RotateCcw, Send, WandSparkles } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
@@ -57,6 +57,7 @@ const canSend = computed(
     completedAssistantReplies.value < MAX_ASSISTANT_TURNS
 );
 const finalPrompt = computed(() => latest.value?.finalPrompt ?? "");
+const canFinalize = computed(() => !loading.value && !props.disabled && !finalPrompt.value);
 const limitReached = computed(
   () =>
     !loading.value && !finalPrompt.value && completedAssistantReplies.value >= MAX_ASSISTANT_TURNS
@@ -106,13 +107,22 @@ watch(contextKey, () => {
 });
 
 async function sendTurn() {
-  if (!canSend.value) return;
+  await submitAssistantTurn({ forceFinalize: false });
+}
+
+async function finalizePrompt() {
+  await submitAssistantTurn({ forceFinalize: true });
+}
+
+async function submitAssistantTurn(options: { forceFinalize: boolean }) {
+  const userInput = input.value.trim();
+  if (options.forceFinalize ? !canFinalize.value : !canSend.value) return;
   const currentSeq = ++requestSeq;
   const currentContextKey = contextKey.value;
-  const nextMessages: AssistantMessage[] = [
-    ...messages.value,
-    { role: "user", content: input.value.trim() }
-  ];
+  const nextMessages: AssistantMessage[] = userInput
+    ? [...messages.value, { role: "user", content: userInput }]
+    : [...messages.value];
+  const turnIndex = Math.min(completedAssistantReplies.value, MAX_ASSISTANT_TURNS - 1);
   input.value = "";
   messages.value = nextMessages;
   loading.value = true;
@@ -122,7 +132,8 @@ async function sendTurn() {
       body: JSON.stringify({
         mode: props.mode,
         locale: promptAssistantLocaleFromUiLocale(ui.locale),
-        turnIndex: completedAssistantReplies.value,
+        turnIndex,
+        forceFinalize: options.forceFinalize,
         caseId: props.caseItem?.id,
         caseTitle: props.caseItem?.title,
         casePromptSummary: props.caseItem?.promptSummary,
@@ -240,10 +251,22 @@ defineExpose({ reset });
         <p class="text-xs leading-5 text-muted-foreground">
           {{ t("aiImage.assistantInputShortcutHint") }}
         </p>
-        <button class="ui-button ui-button-primary" type="submit" :disabled="!canSend">
-          <Send class="h-4 w-4" />
-          {{ t("aiImage.sendAssistantMessage") }}
-        </button>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="!canFinalize"
+            data-testid="finalize-assistant-prompt"
+            @click="finalizePrompt"
+          >
+            <WandSparkles class="h-4 w-4" />
+            {{ t("aiImage.finalizeAssistantPrompt") }}
+          </button>
+          <button class="ui-button ui-button-primary" type="submit" :disabled="!canSend">
+            <Send class="h-4 w-4" />
+            {{ t("aiImage.sendAssistantMessage") }}
+          </button>
+        </div>
       </div>
     </form>
 

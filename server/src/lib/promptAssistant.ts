@@ -27,6 +27,7 @@ export const promptAssistantTurnSchema = z.object({
     .int()
     .min(0)
     .max(MAX_PROMPT_ASSISTANT_TURNS - 1),
+  forceFinalize: z.boolean().default(false),
   caseId: z.string().trim().max(120).optional(),
   caseTitle: z.string().trim().max(120).optional(),
   casePromptSummary: z.string().trim().max(1000).optional(),
@@ -42,10 +43,7 @@ export const promptAssistantTurnSchema = z.object({
     })
     .optional(),
   referenceBrief: z.string().trim().max(1000).optional(),
-  messages: z
-    .array(assistantMessageSchema)
-    .min(1)
-    .max(MAX_PROMPT_ASSISTANT_TURNS * 2)
+  messages: z.array(assistantMessageSchema).max(MAX_PROMPT_ASSISTANT_TURNS * 2)
 });
 
 export type PromptAssistantTurnInput = z.infer<typeof promptAssistantTurnSchema>;
@@ -90,7 +88,7 @@ const aiResultSchema = z.object({
     normalizeNullableString,
     z.string().trim().max(1500).nullable().default(null)
   ),
-  recommendedSize: z.string().trim().max(40).default("1024x1024"),
+  recommendedSize: z.string().trim().max(40).optional(),
   warnings: z.preprocess(normalizeWarnings, z.array(z.string().trim().max(160)).max(6).default([]))
 });
 
@@ -204,6 +202,7 @@ function systemPrompt(input: PromptAssistantTurnInput) {
     "禁止泛泛地说“请提供更多信息”“需要更详细的信息”；如果必须追问，问题要具体，并给 2-3 个可选方向帮助用户决策。",
     "只追问会显著改变画面的关键变量，例如主体、核心场景、画面文字、禁忌、必须保留元素；不要追问低价值细节。",
     "当用户说“你来补”“自己补”“按模板”“随便”“类似某种风格”“差不多”等表达时，视为授权你主动补全，不要继续追问。",
+    "如果 forceFinalizeRequested 为 true，必须直接输出 ready 和 finalPrompt；缺少的信息要在通用商业视觉、产品原型、Prompt 工程最佳实践范围内合理补全，不要继续追问。",
     "如果已有 selectedCase 加至少一个用户创意方向，或已经有主体、场景/风格、文字意图中的任意两项，就可以主动补全合理细节并输出 finalPrompt。",
     "assistantMessage 要先简短确认你理解的方向，再说明下一步；如果 readiness 是 ready，应告诉用户已整理好，可在提示词框继续微调。",
     "finalPrompt 需要继承案例模板的结构、用途和风格，并融合用户补充，而不是重新发散到无关方向。",
@@ -229,12 +228,15 @@ function userPrompt(input: PromptAssistantTurnInput) {
 }
 
 function conversationGuidance(input: PromptAssistantTurnInput) {
+  const forceFinalizeRequested = input.forceFinalize;
   return {
+    forceFinalizeRequested,
     userDelegatedCreativeControl: hasUserDelegatedCreativeControl(input),
-    shouldFinishIfReasonable: shouldPrepareFinalPrompt(input),
+    shouldFinishIfReasonable: forceFinalizeRequested || shouldPrepareFinalPrompt(input),
     lastUserMessage: lastUserMessage(input),
-    instruction:
-      "如果 shouldFinishIfReasonable 为 true，请优先输出 ready 和 finalPrompt；只有缺少会导致画面完全跑偏的核心信息时才追问。"
+    instruction: forceFinalizeRequested
+      ? "用户已点击直接生成 Prompt。请基于当前状态直接输出 ready 和 finalPrompt，信息不足时主动补全合理细节。"
+      : "如果 shouldFinishIfReasonable 为 true，请优先输出 ready 和 finalPrompt；只有缺少会导致画面完全跑偏的核心信息时才追问。"
   };
 }
 
@@ -279,6 +281,9 @@ function parseAiResult(
   const payload = parseAiPayload(raw);
   const parsed = aiResultSchema.parse(payload);
   const finalPrompt = parsed.finalPrompt?.trim() ? parsed.finalPrompt : null;
+  if (!finalPrompt && shouldPrepareFinalPrompt(input)) {
+    throw new Error("Workers AI kept collecting after enough prompt context was provided");
+  }
   return {
     assistantMessage:
       firstNonEmptyString(parsed.assistantMessage, parsed.message, parsed.question) ??
@@ -286,7 +291,7 @@ function parseAiResult(
     readiness: finalPrompt ? (parsed.readiness ?? "ready") : "collecting",
     brief: parsed.brief,
     finalPrompt,
-    recommendedSize: parsed.recommendedSize,
+    recommendedSize: recommendedSizeForTurn(input, parsed.recommendedSize),
     warnings: parsed.warnings
   };
 }
@@ -414,7 +419,7 @@ function fallbackAssistantResult(
 ): Omit<PromptAssistantResult, "degraded" | "model"> {
   const enough = shouldPrepareFinalPrompt(input);
   const brief = summarizeMessages(input);
-  const recommendedSize = input.provider?.supportedSizes?.[0] ?? "1024x1024";
+  const recommendedSize = recommendedSizeForTurn(input);
   if (!enough) {
     return {
       assistantMessage: nextQuestion(input),
@@ -437,11 +442,7 @@ function fallbackAssistantResult(
 }
 
 function summarizeMessages(input: PromptAssistantTurnInput): PromptAssistantResult["brief"] {
-  const userText = input.messages
-    .filter((message) => message.role === "user")
-    .map((message) => message.content)
-    .join("；")
-    .slice(0, 600);
+  const userText = meaningfulUserMessages(input).join("；").slice(0, 600);
   const caseStyle = [
     input.casePromptSummary,
     input.caseTags?.length ? `标签：${input.caseTags.join("、")}` : undefined
@@ -454,7 +455,7 @@ function summarizeMessages(input: PromptAssistantTurnInput): PromptAssistantResu
           .filter(Boolean)
           .join("；")
       : "自由创作",
-    subject: userText || "用户尚未提供主体",
+    subject: userText || fallbackCreativeSubject(input),
     style: caseStyle || (input.casePromptTemplate ? "参考所选案例模板" : "待确认"),
     scene:
       input.referenceBrief || (input.caseCategory ? `适合${input.caseCategory}场景` : "待确认"),
@@ -463,6 +464,16 @@ function summarizeMessages(input: PromptAssistantTurnInput): PromptAssistantResu
       : "保持主体清晰、层次明确",
     constraints: ["无水印", "无无关 Logo", "无额外乱码文字"]
   };
+}
+
+function recommendedSizeForTurn(input: PromptAssistantTurnInput, aiRecommendedSize?: string) {
+  return (
+    firstNonEmptyString(
+      aiRecommendedSize,
+      input.caseRecommendedSize,
+      input.provider?.supportedSizes?.[0]
+    ) ?? "1024x1024"
+  );
 }
 
 function nextQuestion(input: PromptAssistantTurnInput) {
@@ -502,6 +513,7 @@ function nextQuestion(input: PromptAssistantTurnInput) {
 }
 
 function shouldPrepareFinalPrompt(input: PromptAssistantTurnInput) {
+  if (input.forceFinalize) return true;
   if (hasUserDelegatedCreativeControl(input)) return true;
   if (input.turnIndex >= 5 || input.messages.length >= 6) return true;
   const userMessages = input.messages.filter((message) => message.role === "user");
@@ -511,7 +523,7 @@ function shouldPrepareFinalPrompt(input: PromptAssistantTurnInput) {
 function hasUserDelegatedCreativeControl(input: PromptAssistantTurnInput) {
   const text = lastUserMessage(input);
   if (
-    /你(来|自己|帮我)?补|自己补|按.*模板|随便|都可以|差不多|照着|你看着办|你决定|你来定|不用问/.test(
+    /你(来|自己|帮我)?补|自己补|按.*模板|随便|都可以|差不多|照着|你看着办|你决定|你来定|不用问|直接生成|现在生成|生成\s*(Prompt|提示词)|整理\s*(Prompt|提示词)/i.test(
       text
     )
   ) {
@@ -530,6 +542,24 @@ function lastUserMessage(input: PromptAssistantTurnInput) {
   );
 }
 
+function meaningfulUserMessages(input: PromptAssistantTurnInput) {
+  return input.messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content.trim())
+    .filter((content) => content && !isFinalizeOnlyMessage(content));
+}
+
+function isFinalizeOnlyMessage(content: string) {
+  return /^(直接|现在|立即|开始)?\s*(生成|整理)\s*(Prompt|提示词)?吧?$/i.test(content);
+}
+
+function fallbackCreativeSubject(input: PromptAssistantTurnInput) {
+  if (input.caseTitle) {
+    return `由 AI 基于「${input.caseTitle}」案例模板和通用视觉规范自由发挥，补全清晰主体与关键画面细节`;
+  }
+  return "由 AI 基于通用视觉创作规范自由发挥，设定清晰主体、场景和关键画面细节";
+}
+
 function buildFallbackFinalPrompt(
   input: PromptAssistantTurnInput,
   brief: PromptAssistantResult["brief"]
@@ -544,9 +574,20 @@ function buildFallbackFinalPrompt(
     `场景：${brief.scene ?? "干净、有层次的背景"}。`,
     `构图：${brief.composition ?? "主体突出，画面有留白和纵深"}。`,
     `风格与光线：${brief.style ?? "专业、统一、细节真实"}，光线自然，色彩协调。`,
-    "文字：如用户未明确要求，则画面内不出现文字。",
+    `文字：${fallbackTextInstruction(input)}。`,
     `约束：${(brief.constraints ?? []).join("、")}。`
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function fallbackTextInstruction(input: PromptAssistantTurnInput) {
+  const textMessages = input.messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content.trim())
+    .filter((content) =>
+      /文字|文案|标题|主标题|片名|写上|显示|加字|不要文字|不加文字|无文字/i.test(content)
+    );
+  if (!textMessages.length) return "如用户未明确要求，则画面内不出现文字";
+  return `按用户明确要求处理：${Array.from(new Set(textMessages)).join("；").slice(0, 300)}`;
 }
