@@ -133,7 +133,7 @@
     "assistantInputPlaceholder": "直接回复 AI，或补充新的画面细节...",
     "assistantInputShortcutHint": "Enter 发送，Ctrl + Enter / Shift + Enter 换行",
     "assistantLimitReached": "已达到对话上限，仍未得到可用 Prompt。请点击“生成 Prompt”按当前信息整理；缺失细节会由 AI 合理补全。",
-    "assistantReadyBody": "已自动填充到右侧生成面板的提示词输入框，你可以在那里继续微调或点击一键生成。",
+    "assistantReadyBody": "已自动填充到提示词输入框，你可以在那里继续微调或点击一键生成。",
     "assistantReadyTitle": "Prompt 已生成并填充",
     "assistantSubtitle": "像聊天一样说清需求，AI 会整理成可生成的 Prompt。",
     "assistantThinking": "正在整理...",

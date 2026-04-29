@@ -441,7 +441,11 @@ function isMobileAssistantViewport() {
             @retry="emit('retryFailed')"
           />
 
-          <div v-else-if="resultImages.length" class="ai-result-grid">
+          <div
+            v-else-if="resultImages.length"
+            class="ai-result-grid"
+            :class="{ 'ai-result-grid--single': resultImages.length === 1 }"
+          >
             <button
               v-for="image in resultImages"
               :key="image.id"
@@ -452,9 +456,10 @@ function isMobileAssistantViewport() {
               @click="emit('openImage', image)"
             >
               <img
-                class="h-full w-full object-contain"
+                class="ai-result-image"
                 :src="image.url"
                 :alt="image.prompt ?? ''"
+                loading="lazy"
               />
               <span
                 class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/85 text-foreground opacity-0 transition group-hover:opacity-100"
@@ -558,6 +563,14 @@ function isMobileAssistantViewport() {
   overflow-y: auto;
 }
 
+.ai-result-grid--single {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
 .ai-result-tile {
   position: relative;
   display: flex;
@@ -568,6 +581,19 @@ function isMobileAssistantViewport() {
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   background: color-mix(in oklch, var(--muted), transparent 55%);
+}
+
+.ai-result-grid--single .ai-result-tile {
+  width: 100%;
+  height: 100%;
+}
+
+.ai-result-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
 }
 
 .ai-generation-progress,

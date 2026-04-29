@@ -73,10 +73,11 @@ export function registerHistoryRoutes(historyRoutes: SessionRouter) {
          ) AS requested_image_count,
          (
            SELECT COUNT(*)
-           FROM image_objects generated_images
-           WHERE generated_images.session_id = sessions.id
-             AND generated_images.deleted_at IS NULL
-             AND generated_images.is_reference = 0
+           FROM messages accepted_image_messages,
+             json_each(accepted_image_messages.attachments) accepted_images
+           WHERE accepted_image_messages.session_id = sessions.id
+             AND accepted_image_messages.deleted_at IS NULL
+             AND json_valid(accepted_image_messages.attachments)
          ) AS image_count,
          COALESCE(
            (
@@ -104,14 +105,18 @@ export function registerHistoryRoutes(historyRoutes: SessionRouter) {
          cover.task_id AS cover_task_id
        FROM sessions
        LEFT JOIN image_objects cover ON cover.id = (
-         SELECT image_objects.id
-         FROM image_objects
-         WHERE image_objects.session_id = sessions.id
-           AND image_objects.deleted_at IS NULL
-           AND image_objects.is_reference = 0
-         ORDER BY image_objects.created_at DESC
-         LIMIT 1
-       )
+           SELECT json_extract(cover_images.value, '$.id')
+           FROM messages cover_messages,
+             json_each(cover_messages.attachments) cover_images
+           WHERE cover_messages.session_id = sessions.id
+             AND cover_messages.deleted_at IS NULL
+             AND json_valid(cover_messages.attachments)
+             AND json_extract(cover_images.value, '$.id') IS NOT NULL
+           ORDER BY cover_messages.created_at DESC, CAST(cover_images.key AS INTEGER) DESC
+           LIMIT 1
+         )
+         AND cover.deleted_at IS NULL
+         AND cover.is_reference = 0
        WHERE ${conditions.join(" AND ")}
        GROUP BY sessions.id
        ORDER BY ${orderSql}

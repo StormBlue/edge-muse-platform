@@ -16,6 +16,7 @@ import { summarizeTaskGenerationRun, type TaskGenerationRunResult } from "./runG
 import { generationFailureFromError } from "./runPolicy";
 import { assertTaskClaimCurrent, touchTaskHeartbeat } from "./state";
 import { sortTaskImages } from "./taskImages";
+import type { ProviderImage } from "../../providers/types";
 import type {
   GenerationFailure,
   GenerationResult,
@@ -155,13 +156,26 @@ export async function runTaskGenerations(
     });
     const persistedGenerationImages: TaskImageAttachment[] = [];
     const persistenceFailures: GenerationFailure[] = [];
+    const acceptedProviderImageIndexes = acceptedImageIndexesForGenerationSlot(response.images);
+    if (response.images.length > acceptedProviderImageIndexes.size) {
+      logWarn("task.generation.extra_provider_images_saved_for_audit", {
+        ...baseLogFields,
+        generationIndex: index,
+        requestedImagesForProviderCall: 1,
+        providerImageCount: response.images.length,
+        acceptedImageCount: acceptedProviderImageIndexes.size,
+        auditOnlyImageCount: response.images.length - acceptedProviderImageIndexes.size
+      });
+    }
     for (const [providerImageIndex, image] of response.images.entries()) {
       try {
+        const acceptedForUser = acceptedProviderImageIndexes.has(providerImageIndex);
         await assertTaskClaimCurrent(env, taskId, startedAt);
         logInfo("task.image.persist_started", {
           ...baseLogFields,
           generationIndex: index,
           providerImageIndex,
+          acceptedForUser,
           providerImage: providerImageSummary(image)
         });
         const stored = await persistProviderImage(env, {
@@ -176,28 +190,32 @@ export async function runTaskGenerations(
           prompt: params.prompt,
           generationIndex: index
         };
-        images.push(attachment);
-        persistedGenerationImages.push(attachment);
+        if (acceptedForUser) {
+          images.push(attachment);
+          persistedGenerationImages.push(attachment);
+        }
         persistedImages += 1;
-        await queueMessageAttachmentUpdate("image_persisted");
-        await notify({
-          type: "task.image",
-          task: { id: taskId, status: "running" },
-          image: attachment
-        });
-        await notify({
-          type: "task.update",
-          task: {
-            id: taskId,
-            status: "running",
-            progress: Math.min(
-              0.95,
-              0.1 +
-                (completedGenerations / Math.max(params.n, 1)) * 0.75 +
-                (persistedImages / Math.max(params.n, 1)) * 0.1
-            )
-          }
-        });
+        if (acceptedForUser) {
+          await queueMessageAttachmentUpdate("image_persisted");
+          await notify({
+            type: "task.image",
+            task: { id: taskId, status: "running" },
+            image: attachment
+          });
+          await notify({
+            type: "task.update",
+            task: {
+              id: taskId,
+              status: "running",
+              progress: Math.min(
+                0.95,
+                0.1 +
+                  (completedGenerations / Math.max(params.n, 1)) * 0.75 +
+                  (persistedImages / Math.max(params.n, 1)) * 0.1
+              )
+            }
+          });
+        }
         logInfo("task.image.persisted", {
           ...baseLogFields,
           generationIndex: index,
@@ -205,6 +223,7 @@ export async function runTaskGenerations(
           imageId: stored.id,
           mime: stored.mime,
           byteSize: stored.byteSize,
+          acceptedForUser,
           persistedImages,
           requestedGenerations: params.n
         });
@@ -275,4 +294,16 @@ export async function runTaskGenerations(
     messageAttachmentUpdate,
     requestedGenerations: params.n
   });
+}
+
+/**
+ * 任务层已经把 `params.n` 拆成 n 次 provider 调用，且每次 provider 请求体都写 `n: 1`。
+ * 若上游偶发返回多张图，只采纳第一张，避免单次一键生成突破产品层的张数语义。
+ */
+export function acceptImagesForGenerationSlot(images: ProviderImage[]): ProviderImage[] {
+  return images.filter((_, index) => acceptedImageIndexesForGenerationSlot(images).has(index));
+}
+
+function acceptedImageIndexesForGenerationSlot(images: ProviderImage[]): Set<number> {
+  return new Set(images.length > 0 ? [0] : []);
 }

@@ -50,7 +50,7 @@ vi.mock("./PromptCaseMobileSheet.vue", () => ({
 vi.mock("./AiImagePromptPanel.vue", () => ({
   default: {
     name: "AiImagePromptPanel",
-    props: ["canResetPrompt", "mode", "size", "sizeFallbackNotice"],
+    props: ["canResetPrompt", "mode", "prompt", "size", "sizeFallbackNotice"],
     emits: [
       "addFiles",
       "clearPrompt",
@@ -69,6 +69,7 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
     template: `
       <section data-testid="prompt-panel">
         {{ mode }}|{{ sizeFallbackNotice }}
+        <textarea data-testid="prompt-input" :value="prompt"></textarea>
         <button
           data-testid="fill-assistant"
           type="button"
@@ -208,6 +209,11 @@ describe("AiImageGeneration", () => {
     await nextTick();
 
     await wrapper.get('[data-testid="fill-assistant"]').trigger("click");
+    await nextTick();
+
+    expect((wrapper.get('[data-testid="prompt-input"]').element as HTMLTextAreaElement).value).toBe(
+      "助手改写 prompt"
+    );
     expect(mocks.trackGenerationEvent).toHaveBeenNthCalledWith(2, {
       eventName: "assistant_prompt_filled",
       route: "/ai-image",
@@ -330,7 +336,10 @@ function casesState() {
       finalPrompt.value = "";
       finalPromptSource.value = null;
     }),
-    setPrompt: vi.fn()
+    setPrompt: vi.fn((value: string, source: "case" | "assistant" | "user") => {
+      finalPrompt.value = value;
+      finalPromptSource.value = source;
+    })
   };
 }
 

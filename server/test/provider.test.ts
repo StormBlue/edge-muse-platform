@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { acceptImagesForGenerationSlot } from "../src/lib/tasks/runGenerations";
 import { OpenAICompatibleProvider, parseProviderImages } from "../src/providers/openai-compatible";
 import { OpenAIImagesProvider } from "../src/providers/openai-images";
 
@@ -26,6 +27,16 @@ describe("provider response parsing", () => {
   it("parses OpenAI Images base64 payloads", () => {
     const images = parseProviderImages({ data: [{ b64_json: png }] });
     expect(images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
+  });
+
+  it("keeps one provider image per requested generation slot", () => {
+    const images = parseProviderImages({
+      data: [{ url: "https://example.com/first.png" }, { url: "https://example.com/second.png" }]
+    });
+
+    expect(acceptImagesForGenerationSlot(images)).toEqual([
+      { kind: "url", url: "https://example.com/first.png" }
+    ]);
   });
 
   it("parses markdown images from chat completions", () => {
