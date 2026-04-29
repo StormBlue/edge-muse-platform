@@ -6,6 +6,7 @@
  */
 import { z } from "zod";
 import { appError } from "./errors";
+import { logWarn } from "./log";
 import type { AppBindings } from "../types";
 
 export const PROMPT_ASSISTANT_MODES = ["text2image", "image2image"] as const;
@@ -67,24 +68,33 @@ export type PromptAssistantResult = {
 };
 
 const aiResultSchema = z.object({
-  assistantMessage: z.string().trim().min(1).max(1500),
-  readiness: z.enum(["collecting", "ready"]),
-  brief: z
-    .object({
-      useCase: z.string().max(200).optional(),
-      subject: z.string().max(300).optional(),
-      style: z.string().max(300).optional(),
-      scene: z.string().max(300).optional(),
-      composition: z.string().max(300).optional(),
-      constraints: z.array(z.string().max(120)).max(10).optional()
-    })
-    .default({}),
-  finalPrompt: z.string().trim().max(1500).nullable().default(null),
+  assistantMessage: z.string().trim().max(1500).optional(),
+  message: z.string().trim().max(1500).optional(),
+  question: z.string().trim().max(1500).optional(),
+  readiness: z.enum(["collecting", "ready"]).optional(),
+  brief: z.preprocess(
+    normalizeAiBrief,
+    z
+      .object({
+        useCase: z.string().max(200).optional(),
+        subject: z.string().max(300).optional(),
+        style: z.string().max(300).optional(),
+        scene: z.string().max(300).optional(),
+        composition: z.string().max(300).optional(),
+        constraints: z.array(z.string().max(120)).max(10).optional()
+      })
+      .default({})
+  ),
+  finalPrompt: z.preprocess(
+    normalizeNullableString,
+    z.string().trim().max(1500).nullable().default(null)
+  ),
   recommendedSize: z.string().trim().max(40).default("1024x1024"),
-  warnings: z.array(z.string().trim().max(160)).max(6).default([])
+  warnings: z.preprocess(normalizeWarnings, z.array(z.string().trim().max(160)).max(6).default([]))
 });
 
 const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const AI_RETRY_DELAYS_MS = [500, 1500, 3500];
 
 export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
   const value = env.PROMPT_ASSISTANT_ENABLED?.trim().toLowerCase();
@@ -97,19 +107,51 @@ export async function runPromptAssistantTurn(
 ): Promise<PromptAssistantResult> {
   assertTotalInputLength(input);
   const model = env.PROMPT_ASSISTANT_MODEL || DEFAULT_MODEL;
+  let aiText = "";
   try {
-    if (!env.AI) throw new Error("Workers AI binding is not configured");
-    const result = await env.AI.run(model, {
-      messages: [
-        { role: "system", content: systemPrompt(input) },
-        { role: "user", content: userPrompt(input) }
-      ],
-      max_tokens: 900
-    });
-    const parsed = parseAiResult(extractAiText(result));
+    const result = await runWorkersAiWithRetry(env, model, input);
+    aiText = extractAiText(result);
+    const parsed = parseAiResult(aiText, input);
     return { ...parsed, degraded: false, model };
-  } catch {
+  } catch (error) {
+    logWarn("prompt_assistant.degraded", {
+      model,
+      turnIndex: input.turnIndex,
+      messageCount: input.messages.length,
+      aiTextLength: aiText.length,
+      error: summarizePromptAssistantError(error)
+    });
     return { ...fallbackAssistantResult(input), degraded: true, model: null };
+  }
+}
+
+async function runWorkersAiWithRetry(
+  env: AppBindings,
+  model: string,
+  input: PromptAssistantTurnInput
+) {
+  if (!env.AI) throw new Error("Workers AI binding is not configured");
+  const request = {
+    messages: [
+      { role: "system", content: systemPrompt(input) },
+      { role: "user", content: userPrompt(input) }
+    ],
+    max_tokens: 900
+  };
+  for (let attempt = 0; attempt <= AI_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await env.AI.run(model, request);
+    } catch (error) {
+      const willRetry = attempt < AI_RETRY_DELAYS_MS.length && isRetriableAiError(error);
+      if (!willRetry) throw error;
+      logWarn("prompt_assistant.ai_retry", {
+        model,
+        attempt: attempt + 1,
+        nextAttempt: attempt + 2,
+        error: summarizePromptAssistantError(error)
+      });
+      await wait(AI_RETRY_DELAYS_MS[attempt]);
+    }
   }
 }
 
@@ -160,7 +202,9 @@ function systemPrompt(input: PromptAssistantTurnInput) {
     "finalPrompt 需要继承案例模板的结构、用途和风格，并融合用户补充，而不是重新发散到无关方向。",
     "finalPrompt 必须面向图片生成，包含用途、主体、场景、构图、风格光线、文字和约束。",
     "不要输出 Markdown；只输出 JSON。",
-    'JSON 字段：assistantMessage, readiness("collecting"|"ready"), brief, finalPrompt, recommendedSize, warnings。'
+    'JSON 字段：assistantMessage, readiness("collecting"|"ready"), brief, finalPrompt, recommendedSize, warnings。',
+    'brief 必须是对象，不能是字符串；格式：{"useCase":"...","subject":"...","style":"...","scene":"...","composition":"...","constraints":["..."]}。',
+    "warnings 必须是字符串数组；如果 prompt 还没准备好，finalPrompt 必须是 null。"
   ].join("\n");
 }
 
@@ -208,12 +252,142 @@ function extractAiText(result: unknown): string {
   return JSON.stringify(result);
 }
 
-function parseAiResult(text: string): Omit<PromptAssistantResult, "degraded" | "model"> {
+function parseAiResult(
+  text: string,
+  input: PromptAssistantTurnInput
+): Omit<PromptAssistantResult, "degraded" | "model"> {
   const raw = text.trim();
-  const jsonText = raw.startsWith("{")
-    ? raw
-    : raw.slice(Math.max(0, raw.indexOf("{")), raw.lastIndexOf("}") + 1);
-  return aiResultSchema.parse(JSON.parse(jsonText));
+  const payload = parseAiPayload(raw);
+  const parsed = aiResultSchema.parse(payload);
+  const finalPrompt = parsed.finalPrompt?.trim() ? parsed.finalPrompt : null;
+  return {
+    assistantMessage:
+      firstNonEmptyString(parsed.assistantMessage, parsed.message, parsed.question) ??
+      nextQuestion(input),
+    readiness: finalPrompt ? (parsed.readiness ?? "ready") : "collecting",
+    brief: parsed.brief,
+    finalPrompt,
+    recommendedSize: parsed.recommendedSize,
+    warnings: parsed.warnings
+  };
+}
+
+function parseAiPayload(raw: string): Record<string, unknown> {
+  const jsonPayload = tryParseJsonPayload(raw);
+  if (isAiResultLike(jsonPayload)) return jsonPayload;
+  const loosePayload = parseLooseAiPayload(raw);
+  if (isAiResultLike(loosePayload)) return loosePayload;
+  throw new Error("Workers AI did not return a structured prompt assistant result");
+}
+
+function tryParseJsonPayload(raw: string): unknown {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start < 0 || end <= start) return undefined;
+  try {
+    return JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return undefined;
+  }
+}
+
+function parseLooseAiPayload(raw: string): Record<string, unknown> {
+  return {
+    assistantMessage: parseLooseField(raw, "assistantMessage"),
+    readiness: parseLooseField(raw, "readiness"),
+    brief: parseLooseField(raw, "brief"),
+    finalPrompt: parseLooseField(raw, "finalPrompt"),
+    recommendedSize: parseLooseField(raw, "recommendedSize"),
+    warnings: parseLooseField(raw, "warnings")
+  };
+}
+
+function parseLooseField(raw: string, field: string) {
+  const match = new RegExp(
+    `(?:^|\\n)${field}\\s*:\\s*([\\s\\S]*?)(?=\\n[A-Za-z][A-Za-z0-9_]*\\s*:|$)`
+  ).exec(raw);
+  if (!match) return undefined;
+  const value = match[1].trim().replace(/,$/, "");
+  if (!value) return undefined;
+  if (value === "null") return null;
+  if (value.startsWith("{") && value.includes("}")) {
+    return tryParseJsonPayload(value);
+  }
+  if (value.startsWith("[") && value.includes("]")) {
+    try {
+      return JSON.parse(value.slice(0, value.lastIndexOf("]") + 1));
+    } catch {
+      return value;
+    }
+  }
+  if (value.startsWith('"') && value.includes('"', 1)) {
+    try {
+      return JSON.parse(value.slice(0, value.lastIndexOf('"') + 1));
+    } catch {
+      return value.slice(1, value.lastIndexOf('"'));
+    }
+  }
+  return value;
+}
+
+function isAiResultLike(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return ["assistantMessage", "message", "question", "readiness", "brief", "finalPrompt"].some(
+    (key) => key in value
+  );
+}
+
+function normalizeAiBrief(value: unknown) {
+  if (typeof value === "string") {
+    return { subject: value.trim().slice(0, 300) };
+  }
+  return value;
+}
+
+function normalizeNullableString(value: unknown) {
+  if (typeof value === "string" && !value.trim()) return null;
+  return value;
+}
+
+function normalizeWarnings(value: unknown) {
+  if (typeof value === "string") return value.trim() ? [value] : [];
+  return value;
+}
+
+function firstNonEmptyString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function summarizePromptAssistantError(error: unknown) {
+  if (error instanceof z.ZodError) {
+    return {
+      name: "ZodError",
+      issues: error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        code: issue.code,
+        message: issue.message
+      }))
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message
+    };
+  }
+  return { name: typeof error };
+}
+
+function isRetriableAiError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /network connection lost|error code:\s*1031/i.test(message);
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function fallbackAssistantResult(
