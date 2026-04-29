@@ -112,8 +112,100 @@ describe("prompt assistant", () => {
     expect(result.brief.style).toContain("清爽夏日棚拍风格");
     expect(result.brief.style).toContain("电商");
     expect(result.brief.composition).toContain("3:4");
+    expect(result.recommendedSize).toBe("3:4");
     expect(result.finalPrompt).toContain("新品商品海报");
     expect(result.finalPrompt).toContain("清爽夏日棚拍风格");
+  });
+
+  it("does not pass through repeated AI questions once case details are enough", async () => {
+    const repeatedQuestion = "我可以基于案例补全构图、光线和氛围。有没有绝对不能出现的元素？";
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 5,
+      caseId: "pcase_gpt2_ui_gacha_screen",
+      caseTitle: "手游抽卡界面截图",
+      caseCategory: "UI 与社媒截图",
+      caseTags: ["手游 UI", "抽卡", "界面", "截图"],
+      caseRecommendedSize: "1024x1536",
+      casePromptSummary: "用于游戏 UI 概念、运营活动视觉和产品原型展示。",
+      casePromptTemplate:
+        "生成一张竖版手游抽卡界面截图。界面：顶部资源栏，中间角色或卡池主视觉，底部抽取按钮和概率说明区域。",
+      provider: {
+        model: "gpt-image-2",
+        supportedSizes: ["1024x1024", "1024x1536", "1536x1024", "auto"],
+        maxReferenceImages: 5
+      },
+      messages: [
+        { role: "user", content: "使用模板生成 EVA 的抽卡界面截图" },
+        { role: "assistant", content: "我会按「手游抽卡界面截图」来做。画面最核心的主体是什么？" },
+        { role: "user", content: "主体是 初号机 大战 量产机" },
+        {
+          role: "assistant",
+          content:
+            "主体我记下了。画面里需要出现文字吗？如果需要，请逐字写出；不需要我会默认不加文字。"
+        },
+        { role: "user", content: "文字为：EVANGELION" },
+        { role: "assistant", content: repeatedQuestion },
+        { role: "user", content: "没有，你根据搜索学习到的 EVA 元素创建即可" },
+        { role: "assistant", content: repeatedQuestion },
+        { role: "user", content: "没有" },
+        { role: "assistant", content: repeatedQuestion },
+        { role: "user", content: "没有" }
+      ]
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: JSON.stringify({
+            assistantMessage: repeatedQuestion,
+            readiness: "collecting",
+            brief: { subject: "初号机大战量产机", useCase: "手游抽卡界面截图" },
+            finalPrompt: null,
+            warnings: []
+          })
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.readiness).toBe("ready");
+    expect(result.assistantMessage).not.toBe(repeatedQuestion);
+    expect(result.recommendedSize).toBe("1024x1536");
+    expect(result.finalPrompt).toContain("初号机");
+    expect(result.finalPrompt).toContain("EVANGELION");
+  });
+
+  it("force-finalizes from case context even when Workers AI returns unparseable text", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      forceFinalize: true,
+      caseTitle: "手游抽卡界面截图",
+      caseRecommendedSize: "1024x1536",
+      casePromptSummary: "用于游戏 UI 概念、运营活动视觉和产品原型展示。",
+      casePromptTemplate:
+        "生成一张竖版手游抽卡界面截图。界面：顶部资源栏，中间角色或卡池主视觉，底部抽取按钮和概率说明区域。",
+      messages: []
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: "我已经理解你的需求，会直接整理，但这里不是合法 JSON。"
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.readiness).toBe("ready");
+    expect(result.recommendedSize).toBe("1024x1536");
+    expect(result.finalPrompt).toContain("手游抽卡界面截图");
+    expect(result.finalPrompt).toContain("由 AI 基于");
   });
 
   it("finishes instead of asking again when the user delegates creative details", async () => {

@@ -219,6 +219,45 @@ describe("PromptAssistantPanel", () => {
       { prompt: "最终 prompt", recommendedSize: "1024x1024", turnCount: 1, auto: true }
     ]);
   });
+
+  it("force-finalizes a prompt from the current case context", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ...assistantResponse("Prompt 已生成。"),
+      readiness: "ready",
+      finalPrompt: "根据当前案例生成的 prompt",
+      recommendedSize: "1024x1536"
+    });
+    const wrapper = mount(PromptAssistantPanel, {
+      props: {
+        mode: "text2image",
+        caseItem: promptCase(),
+        provider: null,
+        referenceCount: 0,
+        referenceDescription: "",
+        referenceContextKey: ""
+      }
+    });
+
+    await wrapper.get('[data-testid="finalize-assistant-prompt"]').trigger("click");
+    await flushPromises();
+
+    const request = mockedApiFetch.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body));
+    expect(body).toMatchObject({
+      forceFinalize: true,
+      turnIndex: 0,
+      messages: [],
+      caseId: "case-product-poster"
+    });
+    expect(wrapper.emitted("fill")?.[0]).toEqual([
+      {
+        prompt: "根据当前案例生成的 prompt",
+        recommendedSize: "1024x1536",
+        turnCount: 1,
+        auto: true
+      }
+    ]);
+  });
 });
 
 function assistantResponse(message: string): AssistantResponse {
