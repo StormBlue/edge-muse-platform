@@ -84,7 +84,7 @@ const aiResultSchema = z.object({
   warnings: z.array(z.string().trim().max(160)).max(6).default([])
 });
 
-const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct";
+const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
 
 export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
   const value = env.PROMPT_ASSISTANT_ENABLED?.trim().toLowerCase();
