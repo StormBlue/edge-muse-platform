@@ -32,7 +32,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{
-  fill: [value: { prompt: string; recommendedSize: string; turnCount: number }];
+  fill: [value: { prompt: string; recommendedSize: string; turnCount: number; auto?: boolean }];
   open: [];
 }>();
 
@@ -144,6 +144,14 @@ async function sendTurn() {
     if (currentSeq !== requestSeq || currentContextKey !== contextKey.value) return;
     latest.value = result;
     messages.value = [...nextMessages, { role: "assistant", content: result.assistantMessage }];
+    if (result.finalPrompt?.trim()) {
+      emit("fill", {
+        prompt: result.finalPrompt,
+        recommendedSize: result.recommendedSize,
+        turnCount: completedAssistantReplies.value,
+        auto: true
+      });
+    }
   } catch (error) {
     if (currentSeq !== requestSeq || currentContextKey !== contextKey.value) return;
     const message =
@@ -160,18 +168,6 @@ function onInputEnter(event: KeyboardEvent) {
   if (event.isComposing || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
   event.preventDefault();
   void sendTurn();
-}
-
-function fillPrompt() {
-  if (props.disabled) return;
-  const prompt = editableFinalPrompt.value.trim();
-  if (!prompt) return;
-  emit("fill", {
-    prompt,
-    recommendedSize: latest.value?.recommendedSize ?? "1024x1024",
-    turnCount: completedAssistantReplies.value
-  });
-  toast.success(t("aiImage.promptFilled"));
 }
 
 function notifyOpen() {
@@ -268,7 +264,6 @@ defineExpose({ reset });
       :disabled="disabled"
       :visible="Boolean(finalPrompt)"
       @copy="copyFinalPrompt"
-      @fill="fillPrompt"
     />
   </div>
 </template>

@@ -133,6 +133,7 @@ function fillAssistantPrompt(value: {
   prompt: string;
   recommendedSize: string;
   turnCount: number;
+  auto?: boolean;
 }) {
   cases.setPrompt(value.prompt, "assistant");
   applyRecommendedSize(value.recommendedSize);
@@ -348,6 +349,7 @@ watch(
           v-model:mode="generation.mode.value"
           :active-failed="generation.activeFailed.value"
           :assistant-enabled="auth.promptAssistantEnabled"
+          :can-reset-prompt="cases.canResetPrompt.value"
           :case-item="cases.caseContext.value"
           :failed-message="generation.failedMessage.value"
           :failed-title="generation.failedTitle.value"
@@ -372,6 +374,7 @@ watch(
           @copy-prompt="copyPrompt"
           @fill-assistant="fillAssistantPrompt"
           @open-assistant="openAssistant"
+          @reset-prompt="cases.resetPrompt"
           @update:prompt="(value) => cases.setPrompt(value, 'user')"
           @update:size="setGenerationSize"
           @remove-file="generation.removeFile"

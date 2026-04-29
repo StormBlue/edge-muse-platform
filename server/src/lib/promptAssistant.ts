@@ -93,7 +93,7 @@ const aiResultSchema = z.object({
   warnings: z.preprocess(normalizeWarnings, z.array(z.string().trim().max(160)).max(6).default([]))
 });
 
-const DEFAULT_MODEL = "@cf/meta/llama-3.1-8b-instruct-fp8";
+const DEFAULT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8";
 const AI_RETRY_DELAYS_MS = [500, 1500, 3500];
 
 export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
@@ -194,13 +194,20 @@ function totalInputLength(input: PromptAssistantTurnInput) {
 function systemPrompt(input: PromptAssistantTurnInput) {
   const language = input.locale === "zh-CN" ? "简体中文" : "English";
   return [
-    `你是 GPT-Image 2 图片生成提示词顾问，必须使用${language}回答。`,
+    `你是资深视觉创意总监和 GPT-Image 2 提示词编导，必须使用${language}回答。`,
+    "你的目标是用最少轮次把用户的模糊想法推进成可生成图片的 prompt，而不是机械收集字段。",
     "只帮助 text2image 与 image2image，不处理视频生成或连续 chat 模式。",
-    "像自然聊天一样追问，不要提到轮次编号；最多追问 8 次，信息足够就输出 finalPrompt。",
+    "像自然聊天一样推进，不要提到轮次编号；每次回复最多问 1 个高价值问题。",
     "如果提供了 selectedCase，把案例模板、摘要、分类、标签和推荐画幅视为创作基底。",
-    "围绕所选案例只追问缺失的用户变量，例如主体、品牌/产品、文案、受众、禁忌和必须保留的细节；不要重复询问案例上下文已经明确的信息。",
+    "不要重复询问案例上下文、历史消息或参考图描述已经明确的信息。",
+    "禁止泛泛地说“请提供更多信息”“需要更详细的信息”；如果必须追问，问题要具体，并给 2-3 个可选方向帮助用户决策。",
+    "只追问会显著改变画面的关键变量，例如主体、核心场景、画面文字、禁忌、必须保留元素；不要追问低价值细节。",
+    "当用户说“你来补”“自己补”“按模板”“随便”“类似某种风格”“差不多”等表达时，视为授权你主动补全，不要继续追问。",
+    "如果已有 selectedCase 加至少一个用户创意方向，或已经有主体、场景/风格、文字意图中的任意两项，就可以主动补全合理细节并输出 finalPrompt。",
+    "assistantMessage 要先简短确认你理解的方向，再说明下一步；如果 readiness 是 ready，应告诉用户已整理好，可在提示词框继续微调。",
     "finalPrompt 需要继承案例模板的结构、用途和风格，并融合用户补充，而不是重新发散到无关方向。",
     "finalPrompt 必须面向图片生成，包含用途、主体、场景、构图、风格光线、文字和约束。",
+    "warnings 只用于真实风险或限制提醒，例如版权角色、画面文字可能失真、服务商能力限制；不要把普通缺失信息写进 warnings。",
     "不要输出 Markdown；只输出 JSON。",
     'JSON 字段：assistantMessage, readiness("collecting"|"ready"), brief, finalPrompt, recommendedSize, warnings。',
     'brief 必须是对象，不能是字符串；格式：{"useCase":"...","subject":"...","style":"...","scene":"...","composition":"...","constraints":["..."]}。',
@@ -215,8 +222,19 @@ function userPrompt(input: PromptAssistantTurnInput) {
     selectedCase: selectedCaseContext(input),
     provider: input.provider,
     referenceBrief: input.referenceBrief,
+    conversationGuidance: conversationGuidance(input),
     messages: input.messages
   });
+}
+
+function conversationGuidance(input: PromptAssistantTurnInput) {
+  return {
+    userDelegatedCreativeControl: hasUserDelegatedCreativeControl(input),
+    shouldFinishIfReasonable: shouldPrepareFinalPrompt(input),
+    lastUserMessage: lastUserMessage(input),
+    instruction:
+      "如果 shouldFinishIfReasonable 为 true，请优先输出 ready 和 finalPrompt；只有缺少会导致画面完全跑偏的核心信息时才追问。"
+  };
 }
 
 function selectedCaseContext(input: PromptAssistantTurnInput) {
@@ -393,7 +411,7 @@ function wait(ms: number) {
 function fallbackAssistantResult(
   input: PromptAssistantTurnInput
 ): Omit<PromptAssistantResult, "degraded" | "model"> {
-  const enough = input.turnIndex >= 5 || input.messages.length >= 6;
+  const enough = shouldPrepareFinalPrompt(input);
   const brief = summarizeMessages(input);
   const recommendedSize = input.provider?.supportedSizes?.[0] ?? "1024x1024";
   if (!enough) {
@@ -447,6 +465,22 @@ function summarizeMessages(input: PromptAssistantTurnInput): PromptAssistantResu
 }
 
 function nextQuestion(input: PromptAssistantTurnInput) {
+  if (input.casePromptTemplate) {
+    const caseTitle = input.caseTitle ?? "这个案例";
+    const questions =
+      input.mode === "image2image"
+        ? [
+            `我会沿用「${caseTitle}」的结构。参考图里最需要保留的是主体、构图、品牌标识还是整体氛围？`,
+            "这次主要想改变哪一处：背景、光线、材质、文字，还是整体风格？",
+            "如果没有禁忌信息，我就按案例风格补全并整理 prompt。有没有绝对不能出现或不能改变的内容？"
+          ]
+        : [
+            `我会按「${caseTitle}」来做。画面最核心的主体是什么？`,
+            "主体我记下了。画面里需要出现文字吗？如果需要，请逐字写出；不需要我会默认不加文字。",
+            "我可以基于案例补全构图、光线和氛围。有没有绝对不能出现的元素？"
+          ];
+    return questions[Math.min(input.turnIndex, questions.length - 1)];
+  }
   const questions =
     input.mode === "image2image"
       ? [
@@ -466,6 +500,35 @@ function nextQuestion(input: PromptAssistantTurnInput) {
   return questions[Math.min(input.turnIndex, questions.length - 1)];
 }
 
+function shouldPrepareFinalPrompt(input: PromptAssistantTurnInput) {
+  if (hasUserDelegatedCreativeControl(input)) return true;
+  if (input.turnIndex >= 5 || input.messages.length >= 6) return true;
+  const userMessages = input.messages.filter((message) => message.role === "user");
+  return Boolean(input.casePromptTemplate && userMessages.length >= 2);
+}
+
+function hasUserDelegatedCreativeControl(input: PromptAssistantTurnInput) {
+  const text = lastUserMessage(input);
+  if (
+    /你(来|自己|帮我)?补|自己补|按.*模板|随便|都可以|差不多|照着|你看着办|你决定|你来定|不用问/.test(
+      text
+    )
+  ) {
+    return true;
+  }
+  const userMessageCount = input.messages.filter((message) => message.role === "user").length;
+  return Boolean(input.casePromptTemplate && userMessageCount >= 2 && /类似|像.*风格/.test(text));
+}
+
+function lastUserMessage(input: PromptAssistantTurnInput) {
+  return (
+    [...input.messages]
+      .reverse()
+      .find((message) => message.role === "user")
+      ?.content.trim() ?? ""
+  );
+}
+
 function buildFallbackFinalPrompt(
   input: PromptAssistantTurnInput,
   brief: PromptAssistantResult["brief"]
@@ -474,6 +537,7 @@ function buildFallbackFinalPrompt(
     input.mode === "image2image" ? "基于参考图进行图像编辑。" : "生成一张高质量 GPT-Image 2 图片。";
   return [
     base,
+    input.casePromptTemplate ? `案例模板基底：${input.casePromptTemplate}` : undefined,
     `用途：${brief.useCase ?? "图片创作"}。`,
     `主体：${brief.subject ?? "清晰主体"}。`,
     `场景：${brief.scene ?? "干净、有层次的背景"}。`,
@@ -481,5 +545,7 @@ function buildFallbackFinalPrompt(
     `风格与光线：${brief.style ?? "专业、统一、细节真实"}，光线自然，色彩协调。`,
     "文字：如用户未明确要求，则画面内不出现文字。",
     `约束：${(brief.constraints ?? []).join("、")}。`
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

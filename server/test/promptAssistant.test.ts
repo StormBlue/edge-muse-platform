@@ -116,6 +116,29 @@ describe("prompt assistant", () => {
     expect(result.finalPrompt).toContain("清爽夏日棚拍风格");
   });
 
+  it("finishes instead of asking again when the user delegates creative details", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 2,
+      caseTitle: "科幻电影关键海报",
+      casePromptTemplate:
+        "生成一张科幻电影感竖版关键海报，主体位于画面核心，背景有宏大空间与强纵深。",
+      messages: [
+        { role: "user", content: "主题是机器人，背景设置在埃菲尔铁塔" },
+        { role: "assistant", content: "需要画面文字吗？" },
+        { role: "user", content: "片名 Heros，剩下的你自己补吧" }
+      ]
+    });
+
+    const result = await runPromptAssistantTurn({} as AppBindings, input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.readiness).toBe("ready");
+    expect(result.finalPrompt).toContain("科幻电影感竖版关键海报");
+    expect(result.finalPrompt).toContain("Heros");
+  });
+
   it("accepts a Workers AI brief string without falling back", async () => {
     const input = promptAssistantTurnSchema.parse({
       mode: "text2image",
@@ -141,7 +164,7 @@ describe("prompt assistant", () => {
     const result = await runPromptAssistantTurn(env, input);
 
     expect(result.degraded).toBe(false);
-    expect(result.model).toBe("@cf/meta/llama-3.1-8b-instruct-fp8");
+    expect(result.model).toBe("@cf/qwen/qwen3-30b-a3b-fp8");
     expect(result.brief.subject).toContain("透明外壳智能音箱");
     expect(result.assistantMessage).toContain("发布渠道");
   });

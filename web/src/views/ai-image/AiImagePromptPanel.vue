@@ -35,6 +35,7 @@ type PreviewImage = {
 const props = defineProps<{
   caseItem: PromptCase | null;
   assistantEnabled: boolean;
+  canResetPrompt: boolean;
   selectedCaseTitle: string;
   prompt: string;
   mode: PromptCaseMode;
@@ -65,8 +66,11 @@ const emit = defineEmits<{
   removeFile: [index: number];
   copyPrompt: [];
   clearPrompt: [];
-  fillAssistant: [value: { prompt: string; recommendedSize: string; turnCount: number }];
+  fillAssistant: [
+    value: { prompt: string; recommendedSize: string; turnCount: number; auto?: boolean }
+  ];
   openAssistant: [];
+  resetPrompt: [];
   retryFailed: [];
   openImage: [image: ImageAttachment];
   submit: [];
@@ -148,9 +152,10 @@ function fillAssistantPrompt(value: {
   prompt: string;
   recommendedSize: string;
   turnCount: number;
+  auto?: boolean;
 }) {
   emit("fillAssistant", value);
-  assistantDialogOpen.value = false;
+  if (!value.auto) assistantDialogOpen.value = false;
 }
 
 function isMobileAssistantViewport() {
@@ -307,6 +312,16 @@ function isMobileAssistantViewport() {
       <div class="flex flex-wrap justify-between gap-2 border-t border-border p-4">
         <div class="flex gap-2">
           <button
+            v-if="canResetPrompt"
+            class="ui-button ui-button-secondary"
+            type="button"
+            :disabled="interactionLocked"
+            @click="emit('resetPrompt')"
+          >
+            <RotateCcw class="h-4 w-4" />
+            {{ t("aiImage.resetPrompt") }}
+          </button>
+          <button
             class="ui-button ui-button-secondary"
             type="button"
             :disabled="interactionLocked || !hasPrompt"
@@ -332,7 +347,7 @@ function isMobileAssistantViewport() {
           @click="emit('submit')"
         >
           <Sparkles class="h-4 w-4" />
-          {{ hasRunningTask ? t("workspace.generationRunning") : t("workspace.generate") }}
+          {{ hasRunningTask ? t("workspace.generationRunning") : t("aiImage.oneClickGenerate") }}
         </button>
       </div>
     </section>

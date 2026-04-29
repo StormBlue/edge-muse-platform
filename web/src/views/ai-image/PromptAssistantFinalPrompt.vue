@@ -2,9 +2,9 @@
 /**
  * AI 助手最终 Prompt 确认区。
  *
- * 用户可在这里手动编辑最终 prompt，再复制或回填到生成面板。
+ * 助手整理出的最终 prompt 会自动同步到生成面板，这里只负责确认和复制。
  */
-import { Copy, WandSparkles } from "lucide-vue-next";
+import { Copy } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 
 const editablePrompt = defineModel<string>({ required: true });
@@ -16,7 +16,6 @@ defineProps<{
 
 const emit = defineEmits<{
   copy: [];
-  fill: [];
 }>();
 
 const { t } = useI18n();
@@ -38,6 +37,7 @@ const { t } = useI18n();
         v-model="editablePrompt"
         class="ui-field min-h-36 resize-y p-3 text-xs leading-5"
         spellcheck="false"
+        readonly
         :disabled="disabled"
       />
     </label>
@@ -50,15 +50,6 @@ const { t } = useI18n();
       >
         <Copy class="h-3.5 w-3.5" />
         {{ t("promptCases.copyPrompt") }}
-      </button>
-      <button
-        class="ui-button ui-button-primary h-8 text-xs"
-        type="button"
-        :disabled="disabled"
-        @click="emit('fill')"
-      >
-        <WandSparkles class="h-3.5 w-3.5" />
-        {{ t("aiImage.fillFinalPrompt") }}
       </button>
     </div>
   </div>

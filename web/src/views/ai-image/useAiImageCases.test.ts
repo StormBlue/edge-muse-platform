@@ -147,6 +147,37 @@ describe("useAiImageCases", () => {
     expect(cases.selectedId.value).toBe("second");
     expect(cases.caseContext.value?.id).toBe("second");
   });
+
+  it("can reset user edits back to the applied case prompt", () => {
+    const item = promptCase({ id: "case_reset", promptTemplate: "案例模板 prompt" });
+    const cases = useAiImageCases();
+    cases.items.value = [item];
+
+    cases.selectCase(item);
+    cases.setPrompt("用户改过的 prompt", "user");
+
+    expect(cases.canResetPrompt.value).toBe(true);
+
+    cases.resetPrompt();
+
+    expect(cases.finalPrompt.value).toBe("案例模板 prompt");
+    expect(cases.finalPromptSource.value).toBe("case");
+    expect(cases.canResetPrompt.value).toBe(false);
+  });
+
+  it("can reset user edits back to the assistant prompt", () => {
+    const cases = useAiImageCases();
+
+    cases.setPrompt("助手生成 prompt", "assistant");
+    cases.setPrompt("用户微调 prompt", "user");
+
+    expect(cases.canResetPrompt.value).toBe(true);
+
+    cases.resetPrompt();
+
+    expect(cases.finalPrompt.value).toBe("助手生成 prompt");
+    expect(cases.finalPromptSource.value).toBe("assistant");
+  });
 });
 
 function promptCase(overrides: Partial<PromptCase> = {}): PromptCase {
