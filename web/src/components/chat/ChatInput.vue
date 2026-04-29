@@ -3,7 +3,7 @@
  * 工作台底部输入：prompt、尺寸/张数（受角色限制）、图生图时本地上传参考图（最多 5）。
  * `variant=chat` 时可隐藏部分工具条；`readOnly` 用于仅展示历史参数。
  */
-import { Loader2, Send, Upload, X } from "lucide-vue-next";
+import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "lucide-vue-next";
 import type { ImageAttachment } from "@/stores/session";
 import {
   useChatInputController,
@@ -40,6 +40,7 @@ const {
   editablePreviews,
   uploaderLabel,
   submit,
+  onComposerEnter,
   onFiles,
   onDrop,
   onPaste,
@@ -56,98 +57,67 @@ const {
     @paste="onPaste"
     @submit.prevent="submit"
   >
-    <div
-      v-if="isChatVariant"
-      class="thin-scrollbar flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3"
-    >
-      <label v-if="!isReadOnly" class="block shrink-0 order-1">
-        <span class="mb-2 block text-xs font-medium text-muted-foreground">
-          {{ t("workspace.prompt") }}
-        </span>
-        <textarea
-          v-model="prompt"
-          class="ui-field resize-none px-3 py-3 text-sm leading-6"
-          :class="isChatVariant ? 'min-h-28' : 'min-h-36'"
-          :placeholder="t('workspace.promptPlaceholder')"
-          @keydown.meta.enter.prevent="submit"
-          @keydown.ctrl.enter.prevent="submit"
-        ></textarea>
-      </label>
-
-      <div class="shrink-0 order-2">
-        <p class="mb-2 text-xs font-medium text-muted-foreground">
+    <div v-if="isChatVariant" class="chat-composer-shell">
+      <div class="chat-settings-strip">
+        <span class="chat-settings-label">
+          <SlidersHorizontal class="h-3.5 w-3.5" />
           {{ t("workspace.canvasSize") }}
-        </p>
-        <div
-          class="grid gap-2"
-          :class="isReadOnly ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]'"
-        >
+        </span>
+        <div class="thin-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
           <button
             v-for="option in visibleSizeOptions"
             :key="option.value"
-            class="min-h-16 rounded-lg border px-3 py-2 text-left transition"
-            :class="[
-              size === option.value
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
-              isReadOnly ? 'pointer-events-none cursor-default' : ''
-            ]"
+            class="chat-size-chip"
+            :class="size === option.value ? 'chat-size-chip--active' : ''"
             type="button"
             :aria-pressed="size === option.value"
-            :aria-disabled="isReadOnly"
-            :tabindex="isReadOnly ? -1 : 0"
+            :aria-label="`${t('workspace.canvasSize')} ${option.label}`"
+            :title="option.label"
+            :disabled="isReadOnly"
             @click="!isReadOnly && (size = option.value)"
           >
-            <span class="block text-sm font-semibold">{{ option.ratio }}</span>
-            <span class="mt-0.5 block text-xs">{{ option.label }}</span>
+            {{ option.ratio }}
           </button>
         </div>
       </div>
 
-      <div v-if="!isContinuousChat" class="shrink-0 order-3">
-        <p class="mb-2 text-xs font-medium text-muted-foreground">
-          {{ t("workspace.imageCount") }}
-        </p>
-        <input
-          v-if="props.allowCustomCount && !isReadOnly"
-          class="ui-field h-10 px-3 text-sm"
-          type="number"
-          min="1"
-          :max="maxCustomCount"
-          step="1"
-          :value="n"
-          @input="setCount"
-          @blur="normalizeCount"
-        />
-        <div v-else class="grid grid-cols-1 gap-2">
-          <button
-            v-for="option in visibleCountOptions"
-            :key="option"
-            class="h-10 rounded-lg border text-sm font-semibold transition"
-            :class="[
-              n === option
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
-              countSelectionDisabled ? 'pointer-events-none cursor-default' : ''
-            ]"
-            type="button"
-            :aria-pressed="n === option"
-            :aria-disabled="countSelectionDisabled"
-            :tabindex="countSelectionDisabled ? -1 : 0"
-            @click="!countSelectionDisabled && (n = option)"
-          >
-            {{ option }}
-          </button>
-        </div>
-      </div>
+      <label v-if="!isReadOnly" class="chat-composer-field">
+        <span class="sr-only">{{ t("workspace.prompt") }}</span>
+        <textarea
+          v-model="prompt"
+          class="ui-field chat-composer-textarea resize-none px-3 py-2.5 text-sm leading-6"
+          :placeholder="t('workspace.promptPlaceholder')"
+          rows="2"
+          @keydown.enter="onComposerEnter"
+        ></textarea>
+        <button
+          class="ui-button ui-button-primary chat-composer-submit"
+          type="submit"
+          :aria-busy="isBusy"
+          :aria-label="submitLabel"
+          :disabled="submitDisabled"
+          :title="submitLabel"
+        >
+          <Loader2 v-if="isBusy" class="h-4 w-4 animate-spin" />
+          <Send v-else class="h-4 w-4" />
+        </button>
+      </label>
+    </div>
 
-      <div v-if="isImageToImage" class="shrink-0 order-4">
+    <div
+      v-else
+      class="task-input-layout"
+      :class="{
+        'task-input-layout--readonly': isReadOnly,
+        'task-input-layout--image': isImageToImage
+      }"
+    >
+      <section v-if="isImageToImage" class="task-reference-section">
+        <p class="task-setting-inline-label">{{ t("workspace.referenceImage") }}</p>
         <label
-          class="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-3 text-center text-sm font-semibold transition"
+          class="task-reference-dropzone"
           :class="[
-            dragging
-              ? 'border-primary bg-primary/10 text-foreground'
-              : 'border-border text-muted-foreground',
+            dragging ? 'task-reference-dropzone--dragging' : '',
             isReadOnly ? 'cursor-default' : 'cursor-pointer'
           ]"
           :tabindex="isReadOnly ? -1 : 0"
@@ -156,8 +126,8 @@ const {
           @dragleave.prevent="dragging = false"
           @drop.prevent="onDrop"
         >
-          <Upload class="h-4 w-4" />
-          <span>{{ uploaderLabel }}</span>
+          <ImagePlus class="h-5 w-5" />
+          <span>{{ isReadOnly ? uploaderLabel : t("workspace.addReferenceImage") }}</span>
           <span v-if="!isReadOnly" class="text-xs font-normal">
             {{ t("workspace.referenceImageInputHint") }}
           </span>
@@ -173,21 +143,21 @@ const {
 
         <div
           v-if="editablePreviews.length || readonlyReferenceImages.length"
-          class="thin-scrollbar mt-3 grid max-h-36 grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-y-auto"
+          class="mt-2 grid grid-cols-3 gap-2"
         >
           <div
             v-for="(preview, index) in editablePreviews"
             :key="preview.url"
             class="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
           >
-            <img class="h-full w-full object-contain" :src="preview.url" alt="" />
+            <img class="h-full w-full object-cover" :src="preview.url" alt="" />
             <button
               v-if="!isReadOnly"
-              class="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white opacity-0 transition group-hover:opacity-100"
+              class="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-white"
               type="button"
               @click="removeFile(index)"
             >
-              <X class="h-3.5 w-3.5" />
+              <X class="h-4 w-4" />
             </button>
           </div>
           <button
@@ -201,10 +171,8 @@ const {
             <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
           </button>
         </div>
-      </div>
-    </div>
+      </section>
 
-    <div v-else class="task-input-layout" :class="{ 'task-input-layout--readonly': isReadOnly }">
       <section v-if="!isReadOnly" class="task-prompt-column">
         <label class="flex min-h-0 flex-1 flex-col">
           <span class="mb-2 block text-xs font-medium text-muted-foreground">
@@ -221,50 +189,42 @@ const {
       </section>
 
       <section class="task-settings-column thin-scrollbar">
-        <div class="flex shrink-0 items-center justify-between gap-3">
-          <h2 class="text-sm font-semibold">{{ t("workspace.parameters") }}</h2>
-          <span class="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
-            {{ size }}
-          </span>
+        <div class="task-settings-header">
+          <h2 class="flex min-w-0 items-center gap-2 text-sm font-semibold">
+            <SlidersHorizontal class="h-4 w-4 text-muted-foreground" />
+            {{ t("workspace.parameters") }}
+          </h2>
+          <span class="task-current-size">{{ size }}</span>
         </div>
 
-        <div class="shrink-0">
-          <p class="mb-2 text-xs font-medium text-muted-foreground">
-            {{ t("workspace.canvasSize") }}
-          </p>
-          <div
-            class="grid gap-2"
-            :class="isReadOnly ? 'grid-cols-1' : 'grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))]'"
-          >
+        <div class="task-setting-block">
+          <div class="task-setting-title-row">
+            <p>{{ t("workspace.canvasSize") }}</p>
+          </div>
+          <div class="task-size-grid">
             <button
               v-for="option in visibleSizeOptions"
               :key="option.value"
-              class="min-h-16 rounded-lg border px-3 py-2 text-left transition"
-              :class="[
-                size === option.value
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
-                isReadOnly ? 'pointer-events-none cursor-default' : ''
-              ]"
+              class="task-size-chip"
+              :class="size === option.value ? 'task-size-chip--active' : ''"
               type="button"
               :aria-pressed="size === option.value"
               :aria-disabled="isReadOnly"
               :tabindex="isReadOnly ? -1 : 0"
+              :title="option.label"
               @click="!isReadOnly && (size = option.value)"
             >
-              <span class="block text-sm font-semibold">{{ option.ratio }}</span>
-              <span class="mt-0.5 block text-xs">{{ option.label }}</span>
+              <span class="font-semibold">{{ option.ratio }}</span>
+              <span class="truncate text-muted-foreground">{{ option.label }}</span>
             </button>
           </div>
         </div>
 
-        <div v-if="!isContinuousChat" class="shrink-0">
-          <p class="mb-2 text-xs font-medium text-muted-foreground">
-            {{ t("workspace.imageCount") }}
-          </p>
+        <div v-if="!isContinuousChat" class="task-setting-block task-count-block">
+          <p class="task-setting-inline-label">{{ t("workspace.imageCount") }}</p>
           <input
             v-if="props.allowCustomCount && !isReadOnly"
-            class="ui-field h-10 px-3 text-sm"
+            class="ui-field h-9 w-24 px-3 text-sm"
             type="number"
             min="1"
             :max="maxCustomCount"
@@ -273,17 +233,12 @@ const {
             @input="setCount"
             @blur="normalizeCount"
           />
-          <div v-else class="grid grid-cols-1 gap-2">
+          <div v-else class="flex flex-wrap gap-1.5">
             <button
               v-for="option in visibleCountOptions"
               :key="option"
-              class="h-10 rounded-lg border text-sm font-semibold transition"
-              :class="[
-                n === option
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
-                countSelectionDisabled ? 'pointer-events-none cursor-default' : ''
-              ]"
+              class="task-count-chip"
+              :class="n === option ? 'task-count-chip--active' : ''"
               type="button"
               :aria-pressed="n === option"
               :aria-disabled="countSelectionDisabled"
@@ -294,72 +249,10 @@ const {
             </button>
           </div>
         </div>
-
-        <div v-if="isImageToImage" class="shrink-0">
-          <label
-            class="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-3 text-center text-sm font-semibold transition"
-            :class="[
-              dragging
-                ? 'border-primary bg-primary/10 text-foreground'
-                : 'border-border text-muted-foreground',
-              isReadOnly ? 'cursor-default' : 'cursor-pointer'
-            ]"
-            :tabindex="isReadOnly ? -1 : 0"
-            @dragenter.prevent="!isReadOnly && (dragging = true)"
-            @dragover.prevent="!isReadOnly && (dragging = true)"
-            @dragleave.prevent="dragging = false"
-            @drop.prevent="onDrop"
-          >
-            <Upload class="h-4 w-4" />
-            <span>{{ uploaderLabel }}</span>
-            <span v-if="!isReadOnly" class="text-xs font-normal">
-              {{ t("workspace.referenceImageInputHint") }}
-            </span>
-            <input
-              v-if="!isReadOnly"
-              class="hidden"
-              :multiple="effectiveMaxReferenceFiles > 1"
-              accept="image/png,image/jpeg,image/webp"
-              type="file"
-              @change="onFiles"
-            />
-          </label>
-
-          <div
-            v-if="editablePreviews.length || readonlyReferenceImages.length"
-            class="thin-scrollbar mt-3 grid max-h-40 grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-2 overflow-y-auto"
-          >
-            <div
-              v-for="(preview, index) in editablePreviews"
-              :key="preview.url"
-              class="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
-            >
-              <img class="h-full w-full object-contain" :src="preview.url" alt="" />
-              <button
-                v-if="!isReadOnly"
-                class="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-md bg-black/55 text-white opacity-0 transition group-hover:opacity-100"
-                type="button"
-                @click="removeFile(index)"
-              >
-                <X class="h-3.5 w-3.5" />
-              </button>
-            </div>
-            <button
-              v-for="image in readonlyReferenceImages"
-              :key="image.id"
-              class="aspect-square overflow-hidden rounded-lg border border-border bg-muted"
-              type="button"
-              :title="t('workspace.openPreview')"
-              @click="emit('open-reference', image)"
-            >
-              <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
-            </button>
-          </div>
-        </div>
       </section>
     </div>
 
-    <div v-if="!isReadOnly" class="shrink-0 border-t border-border p-3">
+    <div v-if="!isReadOnly && !isChatVariant" class="shrink-0 border-t border-border p-3">
       <button
         class="ui-button ui-button-primary w-full"
         :aria-busy="isBusy"
@@ -375,6 +268,85 @@ const {
 </template>
 
 <style scoped>
+.chat-input-panel {
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: var(--card);
+}
+
+.chat-composer-shell {
+  display: grid;
+  gap: 0.625rem;
+  padding: 0.75rem;
+}
+
+.chat-settings-strip {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.chat-settings-label {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.chat-size-chip,
+.task-count-chip {
+  display: inline-flex;
+  height: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--muted), transparent 52%);
+  padding: 0 0.625rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.chat-size-chip:hover,
+.task-count-chip:hover {
+  background: var(--muted);
+}
+
+.chat-size-chip--active,
+.task-count-chip--active {
+  border-color: color-mix(in oklch, var(--primary), transparent 35%);
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  color: var(--foreground);
+}
+
+.chat-composer-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.5rem;
+}
+
+.chat-composer-textarea {
+  max-height: 9.5rem;
+  min-height: 3rem;
+}
+
+.chat-composer-submit {
+  height: 2.75rem;
+  width: 2.75rem;
+  padding: 0;
+}
+
 .task-input-panel {
   container-type: inline-size;
   display: grid;
@@ -382,46 +354,149 @@ const {
 }
 
 .task-input-layout {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-  grid-template-rows: minmax(10rem, 0.82fr) minmax(0, 1fr);
-  gap: 1rem;
-  overflow: hidden;
-  padding: 1rem;
+  gap: 0.75rem;
+  overflow-y: auto;
+  padding: 0.75rem;
 }
 
 .task-prompt-column {
   display: flex;
+  flex: none;
   min-height: 0;
   min-width: 0;
+  margin: -0.25rem;
+  overflow: visible;
+  padding: 0.25rem;
 }
 
 .task-prompt-textarea {
-  min-height: clamp(10rem, 24dvh, 14rem);
+  height: clamp(10rem, 24dvh, 14rem);
+  min-height: 10rem;
+  max-height: 14rem;
 }
 
 .task-settings-column {
-  display: flex;
+  display: grid;
+  flex: none;
   min-height: 0;
   min-width: 0;
-  flex-direction: column;
-  gap: 1rem;
-  overflow-y: auto;
+  gap: 0.625rem;
+  overflow: visible;
 }
 
-@container (min-width: 38rem) {
-  .task-input-layout:not(.task-input-layout--readonly) {
-    grid-template-columns: minmax(18rem, 1fr) minmax(16rem, 0.8fr);
-    grid-template-rows: minmax(0, 1fr);
-  }
+.task-reference-section {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
 
-  .task-prompt-column {
-    min-height: 0;
-  }
+.task-settings-header,
+.task-count-block,
+.task-reference-dropzone {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
 
-  .task-prompt-textarea {
-    min-height: 0;
-    flex: 1;
-  }
+.task-settings-header {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.task-current-size {
+  display: inline-flex;
+  max-width: 9.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-setting-block {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.task-setting-title-row,
+.task-setting-inline-label {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+}
+
+.task-size-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.25rem), 1fr));
+  gap: 0.5rem;
+}
+
+.task-size-chip {
+  display: grid;
+  min-width: 0;
+  min-height: 2.75rem;
+  align-content: center;
+  gap: 0.125rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--muted), transparent 52%);
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+  font-size: 0.75rem;
+  line-height: 1rem;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.task-size-chip:hover {
+  background: var(--muted);
+}
+
+.task-size-chip--active {
+  border-color: color-mix(in oklch, var(--primary), transparent 35%);
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  color: var(--foreground);
+}
+
+.task-count-block {
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.task-reference-dropzone {
+  min-height: 6rem;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.task-reference-dropzone--dragging {
+  border-color: var(--primary);
+  background: color-mix(in oklch, var(--primary), transparent 90%);
+  color: var(--foreground);
 }
 </style>

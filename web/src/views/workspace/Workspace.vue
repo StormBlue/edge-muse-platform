@@ -90,18 +90,6 @@ const {
         :class="isConversationMode ? 'workspace-grid--chat' : 'workspace-grid--task'"
       >
         <template v-if="isConversationMode">
-          <ChatInput
-            class="workspace-chat-input-panel"
-            :mode="activeMode"
-            :generating="hasRunningTask"
-            :loading="inputLoading"
-            :allow-custom-count="auth.isSysadmin"
-            :size-options="providerSizeOptions"
-            :max-reference-files="maxReferenceFiles"
-            variant="chat"
-            @submit="submit"
-          />
-
           <section
             class="conversation-panel panel flex min-h-[28rem] min-w-0 flex-col overflow-hidden"
           >
@@ -125,28 +113,41 @@ const {
               ref="messageList"
               class="thin-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/30 p-4"
             >
-              <div ref="topSentinel" class="h-px"></div>
+              <template v-if="sessions.messages.length">
+                <div ref="topSentinel" class="h-px"></div>
+                <div
+                  v-if="sessions.olderMessagesLoading"
+                  class="py-2 text-center text-xs text-muted-foreground"
+                >
+                  {{ t("workspace.loadingOlder") }}
+                </div>
+                <ChatMessage
+                  v-for="message in sessions.messages"
+                  :key="message.id"
+                  :message="message"
+                  @open="openImage"
+                  @retry="retry"
+                />
+              </template>
               <div
-                v-if="sessions.olderMessagesLoading"
-                class="py-2 text-center text-xs text-muted-foreground"
-              >
-                {{ t("workspace.loadingOlder") }}
-              </div>
-              <div
-                v-if="!sessions.messages.length"
+                v-else
                 class="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
               >
                 <ImageIcon class="h-8 w-8" />
                 {{ t("workspace.conversationEmpty") }}
               </div>
-              <ChatMessage
-                v-for="message in sessions.messages"
-                :key="message.id"
-                :message="message"
-                @open="openImage"
-                @retry="retry"
-              />
             </div>
+            <ChatInput
+              class="conversation-composer"
+              :mode="activeMode"
+              :generating="hasRunningTask"
+              :loading="inputLoading"
+              :allow-custom-count="auth.isSysadmin"
+              :size-options="providerSizeOptions"
+              :max-reference-files="maxReferenceFiles"
+              variant="chat"
+              @submit="submit"
+            />
           </section>
 
           <WorkspaceResultPanel
@@ -231,10 +232,18 @@ const {
   overflow: visible;
 }
 
+.conversation-panel,
+.conversation-result-panel,
+.task-result-panel,
+.workspace-task-input-panel {
+  min-height: 0;
+}
+
 @media (min-width: 1024px) {
   .workspace-page {
     height: calc(100dvh - 6rem);
     min-height: 0;
+    overflow: hidden;
   }
 }
 
@@ -244,11 +253,11 @@ const {
   }
 
   .workspace-grid--task {
-    grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr);
+    grid-template-columns: minmax(22rem, 30rem) minmax(0, 1fr);
   }
 
   .workspace-grid--chat {
-    grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
+    grid-template-columns: minmax(22rem, 32rem) minmax(0, 1fr);
   }
 
   .workspace-grid--task .workspace-task-input-panel {
@@ -261,12 +270,12 @@ const {
     grid-row: 1;
   }
 
-  .workspace-grid--chat .workspace-chat-input-panel {
+  .workspace-grid--chat .conversation-panel {
     grid-column: 1;
     grid-row: 1;
   }
 
-  .workspace-grid--chat .conversation-panel {
+  .workspace-grid--chat .conversation-result-panel {
     grid-column: 2;
     grid-row: 1;
   }
@@ -278,8 +287,7 @@ const {
   .task-result-panel,
   .conversation-panel,
   .conversation-result-panel,
-  .workspace-task-input-panel,
-  .workspace-chat-input-panel {
+  .workspace-task-input-panel {
     min-height: 0;
     height: 100%;
   }
@@ -287,30 +295,26 @@ const {
 
 @container (min-width: 78rem) {
   .workspace-grid--task {
-    grid-template-columns: minmax(22rem, 1fr) minmax(18rem, 0.72fr) minmax(0, 1.45fr);
+    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
   }
 
   .workspace-grid--chat {
-    grid-template-columns: minmax(20rem, 23rem) minmax(0, 1.3fr) minmax(18rem, 0.8fr);
+    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
   }
 
   .workspace-grid--task .workspace-task-input-panel {
-    grid-column: 1 / span 2;
+    grid-column: 1;
   }
 
   .workspace-grid--task .task-result-panel {
-    grid-column: 3;
-  }
-
-  .workspace-grid--chat .conversation-result-panel {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
   }
 }
 
 @container (min-width: 120rem) {
   .workspace-grid--task {
-    grid-template-columns: minmax(44rem, 58rem) minmax(0, 1fr);
+    grid-template-columns: minmax(28rem, 36rem) minmax(0, 1fr);
   }
 
   .workspace-grid--task .workspace-task-input-panel {
@@ -322,7 +326,7 @@ const {
   }
 
   .workspace-grid--chat {
-    grid-template-columns: minmax(22rem, 28rem) minmax(0, 1fr) minmax(22rem, 34rem);
+    grid-template-columns: minmax(26rem, 36rem) minmax(0, 1fr);
   }
 }
 </style>
