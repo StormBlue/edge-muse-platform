@@ -115,4 +115,127 @@ describe("prompt assistant", () => {
     expect(result.finalPrompt).toContain("新品商品海报");
     expect(result.finalPrompt).toContain("清爽夏日棚拍风格");
   });
+
+  it("accepts a Workers AI brief string without falling back", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张透明智能音箱发布会海报" }]
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: JSON.stringify({
+            assistantMessage: "我还需要确认发布渠道和是否需要画面文字。",
+            readiness: "collecting",
+            brief: "透明外壳智能音箱的科技产品发布会海报",
+            finalPrompt: null,
+            recommendedSize: "1024x1024",
+            warnings: []
+          })
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.model).toBe("@cf/meta/llama-3.1-8b-instruct-fp8");
+    expect(result.brief.subject).toContain("透明外壳智能音箱");
+    expect(result.assistantMessage).toContain("发布渠道");
+  });
+
+  it("accepts loose Workers AI key-value output", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张透明智能音箱发布会海报" }]
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: [
+            'assistantMessage: "还需要确认品牌名称和画面文案。"',
+            'readiness: "collecting"',
+            'brief: {"useCase":"科技产品发布海报","subject":"智能音箱","constraints":["透明外壳"]}',
+            "warnings: []",
+            "finalPrompt: null"
+          ].join("\n")
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.readiness).toBe("collecting");
+    expect(result.brief.subject).toBe("智能音箱");
+    expect(result.assistantMessage).toContain("品牌名称");
+  });
+
+  it("accepts JSON output with harmless trailing characters", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张咖啡新品海报" }]
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: `${JSON.stringify({
+            assistantMessage: "这张图准备用在哪个渠道？",
+            readiness: "collecting",
+            brief: { subject: "咖啡新品海报" },
+            finalPrompt: null,
+            recommendedSize: "1024x1024",
+            warnings: []
+          })}"`
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.brief.subject).toBe("咖啡新品海报");
+  });
+
+  it("retries transient Workers AI network errors", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张咖啡新品海报" }]
+    });
+    let calls = 0;
+    const env = {
+      AI: {
+        run: async () => {
+          calls += 1;
+          if (calls === 1) {
+            throw new Error("Network connection lost.");
+          }
+          return {
+            response: JSON.stringify({
+              assistantMessage: "这张图准备用在哪个渠道？",
+              readiness: "collecting",
+              brief: { subject: "咖啡新品海报" },
+              finalPrompt: null,
+              recommendedSize: "1024x1024",
+              warnings: []
+            })
+          };
+        }
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(calls).toBe(2);
+    expect(result.degraded).toBe(false);
+    expect(result.brief.subject).toBe("咖啡新品海报");
+  });
 });
