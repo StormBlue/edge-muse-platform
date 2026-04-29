@@ -252,7 +252,7 @@ export function useAdminUsersController() {
         method: "POST",
         body: JSON.stringify({ amount: quotaAmount.value })
       });
-      toast.success(t("adminUsers.quotaAdjusted"));
+      toast.success(t("adminUsers.quotaAdded"));
       quotaOpen.value = false;
       transactions.value = [];
       transactionsNextCursor.value = null;
