@@ -47,6 +47,11 @@ const router = createRouter({
     },
     {
       path: "/sysadmin/preferences",
+      redirect: "/sysadmin/settings",
+      meta: { role: "sysadmin" }
+    },
+    {
+      path: "/sysadmin/settings",
       component: () => import("@/views/sysadmin/Preferences.vue"),
       meta: { role: "sysadmin" }
     },

@@ -353,6 +353,17 @@ export const generationEntrySettings = sqliteTable("generation_entry_settings", 
   updatedAt: integer("updated_at").notNull()
 });
 
+/**
+ * AI 大模型运行配置：目前 key 固定为 `prompt_assistant`，用于系统管理员动态切换
+ * AI Prompt 助手所调用的 Workers AI 文本模型。
+ */
+export const aiModelSettings = sqliteTable("ai_model_settings", {
+  key: text("key").primaryKey(),
+  model: text("model").notNull(),
+  updatedBy: text("updated_by").references(() => users.id),
+  updatedAt: integer("updated_at").notNull()
+});
+
 /** 生成入口用量事件：只保留页面、事件名、任务/案例引用和安全 metadata。 */
 export const generationEvents = sqliteTable(
   "generation_events",
@@ -472,6 +483,7 @@ export type ImageObject = InferSelectModel<typeof imageObjects>;
 export type PromptCase = InferSelectModel<typeof promptCases>;
 export type PromptCaseImport = InferSelectModel<typeof promptCaseImports>;
 export type GenerationEntrySettings = InferSelectModel<typeof generationEntrySettings>;
+export type AiModelSettings = InferSelectModel<typeof aiModelSettings>;
 export type GenerationEvent = InferSelectModel<typeof generationEvents>;
 export type Announcement = InferSelectModel<typeof announcements>;
 export type AnnouncementRead = InferSelectModel<typeof announcementReads>;

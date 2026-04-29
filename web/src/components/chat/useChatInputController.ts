@@ -182,6 +182,15 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     if (!isImageToImage.value) clearFiles();
   }
 
+  function onComposerEnter(event: KeyboardEvent) {
+    if (!isChatVariant.value) return;
+    if (event.isComposing || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+    event.preventDefault();
+    void submit();
+  }
+
   async function onFiles(event: Event) {
     if (isReadOnly.value) return;
     const input = event.target as HTMLInputElement;
@@ -259,11 +268,13 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     submitLabel,
     effectiveMaxReferenceFiles,
     visibleSizeOptions,
+    selectedSizeOption,
     visibleCountOptions,
     readonlyReferenceImages,
     editablePreviews,
     uploaderLabel,
     submit,
+    onComposerEnter,
     onFiles,
     onDrop,
     onPaste,

@@ -75,9 +75,13 @@ const {
       />
 
       <WorkspaceModeSelector
+        v-model:draft-title="draftTitle"
         :active-mode="activeMode"
         :mode-options="modeOptions"
         :disabled="modeSelectionDisabled"
+        :session-title="sessionTitle"
+        :can-edit-title="canEditTitle"
+        :submitting="submitting"
         @select="setActiveMode"
       />
 
@@ -109,71 +113,32 @@ const {
               ref="messageList"
               class="thin-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto bg-muted/30 p-4"
             >
-              <div ref="topSentinel" class="h-px"></div>
+              <template v-if="sessions.messages.length">
+                <div ref="topSentinel" class="h-px"></div>
+                <div
+                  v-if="sessions.olderMessagesLoading"
+                  class="py-2 text-center text-xs text-muted-foreground"
+                >
+                  {{ t("workspace.loadingOlder") }}
+                </div>
+                <ChatMessage
+                  v-for="message in sessions.messages"
+                  :key="message.id"
+                  :message="message"
+                  @open="openImage"
+                  @retry="retry"
+                />
+              </template>
               <div
-                v-if="sessions.olderMessagesLoading"
-                class="py-2 text-center text-xs text-muted-foreground"
-              >
-                {{ t("workspace.loadingOlder") }}
-              </div>
-              <div
-                v-if="!sessions.messages.length"
+                v-else
                 class="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
               >
                 <ImageIcon class="h-8 w-8" />
                 {{ t("workspace.conversationEmpty") }}
               </div>
-              <ChatMessage
-                v-for="message in sessions.messages"
-                :key="message.id"
-                :message="message"
-                @open="openImage"
-                @retry="retry"
-              />
             </div>
-          </section>
-
-          <aside class="conversation-side min-h-0">
-            <section class="workspace-session-panel panel overflow-hidden">
-              <div class="border-b border-border px-4 py-3">
-                <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
-              </div>
-              <div class="p-4">
-                <label v-if="canEditTitle" class="block">
-                  <span class="sr-only">{{ t("workspace.sessionTitle") }}</span>
-                  <input
-                    v-model="draftTitle"
-                    class="ui-field h-10 px-3 text-sm"
-                    maxlength="80"
-                    :placeholder="t('workspace.sessionTitlePlaceholder')"
-                    :disabled="submitting"
-                  />
-                </label>
-                <p v-else class="truncate text-sm leading-6 text-muted-foreground">
-                  {{ sessionTitle }}
-                </p>
-              </div>
-            </section>
-
-            <WorkspaceResultPanel
-              compact
-              class="conversation-result-panel"
-              :title="t('workspace.latestResult')"
-              :active-failed="Boolean(activeFailedMessage)"
-              :active-preview-image="activePreviewImage"
-              :result-images="resultImages"
-              :has-running-task="hasRunningTask"
-              :generation-status-label="generationStatusLabel"
-              :generation-progress="generationProgress"
-              :generation-prompt="generationPrompt"
-              :failed-title="failedTitle"
-              :failed-message="failedMessage"
-              @retry-failed="retryFailedResult"
-              @open-preview="openActivePreview"
-            />
-
             <ChatInput
-              class="workspace-settings-panel"
+              class="conversation-composer"
               :mode="activeMode"
               :generating="hasRunningTask"
               :loading="inputLoading"
@@ -183,10 +148,44 @@ const {
               variant="chat"
               @submit="submit"
             />
-          </aside>
+          </section>
+
+          <WorkspaceResultPanel
+            compact
+            class="conversation-result-panel"
+            :title="t('workspace.latestResult')"
+            :active-failed="Boolean(activeFailedMessage)"
+            :active-preview-image="activePreviewImage"
+            :result-images="resultImages"
+            :has-running-task="hasRunningTask"
+            :generation-status-label="generationStatusLabel"
+            :generation-progress="generationProgress"
+            :generation-prompt="generationPrompt"
+            :failed-title="failedTitle"
+            :failed-message="failedMessage"
+            @retry-failed="retryFailedResult"
+            @open-preview="openActivePreview"
+          />
         </template>
 
         <template v-else>
+          <ChatInput
+            class="workspace-task-input-panel"
+            :mode="taskInputMode"
+            :initial-count="currentGenerationSettings.n"
+            :initial-size="currentGenerationSettings.size"
+            :generating="hasRunningTask"
+            :loading="inputLoading"
+            :allow-custom-count="auth.isSysadmin"
+            :read-only="oneShotTaskLocked"
+            :size-options="providerSizeOptions"
+            :max-reference-files="maxReferenceFiles"
+            :reference-count="latestReferenceCount"
+            :reference-images="latestReferenceImages"
+            @open-reference="openImage"
+            @submit="submit"
+          />
+
           <WorkspaceResultPanel
             :title="t('workspace.result')"
             :subtitle="latestPrompt"
@@ -203,46 +202,6 @@ const {
             @open-preview="openActivePreview"
             @select-image-id="activePreviewImageId = $event"
           />
-
-          <aside class="task-side min-h-0">
-            <section class="workspace-session-panel panel thin-scrollbar max-h-64 overflow-y-auto">
-              <div class="border-b border-border px-4 py-3">
-                <h2 class="text-sm font-semibold">{{ t("workspace.sessionTitle") }}</h2>
-              </div>
-              <div class="p-4">
-                <label v-if="canEditTitle" class="block">
-                  <span class="sr-only">{{ t("workspace.sessionTitle") }}</span>
-                  <input
-                    v-model="draftTitle"
-                    class="ui-field h-10 px-3 text-sm"
-                    maxlength="80"
-                    :placeholder="t('workspace.sessionTitlePlaceholder')"
-                    :disabled="submitting"
-                  />
-                </label>
-                <p v-else class="truncate text-sm leading-6 text-muted-foreground">
-                  {{ sessionTitle }}
-                </p>
-              </div>
-            </section>
-
-            <ChatInput
-              class="workspace-settings-panel"
-              :mode="taskInputMode"
-              :initial-count="currentGenerationSettings.n"
-              :initial-size="currentGenerationSettings.size"
-              :generating="hasRunningTask"
-              :loading="inputLoading"
-              :allow-custom-count="auth.isSysadmin"
-              :read-only="oneShotTaskLocked"
-              :size-options="providerSizeOptions"
-              :max-reference-files="maxReferenceFiles"
-              :reference-count="latestReferenceCount"
-              :reference-images="latestReferenceImages"
-              @open-reference="openImage"
-              @submit="submit"
-            />
-          </aside>
         </template>
       </div>
     </div>
@@ -266,49 +225,42 @@ const {
   overflow: visible;
 }
 
-.workspace-grid,
-.task-side,
-.conversation-side {
+.workspace-grid {
   display: grid;
   gap: 1rem;
   min-height: 0;
   overflow: visible;
 }
 
-.task-side,
-.conversation-side {
-  align-content: start;
-}
-
-.workspace-grid--task .task-side,
-.workspace-grid--chat .conversation-side {
-  order: -1;
+.conversation-panel,
+.conversation-result-panel,
+.task-result-panel,
+.workspace-task-input-panel {
+  min-height: 0;
 }
 
 @media (min-width: 1024px) {
   .workspace-page {
     height: calc(100dvh - 6rem);
     min-height: 0;
+    overflow: hidden;
   }
 }
 
 @container (min-width: 56rem) {
-  .workspace-grid,
-  .task-side,
-  .conversation-side {
+  .workspace-grid {
     overflow: hidden;
   }
 
   .workspace-grid--task {
-    grid-template-columns: minmax(18rem, 23rem) minmax(0, 1fr);
+    grid-template-columns: minmax(22rem, 30rem) minmax(0, 1fr);
   }
 
   .workspace-grid--chat {
-    grid-template-columns: minmax(18rem, 23rem) minmax(0, 1fr);
+    grid-template-columns: minmax(22rem, 32rem) minmax(0, 1fr);
   }
 
-  .workspace-grid--task .task-side {
-    order: 0;
+  .workspace-grid--task .workspace-task-input-panel {
     grid-column: 1;
     grid-row: 1;
   }
@@ -319,13 +271,12 @@ const {
   }
 
   .workspace-grid--chat .conversation-panel {
-    grid-column: 2;
+    grid-column: 1;
     grid-row: 1;
   }
 
-  .workspace-grid--chat .conversation-side {
-    order: 0;
-    grid-column: 1;
+  .workspace-grid--chat .conversation-result-panel {
+    grid-column: 2;
     grid-row: 1;
   }
 
@@ -335,27 +286,8 @@ const {
 
   .task-result-panel,
   .conversation-panel,
-  .task-side,
-  .conversation-side {
-    min-height: 0;
-    height: 100%;
-  }
-
-  .task-side {
-    grid-column: auto;
-    grid-template-rows: auto minmax(0, 1fr);
-    align-content: stretch;
-    overflow: hidden;
-  }
-
-  .conversation-side {
-    grid-column: auto;
-    grid-template-rows: auto minmax(8rem, 0.75fr) minmax(13rem, 1fr);
-    align-content: stretch;
-    overflow: hidden;
-  }
-
-  .workspace-settings-panel {
+  .conversation-result-panel,
+  .workspace-task-input-panel {
     min-height: 0;
     height: 100%;
   }
@@ -363,11 +295,38 @@ const {
 
 @container (min-width: 78rem) {
   .workspace-grid--task {
-    grid-template-columns: 24rem minmax(0, 1fr);
+    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
   }
 
   .workspace-grid--chat {
-    grid-template-columns: 24rem minmax(0, 1fr);
+    grid-template-columns: minmax(24rem, 34rem) minmax(0, 1fr);
+  }
+
+  .workspace-grid--task .workspace-task-input-panel {
+    grid-column: 1;
+  }
+
+  .workspace-grid--task .task-result-panel {
+    grid-column: 2;
+    grid-row: 1;
+  }
+}
+
+@container (min-width: 120rem) {
+  .workspace-grid--task {
+    grid-template-columns: minmax(28rem, 36rem) minmax(0, 1fr);
+  }
+
+  .workspace-grid--task .workspace-task-input-panel {
+    grid-column: 1;
+  }
+
+  .workspace-grid--task .task-result-panel {
+    grid-column: 2;
+  }
+
+  .workspace-grid--chat {
+    grid-template-columns: minmax(26rem, 36rem) minmax(0, 1fr);
   }
 }
 </style>

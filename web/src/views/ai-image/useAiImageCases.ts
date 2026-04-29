@@ -35,6 +35,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   const search = ref("");
   const finalPrompt = ref("");
   const finalPromptSource = ref<AiImagePromptSource>(null);
+  const resettablePrompt = ref("");
+  const resettablePromptSource = ref<Exclude<AiImagePromptSource, "user"> | null>(null);
   const caseContextId = ref<string | null>(null);
   const loading = ref(false);
   const loaded = ref(false);
@@ -73,6 +75,9 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       supportedModes: supportedModes.value
     })
   );
+  const canResetPrompt = computed(
+    () => Boolean(resettablePromptSource.value) && finalPrompt.value !== resettablePrompt.value
+  );
 
   watch(supportedModes, (nextModes) => {
     if (filterMode.value && !nextModes.includes(filterMode.value)) filterMode.value = "";
@@ -108,8 +113,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     const result = promptCaseApplyResult(item, filterMode.value, supportedModes.value);
     selectedId.value = item.id;
     caseContextId.value = item.id;
-    finalPrompt.value = result.prompt;
-    finalPromptSource.value = "case";
+    setResettablePrompt(result.prompt, "case");
     selectedMode.value = result.mode;
     return result;
   }
@@ -120,19 +124,24 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     return result;
   }
 
-  function clearPrompt() {
-    finalPrompt.value = "";
-    finalPromptSource.value = null;
-  }
-
   function startBlankCase() {
     caseContextId.value = null;
-    clearPrompt();
+    clearPrompt({ discardResetTarget: true });
   }
 
   function setPrompt(value: string, source: Exclude<AiImagePromptSource, null>) {
     finalPrompt.value = value;
     finalPromptSource.value = source;
+    if (source === "case" || source === "assistant") {
+      resettablePrompt.value = value;
+      resettablePromptSource.value = source;
+    }
+  }
+
+  function resetPrompt() {
+    if (!resettablePromptSource.value) return;
+    finalPrompt.value = resettablePrompt.value;
+    finalPromptSource.value = resettablePromptSource.value;
   }
 
   function ensureAvailableSelection() {
@@ -140,7 +149,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     if (!available.length) {
       selectedId.value = null;
       caseContextId.value = null;
-      if (finalPromptSource.value === "case") clearPrompt();
+      if (finalPromptSource.value === "case") clearPrompt({ discardResetTarget: true });
+      if (resettablePromptSource.value === "case") discardResetTarget();
       selectedMode.value = supportedModes.value[0] ?? "text2image";
       return;
     }
@@ -149,7 +159,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       : false;
     if (!contextAvailable) {
       caseContextId.value = null;
-      if (finalPromptSource.value === "case") clearPrompt();
+      if (finalPromptSource.value === "case") clearPrompt({ discardResetTarget: true });
+      if (resettablePromptSource.value === "case") discardResetTarget();
     }
     const selectedAvailable = selectedId.value
       ? available.some((item) => item.id === selectedId.value)
@@ -163,7 +174,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     if (current && !supportedModes.value.includes(selectedMode.value)) {
       const result = promptCaseApplyResult(current, filterMode.value, supportedModes.value);
       selectedMode.value = result.mode;
-      if (finalPromptSource.value === "case") finalPrompt.value = result.prompt;
+      if (finalPromptSource.value === "case") setResettablePrompt(result.prompt, "case");
     }
   }
 
@@ -172,11 +183,31 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     selectedId.value = item.id;
     selectedMode.value = result.mode;
     if (options.userSelected) caseContextId.value = item.id;
-    if (finalPromptSource.value === "case") clearPrompt();
+    if (finalPromptSource.value === "case") clearPrompt({ discardResetTarget: true });
+  }
+
+  function setResettablePrompt(value: string, source: Exclude<AiImagePromptSource, "user" | null>) {
+    finalPrompt.value = value;
+    finalPromptSource.value = source;
+    resettablePrompt.value = value;
+    resettablePromptSource.value = source;
+  }
+
+  function clearPrompt(options: { discardResetTarget?: boolean } = {}) {
+    finalPrompt.value = "";
+    finalPromptSource.value = resettablePromptSource.value ? "user" : null;
+    if (options.discardResetTarget) discardResetTarget();
+  }
+
+  function discardResetTarget() {
+    resettablePrompt.value = "";
+    resettablePromptSource.value = null;
+    if (!finalPrompt.value.trim()) finalPromptSource.value = null;
   }
 
   return {
     availableItems,
+    canResetPrompt,
     caseContext,
     caseContextId,
     categories,
@@ -197,6 +228,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     clearPrompt,
     load,
     previewCase,
+    resetPrompt,
     selectCase,
     setPrompt,
     startBlankCase

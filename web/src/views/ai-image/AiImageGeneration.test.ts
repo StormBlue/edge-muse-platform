@@ -50,7 +50,7 @@ vi.mock("./PromptCaseMobileSheet.vue", () => ({
 vi.mock("./AiImagePromptPanel.vue", () => ({
   default: {
     name: "AiImagePromptPanel",
-    props: ["mode", "size", "sizeFallbackNotice"],
+    props: ["canResetPrompt", "mode", "size", "sizeFallbackNotice"],
     emits: [
       "addFiles",
       "clearPrompt",
@@ -59,6 +59,7 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
       "openAssistant",
       "openImage",
       "removeFile",
+      "resetPrompt",
       "retryFailed",
       "submit",
       "update:mode",
@@ -291,6 +292,7 @@ function casesState() {
     filteredItems: computed(() => items.value),
     finalPrompt,
     finalPromptSource,
+    canResetPrompt: computed(() => false),
     filterMode: ref(""),
     items,
     loading: ref(false),
@@ -314,6 +316,7 @@ function casesState() {
       if (options?.userSelected) caseContext.value = item;
       return { mode: item.modes[0] ?? "text2image" };
     }),
+    resetPrompt: vi.fn(),
     selectCase: vi.fn((item: PromptCase) => {
       selected.value = item;
       caseContext.value = item;

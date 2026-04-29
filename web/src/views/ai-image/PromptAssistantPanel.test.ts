@@ -195,7 +195,7 @@ describe("PromptAssistantPanel", () => {
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
-  it("emits the completed assistant turn count when filling the final prompt", async () => {
+  it("auto-fills the final prompt with the completed assistant turn count", async () => {
     mockedApiFetch.mockResolvedValueOnce({
       ...assistantResponse("Prompt 已整理好。"),
       finalPrompt: "最终 prompt"
@@ -214,11 +214,9 @@ describe("PromptAssistantPanel", () => {
     await wrapper.find("textarea").setValue("我要做一张新品海报");
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
-    const buttons = wrapper.findAll("button");
-    await buttons[buttons.length - 1]?.trigger("click");
 
     expect(wrapper.emitted("fill")?.[0]).toEqual([
-      { prompt: "最终 prompt", recommendedSize: "1024x1024", turnCount: 1 }
+      { prompt: "最终 prompt", recommendedSize: "1024x1024", turnCount: 1, auto: true }
     ]);
   });
 });
