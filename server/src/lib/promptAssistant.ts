@@ -94,6 +94,7 @@ const aiResultSchema = z.object({
 });
 
 const AI_RETRY_DELAYS_MS = [500, 1500, 3500];
+const DEFAULT_AI_GATEWAY_ID = "default";
 
 export function isPromptAssistantEnabled(env: Pick<AppBindings, "PROMPT_ASSISTANT_ENABLED">) {
   const value = env.PROMPT_ASSISTANT_ENABLED?.trim().toLowerCase();
@@ -109,7 +110,7 @@ export async function runPromptAssistantTurn(
   let aiText = "";
   try {
     model = await resolvePromptAssistantModel(env);
-    const result = await runWorkersAiWithRetry(env, model, input);
+    const result = await runPromptAssistantModelWithRetry(env, model, input);
     aiText = extractAiText(result);
     const parsed = parseAiResult(aiText, input);
     return { ...parsed, degraded: false, degradedReason: null, model };
@@ -127,22 +128,17 @@ export async function runPromptAssistantTurn(
   }
 }
 
-async function runWorkersAiWithRetry(
+async function runPromptAssistantModelWithRetry(
   env: AppBindings,
   model: string,
   input: PromptAssistantTurnInput
 ) {
   if (!env.AI) throw new Error("Workers AI binding is not configured");
-  const request = {
-    messages: [
-      { role: "system", content: systemPrompt(input) },
-      { role: "user", content: userPrompt(input) }
-    ],
-    max_tokens: 900
-  };
+  const request = requestForModel(model, input);
+  const options = optionsForModel(env, model);
   for (let attempt = 0; attempt <= AI_RETRY_DELAYS_MS.length; attempt++) {
     try {
-      return await env.AI.run(model, request);
+      return await env.AI.run(model, request, options);
     } catch (error) {
       const willRetry = attempt < AI_RETRY_DELAYS_MS.length && isRetriableAiError(error);
       if (!willRetry) throw error;
@@ -155,6 +151,70 @@ async function runWorkersAiWithRetry(
       await wait(AI_RETRY_DELAYS_MS[attempt]);
     }
   }
+}
+
+function requestForModel(model: string, input: PromptAssistantTurnInput): Record<string, unknown> {
+  if (isGoogleAiModel(model)) {
+    return {
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: userPrompt(input) }]
+        }
+      ],
+      systemInstruction: {
+        parts: [{ text: systemPrompt(input) }]
+      },
+      generationConfig: {
+        maxOutputTokens: 900,
+        temperature: 0.2
+      }
+    };
+  }
+  return {
+    messages: [
+      { role: "system", content: systemPrompt(input) },
+      { role: "user", content: userPrompt(input) }
+    ],
+    max_tokens: 900,
+    temperature: 0.2
+  };
+}
+
+function optionsForModel(env: AppBindings, model: string) {
+  if (isProxiedAiModel(model)) {
+    return {
+      gateway: {
+        id: promptAssistantGatewayId(env),
+        metadata: { feature: "prompt_assistant", model }
+      }
+    };
+  }
+  return undefined;
+}
+
+function isGoogleAiModel(model: string) {
+  return model.startsWith("google/");
+}
+
+function isProxiedAiModel(model: string) {
+  return /^[a-z][a-z0-9-]*\//i.test(model) && !model.startsWith("@cf/");
+}
+
+function promptAssistantGatewayId(env: AppBindings) {
+  return env.AI_GATEWAY_ID?.trim() || gatewayIdFromUrl(env.AI_GATEWAY_URL) || DEFAULT_AI_GATEWAY_ID;
+}
+
+function gatewayIdFromUrl(url: string | undefined) {
+  const value = url?.trim();
+  if (!value) return undefined;
+  const parts = value.split(/[/?#]/).filter(Boolean);
+  const versionIndex = parts.findIndex((part) => part === "v1");
+  if (versionIndex >= 0 && parts.length > versionIndex + 2) {
+    return parts[versionIndex + 2];
+  }
+  if (!value.includes("/")) return value;
+  return undefined;
 }
 
 export function assistantLogPayload(

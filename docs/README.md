@@ -4,17 +4,18 @@
 
 ## 核心
 
-| 文件                               | 用途                               |
-| ---------------------------------- | ---------------------------------- |
-| [DESIGN.md](./DESIGN.md)           | 代码组织、命名、错误处理、依赖策略 |
-| [API.md](./API.md)                 | HTTP API 清单与错误格式            |
-| [DATABASE.md](./DATABASE.md)       | D1 / Drizzle / 迁移                |
-| [FRONTEND.md](./FRONTEND.md)       | Vue 3 应用结构                     |
-| [SECURITY.md](./SECURITY.md)       | 认证、密钥、数据与威胁边界         |
-| [RELIABILITY.md](./RELIABILITY.md) | 任务恢复、cron、备份与降级         |
-| [EXPERIMENTS.md](./EXPERIMENTS.md) | 生成入口 A/B、实验事件与配置       |
-| [DEPLOYMENT.md](./DEPLOYMENT.md)   | Wrangler、CI/CD、环境              |
-| [TESTING.md](./TESTING.md)         | 测试命令与范围                     |
+| 文件                                                             | 用途                               |
+| ---------------------------------------------------------------- | ---------------------------------- |
+| [DESIGN.md](./DESIGN.md)                                         | 代码组织、命名、错误处理、依赖策略 |
+| [API.md](./API.md)                                               | HTTP API 清单与错误格式            |
+| [DATABASE.md](./DATABASE.md)                                     | D1 / Drizzle / 迁移                |
+| [FRONTEND.md](./FRONTEND.md)                                     | Vue 3 应用结构                     |
+| [FRONTEND_UI_REDESIGN_BRIEF.md](./FRONTEND_UI_REDESIGN_BRIEF.md) | 前端 UI 重设计功能描述             |
+| [SECURITY.md](./SECURITY.md)                                     | 认证、密钥、数据与威胁边界         |
+| [RELIABILITY.md](./RELIABILITY.md)                               | 任务恢复、cron、备份与降级         |
+| [EXPERIMENTS.md](./EXPERIMENTS.md)                               | 生成入口 A/B、实验事件与配置       |
+| [DEPLOYMENT.md](./DEPLOYMENT.md)                                 | Wrangler、CI/CD、环境              |
+| [TESTING.md](./TESTING.md)                                       | 测试命令与范围                     |
 
 本地 Worker 启动后可访问交互式 API 文档：`http://localhost:8787/api/docs`；机器可读 OpenAPI JSON 为 `http://localhost:8787/api/openapi.json`。OpenAPI 源码维护在 [`server/src/docs/openapi.ts`](../server/src/docs/openapi.ts)。
 
