@@ -186,6 +186,133 @@ describe("prompt assistant", () => {
     expect(result.assistantMessage).toContain("文字");
   });
 
+  it("runs Google proxied models through Cloudflare AI Gateway with Gemini request shape", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张咖啡新品海报" }]
+    });
+    const calls: { model: string; request: Record<string, unknown>; options: unknown }[] = [];
+    const env = {
+      PROMPT_ASSISTANT_MODEL: "google/gemini-3.1-pro",
+      AI_GATEWAY_ID: "prompt-assistant",
+      AI: {
+        run: async (model: string, request: Record<string, unknown>, options: unknown) => {
+          calls.push({ model, request, options });
+          return {
+            text: JSON.stringify({
+              assistantMessage: "这张图准备用在哪个渠道？",
+              readiness: "collecting",
+              brief: { subject: "咖啡新品海报" },
+              finalPrompt: null,
+              recommendedSize: "1024x1024",
+              warnings: []
+            })
+          };
+        }
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.model).toBe("google/gemini-3.1-pro");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].model).toBe("google/gemini-3.1-pro");
+    expect(calls[0].request).toMatchObject({
+      contents: [{ role: "user", parts: [{ text: expect.stringContaining("咖啡新品海报") }] }],
+      systemInstruction: { parts: [{ text: expect.stringContaining("只输出 JSON") }] },
+      generationConfig: { maxOutputTokens: 900 }
+    });
+    expect(calls[0].request).not.toHaveProperty("messages");
+    expect(calls[0].options).toMatchObject({
+      gateway: { id: "prompt-assistant" }
+    });
+  });
+
+  it("runs OpenAI proxied models through Cloudflare AI Gateway with chat request shape", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张透明智能音箱发布会海报" }]
+    });
+    const calls: { model: string; request: Record<string, unknown>; options: unknown }[] = [];
+    const env = {
+      PROMPT_ASSISTANT_MODEL: "openai/gpt-5.5",
+      AI: {
+        run: async (model: string, request: Record<string, unknown>, options: unknown) => {
+          calls.push({ model, request, options });
+          return {
+            text: JSON.stringify({
+              assistantMessage: "我还需要确认发布渠道和是否需要画面文字。",
+              readiness: "collecting",
+              brief: { subject: "透明外壳智能音箱" },
+              finalPrompt: null,
+              recommendedSize: "1024x1024",
+              warnings: []
+            })
+          };
+        }
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.model).toBe("openai/gpt-5.5");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].request).toMatchObject({
+      messages: [
+        { role: "system", content: expect.stringContaining("只输出 JSON") },
+        { role: "user", content: expect.stringContaining("透明智能音箱") }
+      ],
+      max_tokens: 900
+    });
+    expect(calls[0].request).not.toHaveProperty("contents");
+    expect(calls[0].options).toMatchObject({
+      gateway: { id: "default" }
+    });
+  });
+
+  it("keeps compatibility with AI_GATEWAY_URL when deriving the Cloudflare gateway id", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 0,
+      messages: [{ role: "user", content: "做一张咖啡新品海报" }]
+    });
+    const optionsList: unknown[] = [];
+    const env = {
+      PROMPT_ASSISTANT_MODEL: "openai/gpt-5.5",
+      AI_GATEWAY_URL:
+        "https://gateway.ai.cloudflare.com/v1/account-id/prompt-assistant/openai/chat/completions",
+      AI: {
+        run: async (_model: string, _request: Record<string, unknown>, options: unknown) => {
+          optionsList.push(options);
+          return {
+            text: JSON.stringify({
+              assistantMessage: "这张图准备用在哪个渠道？",
+              readiness: "collecting",
+              brief: { subject: "咖啡新品海报" },
+              finalPrompt: null,
+              recommendedSize: "1024x1024",
+              warnings: []
+            })
+          };
+        }
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(optionsList[0]).toMatchObject({
+      gateway: { id: "prompt-assistant" }
+    });
+  });
+
   it("does not pass through repeated AI questions once case details are enough", async () => {
     const repeatedQuestion = "我可以基于案例补全构图、光线和氛围。有没有绝对不能出现的元素？";
     const input = promptAssistantTurnSchema.parse({

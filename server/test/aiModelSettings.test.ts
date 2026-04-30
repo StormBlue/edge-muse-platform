@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_PROMPT_ASSISTANT_MODEL,
+  PROMPT_ASSISTANT_MODEL_OPTIONS,
   getPromptAssistantModelSettings,
   promptAssistantModelSchema,
   resolvePromptAssistantModel,
@@ -69,6 +70,23 @@ describe("AI model settings", () => {
 
   it("rejects unsupported model ids at the schema boundary", () => {
     expect(promptAssistantModelSchema.safeParse("@cf/unknown/model").success).toBe(false);
+    expect(promptAssistantModelSchema.safeParse("openai/gpt-5.5-pro").success).toBe(false);
+  });
+
+  it("accepts Cloudflare-documented proxied prompt assistant model ids", () => {
+    expect(promptAssistantModelSchema.safeParse("google/gemini-3-flash").success).toBe(true);
+    expect(promptAssistantModelSchema.safeParse("google/gemini-3.1-flash-lite").success).toBe(true);
+    expect(promptAssistantModelSchema.safeParse("google/gemini-3.1-pro").success).toBe(true);
+    expect(promptAssistantModelSchema.safeParse("openai/gpt-5.5").success).toBe(true);
+
+    expect(PROMPT_ASSISTANT_MODEL_OPTIONS.map((option) => option.id)).toEqual(
+      expect.arrayContaining([
+        "google/gemini-3-flash",
+        "google/gemini-3.1-flash-lite",
+        "google/gemini-3.1-pro",
+        "openai/gpt-5.5"
+      ])
+    );
   });
 
   it("runs the prompt assistant with the persisted model", async () => {

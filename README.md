@@ -38,6 +38,7 @@ JWT_SECRET=replace-with-local-secret
 KEY_ENCRYPTION_KEY=replace-with-32-byte-or-longer-secret
 TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 RESEND_API_KEY=
+AI_GATEWAY_ID=default
 AI_GATEWAY_URL=
 TURNSTILE_SITE_KEY=1x00000000000000000000AA
 ALERT_EMAIL=
@@ -60,7 +61,7 @@ pnpm -F server seed:local
 ## 部署
 
 1. 在 Cloudflare 创建一套线上资源:D1、R2、KV、Turnstile、AI Gateway。
-2. 将真实 D1 / KV ID 填入 `server/wrangler.jsonc`,并配置 `TURNSTILE_SITE_KEY` / `AI_GATEWAY_URL`。
+2. 将真实 D1 / KV ID 填入 `server/wrangler.jsonc`,并配置 `TURNSTILE_SITE_KEY` / `AI_GATEWAY_ID`。
 3. 写入线上 Worker Secrets:
 
 ```bash
