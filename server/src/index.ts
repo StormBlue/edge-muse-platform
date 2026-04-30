@@ -8,6 +8,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { announcementRoutes } from "./routes/announcements";
 import { authRoutes } from "./routes/auth";
+import { docsRoutes } from "./routes/docs";
 import { meRoutes } from "./routes/me";
 import { sessionRoutes, historyRoutes } from "./routes/sessions";
 import { generateRoutes, handleTaskWebSocket } from "./routes/generate";
@@ -62,6 +63,9 @@ app.get("/api/config", (c) =>
     turnstileSiteKey: getPublicTurnstileSiteKey(c.env)
   })
 );
+
+// ---------- API 文档：dev 公开，production 要求 sysadmin（见 routes/docs.ts）----------
+app.route("/api", docsRoutes);
 
 // ---------- 业务路由挂载（均含各自 requireAuth / 角色，见各 routes 文件）----------
 app.route("/api/auth", authRoutes);

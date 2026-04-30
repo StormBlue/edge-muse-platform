@@ -62,6 +62,7 @@ async function recordAssistantGenerationEvents(
     turnIndex: input.turnIndex,
     messageCount: input.messages.length,
     degraded: result.degraded,
+    degradedReason: result.degradedReason,
     model: result.model
   };
   try {

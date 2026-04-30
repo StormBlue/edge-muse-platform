@@ -63,6 +63,7 @@ export type PromptAssistantResult = {
   recommendedSize: string;
   warnings: string[];
   degraded: boolean;
+  degradedReason?: string | null;
   model: string | null;
 };
 
@@ -111,16 +112,18 @@ export async function runPromptAssistantTurn(
     const result = await runWorkersAiWithRetry(env, model, input);
     aiText = extractAiText(result);
     const parsed = parseAiResult(aiText, input);
-    return { ...parsed, degraded: false, model };
+    return { ...parsed, degraded: false, degradedReason: null, model };
   } catch (error) {
+    const degradedReason = classifyPromptAssistantError(error);
     logWarn("prompt_assistant.degraded", {
       model,
       turnIndex: input.turnIndex,
       messageCount: input.messages.length,
       aiTextLength: aiText.length,
+      degradedReason,
       error: summarizePromptAssistantError(error)
     });
-    return { ...fallbackAssistantResult(input), degraded: true, model: null };
+    return { ...fallbackAssistantResult(input), degraded: true, degradedReason, model };
   }
 }
 
@@ -167,6 +170,7 @@ export function assistantLogPayload(
     outputLength: result.assistantMessage.length + (result.finalPrompt?.length ?? 0),
     readiness: result.readiness,
     degraded: result.degraded,
+    degradedReason: result.degradedReason ?? null,
     model: result.model
   };
 }
@@ -193,8 +197,8 @@ function totalInputLength(input: PromptAssistantTurnInput) {
 function systemPrompt(input: PromptAssistantTurnInput) {
   const language = input.locale === "zh-CN" ? "简体中文" : "English";
   return [
-    `你是资深视觉创意总监和 GPT-Image 2 提示词编导，必须使用${language}回答。`,
-    "你的目标是用最少轮次把用户的模糊想法推进成可生成图片的 prompt，而不是机械收集字段。",
+    `你是资深视觉创意总监和 GPT-Image 2 生成描述编导，必须使用${language}回答。`,
+    "你的目标是用最少轮次把用户的模糊想法推进成可生成图片的描述，而不是机械收集字段。",
     "只帮助 text2image 与 image2image，不处理视频生成或连续 chat 模式。",
     "像自然聊天一样推进，不要提到轮次编号；每次回复最多问 1 个高价值问题。",
     "如果提供了 selectedCase，把案例模板、摘要、分类、标签和推荐画幅视为创作基底。",
@@ -202,16 +206,16 @@ function systemPrompt(input: PromptAssistantTurnInput) {
     "禁止泛泛地说“请提供更多信息”“需要更详细的信息”；如果必须追问，问题要具体，并给 2-3 个可选方向帮助用户决策。",
     "只追问会显著改变画面的关键变量，例如主体、核心场景、画面文字、禁忌、必须保留元素；不要追问低价值细节。",
     "当用户说“你来补”“自己补”“按模板”“随便”“类似某种风格”“差不多”等表达时，视为授权你主动补全，不要继续追问。",
-    "如果 forceFinalizeRequested 为 true，必须直接输出 ready 和 finalPrompt；缺少的信息要在通用商业视觉、产品原型、Prompt 工程最佳实践范围内合理补全，不要继续追问。",
+    "如果 forceFinalizeRequested 为 true，必须直接输出 ready 和 finalPrompt；缺少的信息要在通用商业视觉、产品原型、图片生成描述最佳实践范围内合理补全，不要继续追问。",
     "如果已有 selectedCase 加至少一个用户创意方向，或已经有主体、场景/风格、文字意图中的任意两项，就可以主动补全合理细节并输出 finalPrompt。",
-    "assistantMessage 要先简短确认你理解的方向，再说明下一步；如果 readiness 是 ready，应告诉用户已整理好，可在提示词框继续微调。",
+    "assistantMessage 要先简短确认你理解的方向，再说明下一步；如果 readiness 是 ready，应告诉用户已整理好，可在描述输入框继续微调。",
     "finalPrompt 需要继承案例模板的结构、用途和风格，并融合用户补充，而不是重新发散到无关方向。",
     "finalPrompt 必须面向图片生成，包含用途、主体、场景、构图、风格光线、文字和约束。",
     "warnings 只用于真实风险或限制提醒，例如版权角色、画面文字可能失真、服务商能力限制；不要把普通缺失信息写进 warnings。",
     "不要输出 Markdown；只输出 JSON。",
     'JSON 字段：assistantMessage, readiness("collecting"|"ready"), brief, finalPrompt, recommendedSize, warnings。',
     'brief 必须是对象，不能是字符串；格式：{"useCase":"...","subject":"...","style":"...","scene":"...","composition":"...","constraints":["..."]}。',
-    "warnings 必须是字符串数组；如果 prompt 还没准备好，finalPrompt 必须是 null。"
+    "warnings 必须是字符串数组；如果生成描述还没准备好，finalPrompt 必须是 null。"
   ].join("\n");
 }
 
@@ -232,10 +236,10 @@ function conversationGuidance(input: PromptAssistantTurnInput) {
   return {
     forceFinalizeRequested,
     userDelegatedCreativeControl: hasUserDelegatedCreativeControl(input),
-    shouldFinishIfReasonable: forceFinalizeRequested || shouldPrepareFinalPrompt(input),
+    shouldFinishIfReasonable: forceFinalizeRequested || shouldEncourageFinalPrompt(input),
     lastUserMessage: lastUserMessage(input),
     instruction: forceFinalizeRequested
-      ? "用户已点击直接生成 Prompt。请基于当前状态直接输出 ready 和 finalPrompt，信息不足时主动补全合理细节。"
+      ? "用户已点击直接生成描述。请基于当前状态直接输出 ready 和 finalPrompt，信息不足时主动补全合理细节。"
       : "如果 shouldFinishIfReasonable 为 true，请优先输出 ready 和 finalPrompt；只有缺少会导致画面完全跑偏的核心信息时才追问。"
   };
 }
@@ -281,8 +285,11 @@ function parseAiResult(
   const payload = parseAiPayload(raw);
   const parsed = aiResultSchema.parse(payload);
   const finalPrompt = parsed.finalPrompt?.trim() ? parsed.finalPrompt : null;
-  if (!finalPrompt && shouldPrepareFinalPrompt(input)) {
-    throw new Error("Workers AI kept collecting after enough prompt context was provided");
+  if (!finalPrompt && input.forceFinalize) {
+    throw new Error("Workers AI kept collecting after the user requested final prompt generation");
+  }
+  if (!finalPrompt && shouldFallbackFinalize(input)) {
+    throw new Error("Workers AI kept collecting after repeated prompt context was provided");
   }
   return {
     assistantMessage:
@@ -292,7 +299,8 @@ function parseAiResult(
     brief: parsed.brief,
     finalPrompt,
     recommendedSize: recommendedSizeForTurn(input, parsed.recommendedSize),
-    warnings: parsed.warnings
+    warnings: parsed.warnings,
+    degradedReason: null
   };
 }
 
@@ -405,6 +413,22 @@ function summarizePromptAssistantError(error: unknown) {
   return { name: typeof error };
 }
 
+function classifyPromptAssistantError(error: unknown) {
+  if (error instanceof z.ZodError) return "invalid_ai_payload";
+  if (error instanceof Error) {
+    const message = error.message;
+    if (/Workers AI binding is not configured/i.test(message)) return "ai_binding_missing";
+    if (/structured prompt assistant result/i.test(message)) return "unstructured_ai_payload";
+    if (/after the user requested final prompt generation/i.test(message)) {
+      return "force_finalize_without_prompt";
+    }
+    if (/after repeated prompt context/i.test(message)) return "repeated_context_without_prompt";
+    if (isRetriableAiError(error)) return "ai_runtime_error";
+    return "prompt_assistant_error";
+  }
+  return "unknown_error";
+}
+
 function isRetriableAiError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /network connection lost|error code:\s*1031/i.test(message);
@@ -417,7 +441,7 @@ function wait(ms: number) {
 function fallbackAssistantResult(
   input: PromptAssistantTurnInput
 ): Omit<PromptAssistantResult, "degraded" | "model"> {
-  const enough = shouldPrepareFinalPrompt(input);
+  const enough = shouldFallbackFinalize(input);
   const brief = summarizeMessages(input);
   const recommendedSize = recommendedSizeForTurn(input);
   if (!enough) {
@@ -427,17 +451,19 @@ function fallbackAssistantResult(
       brief,
       finalPrompt: null,
       recommendedSize,
-      warnings: ["当前使用静态降级助手，最终 prompt 会偏保守。"]
+      warnings: ["当前使用静态降级助手，最终生成描述会偏保守。"],
+      degradedReason: null
     };
   }
   return {
     assistantMessage:
-      "信息已经足够，我先给你一版可直接生成的专业 prompt，你还可以继续补充细节让我调整。",
+      "信息已经足够，我先给你一版可直接生成的专业描述，你还可以继续补充细节让我调整。",
     readiness: "ready",
     brief,
     finalPrompt: buildFallbackFinalPrompt(input, brief),
     recommendedSize,
-    warnings: ["当前使用静态降级助手，请人工确认文字和品牌元素。"]
+    warnings: ["当前使用静态降级助手，请人工确认文字和品牌元素。"],
+    degradedReason: null
   };
 }
 
@@ -484,7 +510,7 @@ function nextQuestion(input: PromptAssistantTurnInput) {
         ? [
             `我会沿用「${caseTitle}」的结构。参考图里最需要保留的是主体、构图、品牌标识还是整体氛围？`,
             "这次主要想改变哪一处：背景、光线、材质、文字，还是整体风格？",
-            "如果没有禁忌信息，我就按案例风格补全并整理 prompt。有没有绝对不能出现或不能改变的内容？"
+            "如果没有禁忌信息，我就按案例风格补全并整理生成描述。有没有绝对不能出现或不能改变的内容？"
           ]
         : [
             `我会按「${caseTitle}」来做。画面最核心的主体是什么？`,
@@ -512,7 +538,7 @@ function nextQuestion(input: PromptAssistantTurnInput) {
   return questions[Math.min(input.turnIndex, questions.length - 1)];
 }
 
-function shouldPrepareFinalPrompt(input: PromptAssistantTurnInput) {
+function shouldEncourageFinalPrompt(input: PromptAssistantTurnInput) {
   if (input.forceFinalize) return true;
   if (hasUserDelegatedCreativeControl(input)) return true;
   if (input.turnIndex >= 5 || input.messages.length >= 6) return true;
@@ -520,10 +546,17 @@ function shouldPrepareFinalPrompt(input: PromptAssistantTurnInput) {
   return Boolean(input.casePromptTemplate && userMessages.length >= 2);
 }
 
+function shouldFallbackFinalize(input: PromptAssistantTurnInput) {
+  if (input.forceFinalize) return true;
+  if (hasUserDelegatedCreativeControl(input)) return true;
+  if (input.turnIndex >= 5 || input.messages.length >= 10) return true;
+  return false;
+}
+
 function hasUserDelegatedCreativeControl(input: PromptAssistantTurnInput) {
   const text = lastUserMessage(input);
   if (
-    /你(来|自己|帮我)?补|自己补|按.*模板|随便|都可以|差不多|照着|你看着办|你决定|你来定|不用问|直接生成|现在生成|生成\s*(Prompt|提示词)|整理\s*(Prompt|提示词)/i.test(
+    /你(来|自己|帮我)?补|自己补|按.*模板|随便|都可以|差不多|照着|你看着办|你决定|你来定|不用问|直接生成|现在生成|生成\s*(Prompt|提示词|描述|生成描述)|整理\s*(Prompt|提示词|描述|生成描述)/i.test(
       text
     )
   ) {
@@ -550,7 +583,9 @@ function meaningfulUserMessages(input: PromptAssistantTurnInput) {
 }
 
 function isFinalizeOnlyMessage(content: string) {
-  return /^(直接|现在|立即|开始)?\s*(生成|整理)\s*(Prompt|提示词)?吧?$/i.test(content);
+  return /^(直接|现在|立即|开始)?\s*(生成|整理)\s*(Prompt|提示词|描述|生成描述)?吧?$/i.test(
+    content
+  );
 }
 
 function fallbackCreativeSubject(input: PromptAssistantTurnInput) {
