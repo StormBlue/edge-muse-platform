@@ -5,13 +5,14 @@
  * 只处理表单双向绑定和提交事件；JSON 解析、导入结果提示和刷新列表由控制器负责。
  */
 import { useI18n } from "vue-i18n";
+import { onBeforeUnmount, watch } from "vue";
 
 const open = defineModel<boolean>("open", { required: true });
 const source = defineModel<string>("source", { required: true });
 const sourceUrl = defineModel<string>("sourceUrl", { required: true });
 const payload = defineModel<string>("payload", { required: true });
 
-defineProps<{
+const props = defineProps<{
   saving: boolean;
 }>();
 
@@ -20,14 +21,34 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+watch(
+  open,
+  (isOpen) => {
+    if (isOpen) {
+      document.addEventListener("keydown", onEscape);
+    } else {
+      document.removeEventListener("keydown", onEscape);
+    }
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  document.removeEventListener("keydown", onEscape);
+});
+
+function close() {
+  if (!props.saving) open.value = false;
+}
+
+function onEscape(event: KeyboardEvent) {
+  if (event.key === "Escape") close();
+}
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-    @click.self="!saving && (open = false)"
-  >
+  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
     <form
       class="panel flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden"
       @submit.prevent="emit('submit')"
@@ -65,7 +86,7 @@ const { t } = useI18n();
           class="ui-button ui-button-secondary"
           type="button"
           :disabled="saving"
-          @click="open = false"
+          @click="close"
         >
           {{ t("common.cancel") }}
         </button>

@@ -169,7 +169,7 @@ const {
     </div>
 
     <Dialog :open="createOpen" @update:open="setCreateOpen">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.createUser") }}</DialogTitle>
         </DialogHeader>
@@ -236,7 +236,7 @@ const {
     </Dialog>
 
     <Dialog :open="editOpen" @update:open="setEditOpen">
-      <DialogContent v-if="editingUser" class="sm:max-w-md">
+      <DialogContent v-if="editingUser" class="sm:max-w-md" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.editUser") }}</DialogTitle>
         </DialogHeader>
@@ -298,7 +298,7 @@ const {
     </Dialog>
 
     <Dialog :open="quotaOpen" @update:open="setQuotaOpen">
-      <DialogContent v-if="selectedUser" class="sm:max-w-sm">
+      <DialogContent v-if="selectedUser" class="sm:max-w-sm" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.addQuota") }}</DialogTitle>
         </DialogHeader>
@@ -335,7 +335,7 @@ const {
     </Dialog>
 
     <Dialog :open="passwordOpen" @update:open="setPasswordOpen">
-      <DialogContent v-if="passwordUser" class="sm:max-w-sm">
+      <DialogContent v-if="passwordUser" class="sm:max-w-sm" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("adminUsers.resetPassword") }}</DialogTitle>
         </DialogHeader>

@@ -4,7 +4,7 @@
  *
  * 表单只做轻量清洗：空字符串转 null、标签按逗号/换行切分；发布归因等强规则仍以后端为准。
  */
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   PROMPT_CASE_LICENSES,
@@ -52,6 +52,22 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      document.addEventListener("keydown", onEscape);
+    } else {
+      document.removeEventListener("keydown", onEscape);
+    }
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => {
+  document.removeEventListener("keydown", onEscape);
+});
+
 function toggleMode(mode: PromptCaseMode, checked: boolean) {
   form.value.modes = applyPromptCaseModeToggle(form.value.modes, mode, checked);
 }
@@ -59,14 +75,14 @@ function toggleMode(mode: PromptCaseMode, checked: boolean) {
 function submit() {
   emit("save", normalizePromptCaseEditorForm(form.value, tagsText.value));
 }
+
+function onEscape(event: KeyboardEvent) {
+  if (event.key === "Escape" && !props.saving) emit("close");
+}
 </script>
 
 <template>
-  <div
-    v-if="open"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-    @click.self="!saving && emit('close')"
-  >
+  <div v-if="open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
     <form
       class="panel flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden"
       :aria-busy="saving"

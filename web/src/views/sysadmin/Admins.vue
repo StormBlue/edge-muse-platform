@@ -215,7 +215,7 @@ onMounted(load);
     </div>
 
     <Dialog :open="createOpen" @update:open="setCreateOpen">
-      <DialogContent class="sm:max-w-md">
+      <DialogContent class="sm:max-w-md" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("sysadmin.createAdmin") }}</DialogTitle>
         </DialogHeader>
@@ -271,7 +271,7 @@ onMounted(load);
     </Dialog>
 
     <Dialog :open="editOpen" @update:open="setEditOpen">
-      <DialogContent v-if="editing" class="sm:max-w-md">
+      <DialogContent v-if="editing" class="sm:max-w-md" prevent-outside-close>
         <DialogHeader>
           <DialogTitle>{{ t("sysadmin.editAdmin") }}</DialogTitle>
         </DialogHeader>

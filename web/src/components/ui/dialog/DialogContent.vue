@@ -17,19 +17,28 @@ defineOptions({
 
 const props = withDefaults(
   defineProps<
-    DialogContentProps & { class?: HTMLAttributes["class"]; showCloseButton?: boolean }
+    DialogContentProps & {
+      class?: HTMLAttributes["class"];
+      showCloseButton?: boolean;
+      preventOutsideClose?: boolean;
+    }
   >(),
   {
     class: undefined,
+    preventOutsideClose: false,
     showCloseButton: true
   }
 );
 const emits = defineEmits<DialogContentEmits>();
 
 // 不把 `class` 透传给 reka，由下方 `cn` 合并进最终节点
-const delegatedProps = reactiveOmit(props, "class");
+const delegatedProps = reactiveOmit(props, "class", "preventOutsideClose", "showCloseButton");
 
 const forwarded = useForwardPropsEmits(delegatedProps, emits);
+
+function onOutsideInteraction(event: Event) {
+  if (props.preventOutsideClose) event.preventDefault();
+}
 </script>
 
 <template>
@@ -44,6 +53,8 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits);
           props.class
         )
       "
+      @interact-outside="onOutsideInteraction"
+      @pointer-down-outside="onOutsideInteraction"
     >
       <slot />
 

@@ -2,6 +2,7 @@
 /**
  * 服务商 API 密钥：创建时提交明文，服务端 AES 入库；列表仅显示 keyHint；可配配额与归属。
  */
+import { onBeforeUnmount, watch } from "vue";
 import { Loader2, PlugZap, Plus, RefreshCw } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import { useSysadminKeysController } from "./useSysadminKeysController";
@@ -33,6 +34,42 @@ const {
   providerMeta,
   tableRowNumber
 } = useSysadminKeysController();
+
+let escapeListenerActive = false;
+
+function closeCreateDialog() {
+  if (!createSaving.value) createOpen.value = false;
+}
+
+function closeEditDialog() {
+  if (!editSaving.value) editOpen.value = false;
+}
+
+function onDialogEscape(event: KeyboardEvent) {
+  if (event.key !== "Escape") return;
+  if (createOpen.value) {
+    closeCreateDialog();
+    return;
+  }
+  if (editOpen.value) closeEditDialog();
+}
+
+function syncEscapeListener() {
+  const shouldListen = createOpen.value || editOpen.value;
+  if (shouldListen && !escapeListenerActive) {
+    document.addEventListener("keydown", onDialogEscape);
+    escapeListenerActive = true;
+  } else if (!shouldListen && escapeListenerActive) {
+    document.removeEventListener("keydown", onDialogEscape);
+    escapeListenerActive = false;
+  }
+}
+
+watch([createOpen, editOpen], syncEscapeListener, { immediate: true });
+
+onBeforeUnmount(() => {
+  document.removeEventListener("keydown", onDialogEscape);
+});
 </script>
 
 <template>
@@ -134,7 +171,6 @@ const {
     <div
       v-if="createOpen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="!createSaving && (createOpen = false)"
     >
       <form
         class="panel w-full max-w-md space-y-3 p-5"
@@ -184,7 +220,7 @@ const {
             class="ui-button ui-button-secondary"
             type="button"
             :disabled="createSaving"
-            @click="createOpen = false"
+            @click="closeCreateDialog"
           >
             {{ t("common.cancel") }}
           </button>
@@ -199,7 +235,6 @@ const {
     <div
       v-if="editOpen && editing"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      @click.self="!editSaving && (editOpen = false)"
     >
       <form
         class="panel w-full max-w-md space-y-3 p-5"
@@ -255,7 +290,7 @@ const {
             class="ui-button ui-button-secondary"
             type="button"
             :disabled="editSaving"
-            @click="editOpen = false"
+            @click="closeEditDialog"
           >
             {{ t("common.cancel") }}
           </button>
