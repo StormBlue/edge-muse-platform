@@ -220,6 +220,34 @@ describe("PromptAssistantPanel", () => {
     ]);
   });
 
+  it("keeps fallback warnings with the final prompt instead of showing the degraded chat footer", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ...assistantResponse("信息已经足够，我先给你一版可直接生成的专业描述。"),
+      readiness: "ready",
+      finalPrompt: "最终 prompt",
+      warnings: ["请人工确认文字和品牌元素。"],
+      degraded: true
+    });
+    const wrapper = mount(PromptAssistantPanel, {
+      props: {
+        mode: "text2image",
+        caseItem: null,
+        provider: null,
+        referenceCount: 0,
+        referenceDescription: "",
+        referenceContextKey: ""
+      }
+    });
+
+    await wrapper.find("textarea").setValue("按照模板来就行");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(wrapper.text()).toContain("aiImage.assistantReadyTitle");
+    expect(wrapper.text()).toContain("请人工确认文字和品牌元素。");
+    expect(wrapper.text()).not.toContain("aiImage.assistantDegraded");
+  });
+
   it("force-finalizes a prompt from the current case context", async () => {
     mockedApiFetch.mockResolvedValueOnce({
       ...assistantResponse("Prompt 已生成。"),

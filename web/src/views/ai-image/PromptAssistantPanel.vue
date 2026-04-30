@@ -57,6 +57,11 @@ const canSend = computed(
     completedAssistantReplies.value < MAX_ASSISTANT_TURNS
 );
 const finalPrompt = computed(() => latest.value?.finalPrompt ?? "");
+const assistantDegraded = computed(() => latest.value?.degraded ?? false);
+const assistantWarnings = computed(() => latest.value?.warnings ?? []);
+const showAssistantStatus = computed(
+  () => !finalPrompt.value && (assistantDegraded.value || assistantWarnings.value.length > 0)
+);
 const canFinalize = computed(() => !loading.value && !props.disabled && !finalPrompt.value);
 const limitReached = computed(
   () =>
@@ -271,14 +276,14 @@ defineExpose({ reset });
     </form>
 
     <div
-      v-if="latest?.degraded || latest?.warnings.length"
+      v-if="showAssistantStatus"
       class="border-t border-border px-3 py-2 text-xs leading-5 text-muted-foreground"
     >
       <p class="font-medium text-foreground">
-        {{ latest.degraded ? t("aiImage.assistantDegraded") : t("aiImage.assistantWarnings") }}
+        {{ assistantDegraded ? t("aiImage.assistantDegraded") : t("aiImage.assistantWarnings") }}
       </p>
-      <ul v-if="latest.warnings.length" class="mt-1 list-disc space-y-1 pl-4">
-        <li v-for="warning in latest.warnings" :key="warning">{{ warning }}</li>
+      <ul v-if="assistantWarnings.length" class="mt-1 list-disc space-y-1 pl-4">
+        <li v-for="warning in assistantWarnings" :key="warning">{{ warning }}</li>
       </ul>
     </div>
 
@@ -286,6 +291,7 @@ defineExpose({ reset });
       v-model="editableFinalPrompt"
       :disabled="disabled"
       :visible="Boolean(finalPrompt)"
+      :warnings="assistantWarnings"
       @copy="copyFinalPrompt"
     />
   </div>

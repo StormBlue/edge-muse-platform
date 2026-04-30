@@ -12,6 +12,7 @@ const editablePrompt = defineModel<string>({ required: true });
 defineProps<{
   visible: boolean;
   disabled?: boolean;
+  warnings?: string[];
 }>();
 
 const emit = defineEmits<{
@@ -28,6 +29,12 @@ const { t } = useI18n();
       <p class="mt-1 text-xs leading-5 text-muted-foreground">
         {{ t("aiImage.assistantReadyBody") }}
       </p>
+      <ul
+        v-if="warnings?.length"
+        class="mt-2 list-disc space-y-1 rounded-lg border border-border bg-muted/35 px-3 py-2 pl-7 text-xs leading-5 text-muted-foreground"
+      >
+        <li v-for="warning in warnings" :key="warning">{{ warning }}</li>
+      </ul>
     </div>
     <label class="block">
       <span class="mb-1.5 block text-xs font-medium text-muted-foreground">

@@ -127,7 +127,7 @@
     "assistantAiLabel": "AI",
     "assistantDisabled": "The prompt assistant is disabled by an administrator.",
     "assistantEmpty": "Describe the image you want, or click Generate prompt at any time. If details are missing, the AI will fill them in using common visual prompt best practices.",
-    "assistantDegraded": "The assistant is using a fallback prompt template",
+    "assistantDegraded": "The assistant is using a general prompt template",
     "assistantFailed": "Prompt assistant is unavailable",
     "assistantFinalPromptLabel": "Final prompt",
     "assistantInputPlaceholder": "Reply to the AI, or add more visual details...",

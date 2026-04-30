@@ -127,7 +127,7 @@
     "assistantAiLabel": "AI",
     "assistantDisabled": "AI 助手已由系统管理员关闭。",
     "assistantEmpty": "你可以直接说想做什么图，也可以随时点击“生成描述”。信息不足时，AI 会按通用视觉规范补全合理细节。",
-    "assistantDegraded": "AI 助手正在使用备用生成描述模板",
+    "assistantDegraded": "AI 助手正在按通用模板整理",
     "assistantFailed": "AI 助手暂时不可用",
     "assistantFinalPromptLabel": "最终生成描述",
     "assistantInputPlaceholder": "直接回复 AI，或补充新的画面细节...",

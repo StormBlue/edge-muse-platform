@@ -511,7 +511,7 @@ function fallbackAssistantResult(
       brief,
       finalPrompt: null,
       recommendedSize,
-      warnings: ["当前使用静态降级助手，最终生成描述会偏保守。"],
+      warnings: ["描述助手暂时按通用模板继续整理，最终生成描述会偏保守。"],
       degradedReason: null
     };
   }
@@ -522,7 +522,7 @@ function fallbackAssistantResult(
     brief,
     finalPrompt: buildFallbackFinalPrompt(input, brief),
     recommendedSize,
-    warnings: ["当前使用静态降级助手，请人工确认文字和品牌元素。"],
+    warnings: ["已按通用模板生成描述，请人工确认文字和品牌元素。"],
     degradedReason: null
   };
 }

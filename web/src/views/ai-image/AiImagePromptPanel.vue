@@ -549,13 +549,17 @@ function isMobileAssistantViewport() {
 }
 
 .ai-generated-body {
+  display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
   padding: 1rem;
 }
 
 .ai-result-grid {
   display: grid;
+  width: 100%;
+  height: 100%;
   min-height: 100%;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
   grid-auto-rows: minmax(12rem, 1fr);
@@ -565,6 +569,8 @@ function isMobileAssistantViewport() {
 
 .ai-result-grid--single {
   display: flex;
+  width: 100%;
+  height: 100%;
   min-height: 100%;
   align-items: center;
   justify-content: center;
@@ -590,8 +596,10 @@ function isMobileAssistantViewport() {
 
 .ai-result-image {
   display: block;
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
   object-fit: contain;
   object-position: center;
 }
