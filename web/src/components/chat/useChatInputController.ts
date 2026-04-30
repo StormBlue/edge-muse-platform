@@ -178,7 +178,6 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
       n: isContinuousChat.value || !props.allowCustomCount ? 1 : clampImageCount(n.value),
       files: isImageToImage.value ? files.value : []
     });
-    prompt.value = "";
     if (!isImageToImage.value) clearFiles();
   }
 

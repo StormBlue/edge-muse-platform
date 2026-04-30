@@ -11,6 +11,32 @@ vi.mock("vue-i18n", () => ({
 }));
 
 describe("ChatInput", () => {
+  it("keeps the task prompt after submit so failed creation can be retried", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+      }
+    });
+
+    const textarea = wrapper.get("textarea");
+    await textarea.setValue("不要在失败时丢掉这个提示词");
+    await wrapper.get("form").trigger("submit");
+
+    expect(wrapper.emitted("submit")).toEqual([
+      [
+        {
+          prompt: "不要在失败时丢掉这个提示词",
+          mode: "text2image",
+          size: "1024x1024",
+          n: 1,
+          files: []
+        }
+      ]
+    ]);
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("不要在失败时丢掉这个提示词");
+  });
+
   it("sends chat composer with Enter and keeps Ctrl or Shift Enter for new lines", async () => {
     const wrapper = mount(ChatInput, {
       props: {
@@ -40,5 +66,6 @@ describe("ChatInput", () => {
         }
       ]
     ]);
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("生成一张现代产品海报");
   });
 });
