@@ -1,5 +1,5 @@
 /**
- * AI Prompt 助手前端共享类型。
+ * AI 描述助手前端共享类型。
  */
 export type AssistantMessage = {
   role: "user" | "assistant";
@@ -14,4 +14,5 @@ export type AssistantResponse = {
   recommendedSize: string;
   warnings: string[];
   degraded: boolean;
+  degradedReason?: string | null;
 };

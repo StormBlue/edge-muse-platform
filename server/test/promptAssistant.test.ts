@@ -117,6 +117,75 @@ describe("prompt assistant", () => {
     expect(result.finalPrompt).toContain("清爽夏日棚拍风格");
   });
 
+  it("keeps collecting in early static fallback after only one assistant question", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 1,
+      caseId: "case-product-poster",
+      caseTitle: "新品商品海报",
+      caseCategory: "商品广告",
+      caseRecommendedSize: "3:4",
+      casePromptSummary: "清爽夏日棚拍风格，突出新品卖点和留白文案区",
+      casePromptTemplate: "生成一张适合电商投放的商品海报，主体清晰，背景干净。",
+      messages: [
+        { role: "user", content: "我要做一张咖啡新品海报" },
+        { role: "assistant", content: "我会按「新品商品海报」来做。画面最核心的主体是什么？" },
+        { role: "user", content: "主体是冰拿铁" }
+      ]
+    });
+
+    const result = await runPromptAssistantTurn({} as AppBindings, input);
+
+    expect(result.degraded).toBe(true);
+    expect(result.degradedReason).toBe("ai_binding_missing");
+    expect(result.model).toBe("@cf/qwen/qwen3-30b-a3b-fp8");
+    expect(result.readiness).toBe("collecting");
+    expect(result.finalPrompt).toBeNull();
+    expect(result.assistantMessage).toContain("文字");
+  });
+
+  it("accepts a valid AI follow-up instead of degrading just because enough context exists", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 1,
+      caseId: "case-product-poster",
+      caseTitle: "新品商品海报",
+      caseCategory: "商品广告",
+      caseRecommendedSize: "3:4",
+      casePromptSummary: "清爽夏日棚拍风格，突出新品卖点和留白文案区",
+      casePromptTemplate: "生成一张适合电商投放的商品海报，主体清晰，背景干净。",
+      messages: [
+        { role: "user", content: "我要做一张咖啡新品海报" },
+        { role: "assistant", content: "我会按「新品商品海报」来做。画面最核心的主体是什么？" },
+        { role: "user", content: "主体是冰拿铁" }
+      ]
+    });
+    const env = {
+      AI: {
+        run: async () => ({
+          response: JSON.stringify({
+            assistantMessage: "主体我记下了。画面里需要出现文字吗？如果需要，请逐字写出。",
+            readiness: "collecting",
+            brief: { subject: "冰拿铁", useCase: "新品商品海报" },
+            finalPrompt: null,
+            recommendedSize: "3:4",
+            warnings: []
+          })
+        })
+      }
+    } as unknown as AppBindings;
+
+    const result = await runPromptAssistantTurn(env, input);
+
+    expect(result.degraded).toBe(false);
+    expect(result.degradedReason).toBeNull();
+    expect(result.readiness).toBe("collecting");
+    expect(result.finalPrompt).toBeNull();
+    expect(result.assistantMessage).toContain("文字");
+  });
+
   it("does not pass through repeated AI questions once case details are enough", async () => {
     const repeatedQuestion = "我可以基于案例补全构图、光线和氛围。有没有绝对不能出现的元素？";
     const input = promptAssistantTurnSchema.parse({
