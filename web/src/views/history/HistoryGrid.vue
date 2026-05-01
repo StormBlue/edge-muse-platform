@@ -38,7 +38,9 @@ const pageInputModel = computed({
 </script>
 
 <template>
-  <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+  <div
+    class="history-toolbar mb-3 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between"
+  >
     <h1 class="text-xl font-semibold leading-8">{{ t("history.title") }}</h1>
     <form
       class="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
@@ -79,7 +81,7 @@ const pageInputModel = computed({
     <button
       v-for="session in items"
       :key="session.id"
-      class="panel overflow-hidden text-left transition hover:bg-muted/40"
+      class="history-card panel overflow-hidden text-left transition"
       type="button"
       @click="emit('openDetail', session)"
     >
@@ -135,3 +137,32 @@ const pageInputModel = computed({
     @jump="emit('jump')"
   />
 </template>
+
+<style scoped>
+.history-toolbar {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  padding: 0.75rem;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
+}
+
+.history-card {
+  transform: translateY(0);
+}
+
+.history-card:hover {
+  border-color: color-mix(in oklch, var(--primary), transparent 55%);
+  background: color-mix(in oklch, var(--primary), transparent 95%);
+  transform: translateY(-1px);
+}
+
+.history-card img {
+  transition: transform 180ms ease;
+}
+
+.history-card:hover img {
+  transform: scale(1.025);
+}
+</style>

@@ -163,3 +163,22 @@ function openPreview() {
     />
   </section>
 </template>
+
+<style scoped>
+.case-detail-summary {
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 78%);
+  border-radius: 0.5rem;
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 91%), transparent),
+    color-mix(in oklch, var(--card), transparent 8%);
+  padding: 0.875rem;
+}
+
+:deep(img) {
+  transition: transform 180ms ease;
+}
+
+button:hover :deep(img) {
+  transform: scale(1.02);
+}
+</style>

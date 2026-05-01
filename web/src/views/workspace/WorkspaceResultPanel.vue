@@ -189,3 +189,21 @@ const { t } = useI18n();
     </div>
   </section>
 </template>
+
+<style scoped>
+.task-result-panel,
+.compact-result-panel {
+  background: var(--surface);
+}
+
+.task-result-panel > div:nth-child(2),
+.compact-result-panel > div:nth-child(2) {
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary), transparent 96%),
+      transparent 10rem
+    ),
+    color-mix(in oklch, var(--muted), transparent 72%);
+}
+</style>

@@ -296,3 +296,16 @@ defineExpose({ reset });
     />
   </div>
 </template>
+
+<style scoped>
+.prompt-assistant-panel {
+  background: color-mix(in oklch, var(--card), transparent 10%);
+  box-shadow: var(--shadow-panel);
+}
+
+.prompt-assistant-panel :deep(.prompt-assistant-messages) {
+  background:
+    linear-gradient(180deg, color-mix(in oklch, var(--accent), transparent 95%), transparent 10rem),
+    color-mix(in oklch, var(--muted), transparent 72%);
+}
+</style>

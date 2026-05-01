@@ -6,40 +6,48 @@
 
 :root {
   color-scheme: light;
-  --background: oklch(0.99 0 0);
-  --foreground: oklch(0.18 0.005 240);
-  --muted: oklch(0.96 0.005 240);
-  --muted-foreground: oklch(0.5 0.01 240);
+  --background: oklch(0.975 0.012 248);
+  --foreground: oklch(0.22 0.035 254);
+  --muted: oklch(0.94 0.017 250);
+  --muted-foreground: oklch(0.51 0.033 254);
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
-  --card: oklch(1 0 0);
-  --border: oklch(0.92 0 0);
+  --card: oklch(0.995 0.004 250);
+  --border: oklch(0.885 0.032 250);
   --input: var(--border);
   --ring: var(--primary);
-  --primary: oklch(0.62 0.21 286);
+  --primary: oklch(0.58 0.19 262);
   --primary-foreground: oklch(0.98 0 0);
-  --accent: oklch(0.7 0.16 178);
+  --accent: oklch(0.69 0.14 188);
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.62 0.22 25);
+  --surface: oklch(1 0 0 / 0.72);
+  --surface-strong: oklch(1 0 0 / 0.9);
+  --shadow-soft: 0 18px 48px oklch(0.36 0.07 254 / 0.14);
+  --shadow-panel: 0 10px 28px oklch(0.36 0.07 254 / 0.1);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.16 0.005 240);
-  --foreground: oklch(0.95 0 0);
-  --muted: oklch(0.22 0.005 240);
-  --muted-foreground: oklch(0.65 0.01 240);
+  --background: oklch(0.17 0.013 254);
+  --foreground: oklch(0.94 0.01 250);
+  --muted: oklch(0.24 0.018 254);
+  --muted-foreground: oklch(0.68 0.028 250);
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
-  --card: oklch(0.19 0.005 240);
-  --border: oklch(0.27 0.005 240);
+  --card: oklch(0.205 0.015 254);
+  --border: oklch(0.31 0.025 254);
   --input: var(--border);
   --ring: var(--primary);
-  --primary: oklch(0.7 0.19 286);
+  --primary: oklch(0.69 0.17 262);
   --primary-foreground: oklch(0.98 0 0);
-  --accent: oklch(0.75 0.14 178);
+  --accent: oklch(0.73 0.12 188);
   --accent-foreground: var(--foreground);
   --destructive: oklch(0.7 0.22 25);
+  --surface: oklch(0.205 0.015 254 / 0.72);
+  --surface-strong: oklch(0.22 0.016 254 / 0.9);
+  --shadow-soft: 0 18px 56px rgb(0 0 0 / 0.34);
+  --shadow-panel: 0 12px 34px rgb(0 0 0 / 0.24);
 }
 
 @theme inline {
@@ -72,7 +80,14 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: var(--background);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary), transparent 94%),
+      transparent 22rem
+    ),
+    linear-gradient(125deg, color-mix(in oklch, var(--accent), transparent 92%), transparent 30rem),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -84,6 +99,7 @@ input,
 textarea,
 select {
   font: inherit;
+  letter-spacing: 0;
 }
 
 button {
@@ -106,10 +122,16 @@ button:disabled {
   padding: 0.5rem 0.875rem;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.1;
   transition:
     background-color 160ms ease,
     border-color 160ms ease,
+    box-shadow 160ms ease,
     transform 160ms ease;
+}
+
+.ui-button:hover:not(:disabled) {
+  box-shadow: 0 8px 18px color-mix(in oklch, var(--primary), transparent 88%);
 }
 
 .ui-button:active {
@@ -118,12 +140,17 @@ button:disabled {
 
 .ui-button-primary {
   border-color: transparent;
-  background: var(--primary);
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    color-mix(in oklch, var(--primary), var(--accent) 26%)
+  );
   color: white;
+  box-shadow: 0 10px 22px color-mix(in oklch, var(--primary), transparent 76%);
 }
 
 .ui-button-secondary {
-  background: var(--card);
+  background: color-mix(in oklch, var(--card), transparent 8%);
   color: var(--foreground);
 }
 
@@ -141,10 +168,11 @@ button:disabled {
   width: 100%;
   border-radius: 0.625rem;
   border: 1px solid var(--border);
-  background: var(--card);
+  background: color-mix(in oklch, var(--card), transparent 6%);
   color: var(--foreground);
   outline: none;
   transition:
+    background-color 160ms ease,
     border-color 160ms ease,
     box-shadow 160ms ease;
 }
@@ -156,8 +184,10 @@ button:disabled {
 
 .panel {
   border: 1px solid var(--border);
-  background: var(--card);
-  border-radius: 0.75rem;
+  background: var(--surface);
+  border-radius: 0.5rem;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
 }
 
 .thin-scrollbar {

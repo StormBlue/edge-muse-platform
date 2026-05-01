@@ -221,13 +221,13 @@ const {
   container-type: inline-size;
   min-height: calc(100dvh - 6rem);
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: 0.875rem;
+  gap: 0.75rem;
   overflow: visible;
 }
 
 .workspace-grid {
   display: grid;
-  gap: 1rem;
+  gap: 0.75rem;
   min-height: 0;
   overflow: visible;
 }

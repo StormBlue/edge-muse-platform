@@ -126,12 +126,33 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <ScrollArea class="h-dvh bg-background">
-    <main class="flex min-h-dvh bg-background">
-      <section class="flex flex-1 items-center justify-center px-6 py-10">
+  <ScrollArea class="h-dvh">
+    <main class="login-page grid min-h-dvh">
+      <section class="login-showcase hidden min-h-0 flex-col justify-between p-8 lg:flex">
+        <div class="flex items-center gap-3">
+          <BrandMark class="size-11 shrink-0" />
+          <div>
+            <p class="text-lg font-semibold">Edge Muse</p>
+            <p class="text-sm text-muted-foreground">{{ t("auth.platformSubtitle") }}</p>
+          </div>
+        </div>
+        <div class="max-w-xl">
+          <h1 class="text-4xl font-semibold leading-tight">{{ t("common.appName") }}</h1>
+          <p class="mt-4 max-w-md text-sm leading-6 text-muted-foreground">
+            {{ t("shell.tagline") }}
+          </p>
+          <div class="mt-8 grid grid-cols-3 gap-3">
+            <div class="login-feature-card">{{ t("nav.aiImage") }}</div>
+            <div class="login-feature-card">{{ t("aiImage.assistantTitle") }}</div>
+            <div class="login-feature-card">{{ t("nav.history") }}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="flex min-h-dvh items-center justify-center px-5 py-10">
         <div class="w-full max-w-sm">
-          <div class="mb-8 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-3">
+          <div class="mb-6 flex flex-wrap items-center justify-between gap-3 lg:justify-end">
+            <div class="flex min-w-0 items-center gap-3 lg:hidden">
               <BrandMark class="size-10 shrink-0" />
               <div class="min-w-0">
                 <h1 class="text-xl font-semibold">Edge Muse</h1>
@@ -147,7 +168,11 @@ onBeforeUnmount(() => {
               <option value="en-US">EN</option>
             </select>
           </div>
-          <form class="panel space-y-4 p-5" @submit.prevent="submit">
+          <form class="panel login-card space-y-4 p-5" @submit.prevent="submit">
+            <div>
+              <p class="text-lg font-semibold">{{ t("common.login") }}</p>
+              <p class="mt-1 text-sm text-muted-foreground">{{ t("auth.platformSubtitle") }}</p>
+            </div>
             <div>
               <label class="mb-1 block text-sm font-medium">{{ t("auth.loginIdentifier") }}</label>
               <input
@@ -180,3 +205,48 @@ onBeforeUnmount(() => {
     </main>
   </ScrollArea>
 </template>
+
+<style scoped>
+.login-page {
+  grid-template-columns: minmax(0, 1fr);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in oklch, var(--primary), transparent 93%),
+      transparent 22rem
+    ),
+    var(--background);
+}
+
+.login-showcase {
+  border-right: 1px solid color-mix(in oklch, var(--border), transparent 32%);
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in oklch, var(--primary), transparent 88%),
+      transparent 36rem
+    ),
+    color-mix(in oklch, var(--card), transparent 18%);
+}
+
+.login-feature-card {
+  border: 1px solid color-mix(in oklch, var(--border), transparent 12%);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--card), transparent 18%);
+  padding: 0.875rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-panel);
+}
+
+.login-card {
+  background: var(--surface-strong);
+}
+
+@media (min-width: 1024px) {
+  .login-page {
+    grid-template-columns: minmax(28rem, 0.95fr) minmax(24rem, 0.72fr);
+  }
+}
+</style>

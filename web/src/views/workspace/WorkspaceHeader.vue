@@ -18,7 +18,9 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <header class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <header
+    class="workspace-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+  >
     <div class="min-w-0">
       <h1 class="text-2xl font-semibold">{{ t("workspace.title") }}</h1>
     </div>
@@ -61,3 +63,14 @@ const { t } = useI18n();
     </div>
   </header>
 </template>
+
+<style scoped>
+.workspace-header {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  padding: 0.75rem;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
+}
+</style>

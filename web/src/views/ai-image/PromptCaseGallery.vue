@@ -46,12 +46,12 @@ const { t } = useI18n();
       <button
         v-for="item in items"
         :key="item.id"
-        class="group grid h-32 grid-cols-[6.25rem_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg border border-border bg-card p-0 text-left transition hover:border-primary/60 hover:bg-muted/35 2xl:grid-cols-[7rem_minmax(0,1fr)]"
+        class="prompt-case-card group overflow-hidden rounded-lg border border-border bg-card p-0 text-left transition hover:border-primary/60"
         :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
         type="button"
         @click="emit('select', item)"
       >
-        <div class="relative h-full overflow-hidden border-r border-border bg-muted">
+        <div class="relative aspect-[4/3] overflow-hidden border-b border-border bg-muted">
           <PromptCaseThumbnail :src="item.thumbnailUrl" :alt="item.title" icon-class="h-6 w-6" />
           <span
             v-if="item.featured"
@@ -90,18 +90,32 @@ const { t } = useI18n();
 <style scoped>
 .prompt-case-gallery {
   container-type: inline-size;
-  max-height: min(28rem, calc(100dvh - 12rem));
+  max-height: min(34rem, calc(100dvh - 12rem));
 }
 
 .prompt-case-grid {
   align-content: start;
-  grid-auto-rows: 8rem;
   grid-template-columns: minmax(0, 1fr);
+}
+
+.prompt-case-card {
+  box-shadow: 0 10px 24px color-mix(in oklch, var(--foreground), transparent 94%);
+}
+
+.prompt-case-card:hover {
+  background: color-mix(in oklch, var(--primary), transparent 94%);
+  transform: translateY(-1px);
 }
 
 @container (min-width: 36rem) {
   .prompt-case-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 58rem) {
+  .prompt-case-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 </style>

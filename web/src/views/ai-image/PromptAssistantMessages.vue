@@ -30,7 +30,7 @@ watch(
     aria-live="polite"
   >
     <div v-if="!messages.length" class="flex justify-start">
-      <div class="max-w-[88%] rounded-2xl rounded-tl-sm bg-muted px-3 py-2">
+      <div class="max-w-[88%] rounded-lg rounded-tl-sm bg-muted px-3 py-2">
         <p class="mb-1 text-xs font-medium text-muted-foreground">
           {{ t("aiImage.assistantAiLabel") }}
         </p>
@@ -45,7 +45,7 @@ watch(
       :class="message.role === 'user' ? 'justify-end' : 'justify-start'"
     >
       <div
-        class="max-w-[88%] rounded-2xl px-3 py-2"
+        class="max-w-[88%] rounded-lg px-3 py-2 shadow-sm"
         :class="
           message.role === 'user'
             ? 'rounded-tr-sm bg-primary text-primary-foreground'
@@ -67,7 +67,7 @@ watch(
     </div>
 
     <div v-if="loading" class="flex justify-start">
-      <div class="rounded-2xl rounded-tl-sm bg-muted px-3 py-2 text-sm text-muted-foreground">
+      <div class="rounded-lg rounded-tl-sm bg-muted px-3 py-2 text-sm text-muted-foreground">
         {{ t("aiImage.assistantThinking") }}
       </div>
     </div>

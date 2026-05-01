@@ -371,7 +371,7 @@ watch(
   display: grid;
   container-type: inline-size;
   min-height: calc(100dvh - 6rem);
-  gap: 0.875rem;
+  gap: 0.75rem;
 }
 
 .case-picker-toolbar {
@@ -385,10 +385,13 @@ watch(
   min-width: 0;
   align-items: center;
   gap: 0.875rem;
-  border-radius: 0.625rem;
-  border: 1px solid color-mix(in oklch, var(--primary), transparent 55%);
-  background: color-mix(in oklch, var(--primary), transparent 92%);
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 62%);
+  background:
+    linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 88%), transparent),
+    color-mix(in oklch, var(--card), transparent 10%);
   padding: 0.875rem;
+  box-shadow: 0 10px 24px color-mix(in oklch, var(--primary), transparent 88%);
   text-align: left;
   transition:
     background-color 160ms ease,
@@ -412,8 +415,12 @@ watch(
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  border-radius: 0.625rem;
-  background: var(--primary);
+  border-radius: 0.5rem;
+  background: linear-gradient(
+    135deg,
+    var(--primary),
+    color-mix(in oklch, var(--primary), var(--accent) 28%)
+  );
   color: var(--primary-foreground);
 }
 
@@ -438,8 +445,12 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.75rem;
+  border: 1px solid color-mix(in oklch, var(--border), transparent 25%);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  padding: 0.75rem;
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(18px);
 }
 
 .ai-image-grid {
@@ -508,7 +519,7 @@ watch(
   }
 
   .ai-image-grid--selecting {
-    grid-template-columns: minmax(24rem, 0.8fr) minmax(32rem, 1.2fr);
+    grid-template-columns: minmax(30rem, 0.9fr) minmax(32rem, 1.1fr);
   }
 
   .desktop-case-detail {
