@@ -486,6 +486,7 @@
     "viewDetail": "View detail",
     "backToSessionTable": "Back to session table",
     "sessionId": "Session ID",
+    "successImageCount": "Succeeded images",
     "messageRole": "Role",
     "messageUser": "User",
     "messageAssistant": "Assistant",

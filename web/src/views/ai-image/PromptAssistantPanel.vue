@@ -224,9 +224,6 @@ defineExpose({ reset });
     >
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-        <p class="text-xs leading-5 text-muted-foreground">
-          {{ t("aiImage.assistantSubtitle") }}
-        </p>
       </div>
       <button
         class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"

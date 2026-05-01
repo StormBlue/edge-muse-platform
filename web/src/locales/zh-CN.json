@@ -486,6 +486,7 @@
     "viewDetail": "查看详情",
     "backToSessionTable": "返回会话表格",
     "sessionId": "会话 ID",
+    "successImageCount": "成功图片",
     "messageRole": "角色",
     "messageUser": "用户",
     "messageAssistant": "助手",

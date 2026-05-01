@@ -72,7 +72,32 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
          sessions.last_message_at,
          sessions.archived,
          sessions.deleted_at,
-         COUNT(tasks.id) AS task_count
+         COUNT(tasks.id) AS task_count,
+         (
+           SELECT COUNT(*)
+           FROM (
+             SELECT json_extract(accepted_images.value, '$.id') AS image_id
+             FROM messages accepted_image_messages,
+               json_each(
+                 CASE
+                   WHEN json_valid(accepted_image_messages.attachments)
+                     THEN accepted_image_messages.attachments
+                   ELSE '[]'
+                 END
+               ) accepted_images
+             WHERE accepted_image_messages.session_id = sessions.id
+               AND accepted_image_messages.deleted_at IS NULL
+               AND json_extract(accepted_images.value, '$.id') IS NOT NULL
+             UNION
+             SELECT persisted_images.id AS image_id
+             FROM image_objects persisted_images
+             INNER JOIN tasks persisted_image_tasks ON persisted_image_tasks.id = persisted_images.task_id
+             WHERE persisted_images.session_id = sessions.id
+               AND persisted_images.deleted_at IS NULL
+               AND persisted_images.is_reference = 0
+               AND persisted_image_tasks.message_id IS NOT NULL
+           ) merged_success_images
+         ) AS image_count
        FROM sessions
        LEFT JOIN users ON users.id = sessions.user_id
        LEFT JOIN tasks ON tasks.session_id = sessions.id
@@ -99,6 +124,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         archived: number;
         deleted_at: number | null;
         task_count: number;
+        image_count: number;
       }>();
     const total = totalRows.results[0]?.total ?? 0;
     return c.json({
@@ -121,7 +147,8 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         lastMessageAt: row.last_message_at,
         archived: Boolean(row.archived),
         deletedAt: row.deleted_at,
-        taskCount: row.task_count
+        taskCount: row.task_count,
+        imageCount: row.image_count
       })),
       page,
       pageSize,

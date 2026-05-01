@@ -2308,7 +2308,7 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
       operationId: "listAuditSessions",
       summary: "按用户读取会话审计列表",
       description:
-        "要求 sysadmin 登录。`id=me` 表示当前 sysadmin，`id=_` 表示全站会话；否则按指定 userId 筛选。返回会话、所属用户摘要、任务数和分页信息。",
+        "要求 sysadmin 登录。`id=me` 表示当前 sysadmin，`id=_` 表示全站会话；否则按指定 userId 筛选。返回会话、所属用户摘要、成功图片数和分页信息。",
       security: sysadminSecurity,
       parameters: [
         pathParam("id", "用户 ID；特殊值 `me` 和 `_` 分别代表当前 sysadmin 与全站。"),
@@ -2334,7 +2334,8 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
                   type: "object",
                   properties: {
                     user: ref("AuthUser"),
-                    taskCount: { type: "integer" }
+                    taskCount: { type: "integer" },
+                    imageCount: { type: "integer" }
                   }
                 }
               ]

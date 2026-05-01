@@ -185,9 +185,6 @@ function isMobileAssistantViewport() {
         <div class="assistant-dialog-header">
           <div class="min-w-0">
             <h3 class="truncate text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-            <p class="truncate text-xs text-muted-foreground">
-              {{ t("aiImage.assistantSubtitle") }}
-            </p>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button
@@ -489,8 +486,8 @@ function isMobileAssistantViewport() {
   min-width: 0;
   min-height: 0;
   grid-template-areas:
-    "stage"
     "composer"
+    "stage"
     "assistant";
   gap: 0.75rem;
 }
@@ -523,9 +520,9 @@ function isMobileAssistantViewport() {
   display: grid;
   min-height: clamp(26rem, 58dvh, 44rem);
   grid-template-areas:
-    "generated"
-    "case";
-  grid-template-rows: minmax(0, 1fr) auto;
+    "case"
+    "generated";
+  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -533,7 +530,7 @@ function isMobileAssistantViewport() {
   grid-area: case;
   display: grid;
   gap: 0.625rem;
-  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   padding: 0.75rem;
   background: color-mix(in oklch, var(--card), transparent 18%);
 }
@@ -542,7 +539,7 @@ function isMobileAssistantViewport() {
 .ai-case-preview-empty {
   position: relative;
   display: flex;
-  height: clamp(6rem, 14dvh, 10rem);
+  height: clamp(7rem, 16dvh, 11rem);
   min-height: 0;
   align-items: center;
   justify-content: center;
@@ -728,17 +725,15 @@ function isMobileAssistantViewport() {
   flex: 1;
 }
 
-@container (min-width: 58rem) {
+@container (min-width: 50rem) {
   .ai-prompt-workspace {
     height: 100%;
   }
 
   .ai-prompt-workspace--expanded {
-    grid-template-areas:
-      "stage assistant"
-      "composer assistant";
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "assistant composer stage";
+    grid-template-columns: minmax(13rem, 0.78fr) minmax(18rem, 1fr) minmax(16rem, 1.15fr);
+    grid-template-rows: minmax(0, 1fr);
     min-height: 0;
   }
 
@@ -751,37 +746,44 @@ function isMobileAssistantViewport() {
   }
 
   .ai-prompt-workspace--expanded.ai-prompt-workspace--without-assistant {
-    grid-template-areas:
-      "stage"
-      "composer";
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
-  }
-
-  .ai-output-panel {
-    grid-template-areas: "generated case";
-    grid-template-columns: minmax(0, 1fr) minmax(12rem, 16rem);
+    grid-template-areas: "composer stage";
+    grid-template-columns: minmax(20rem, 26rem) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
   }
 
+  .ai-output-panel {
+    grid-template-areas:
+      "case"
+      "generated";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
   .ai-case-preview {
-    border-left: 1px solid var(--border);
-    border-top: 0;
+    border-bottom: 1px solid var(--border);
   }
 
   .ai-case-preview-button,
   .ai-case-preview-empty {
-    height: min(13rem, 28dvh);
+    height: min(12rem, 24dvh);
   }
 }
 
-@container (min-width: 92rem) {
+@container (min-width: 78rem) {
   .ai-prompt-workspace--expanded {
-    grid-template-columns: minmax(0, 1fr) minmax(20rem, 26rem);
+    grid-template-areas: "assistant composer stage";
+    grid-template-columns: minmax(18rem, 24rem) minmax(22rem, 28rem) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
   .ai-output-panel {
-    grid-template-columns: minmax(0, 1fr) minmax(14rem, 18rem);
+    min-height: 0;
+  }
+}
+
+@container (min-width: 96rem) {
+  .ai-prompt-workspace--expanded {
+    grid-template-columns: minmax(20rem, 26rem) minmax(24rem, 30rem) minmax(0, 1fr);
   }
 }
 

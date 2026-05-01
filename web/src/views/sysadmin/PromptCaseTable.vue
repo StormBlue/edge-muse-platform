@@ -48,7 +48,18 @@ function statusTone(status: PromptCase["status"]) {
 <template>
   <div class="panel overflow-hidden">
     <div class="thin-scrollbar max-h-[calc(100vh-18rem)] overflow-auto">
-      <table class="w-full min-w-[72rem] text-sm">
+      <table class="w-full min-w-[116rem] table-fixed text-sm">
+        <colgroup>
+          <col class="w-12" />
+          <col class="w-[31rem]" />
+          <col class="w-32" />
+          <col class="w-40" />
+          <col class="w-36" />
+          <col class="w-28" />
+          <col class="w-48" />
+          <col class="w-24" />
+          <col class="w-[26rem]" />
+        </colgroup>
         <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
           <tr>
             <th class="w-10 p-3">
@@ -61,12 +72,12 @@ function statusTone(status: PromptCase["status"]) {
               />
             </th>
             <th class="p-3">{{ t("promptCases.case") }}</th>
-            <th class="p-3">{{ t("promptCases.category") }}</th>
-            <th class="p-3">{{ t("promptCases.modes") }}</th>
-            <th class="p-3">{{ t("promptCases.recommendedSize") }}</th>
-            <th class="p-3">{{ t("adminUsers.status") }}</th>
-            <th class="p-3">{{ t("promptCases.source") }}</th>
-            <th class="p-3">{{ t("promptCases.sortOrder") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("promptCases.category") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("promptCases.modes") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("promptCases.recommendedSize") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("adminUsers.status") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("promptCases.source") }}</th>
+            <th class="whitespace-nowrap p-3">{{ t("promptCases.sortOrder") }}</th>
             <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
           </tr>
         </thead>
@@ -98,7 +109,7 @@ function statusTone(status: PromptCase["status"]) {
                   "
                 />
               </td>
-              <td class="max-w-sm p-3">
+              <td class="p-3">
                 <div class="flex items-start gap-3">
                   <div
                     class="h-14 w-20 shrink-0 overflow-hidden rounded-md border border-border bg-muted"
@@ -118,28 +129,31 @@ function statusTone(status: PromptCase["status"]) {
                   </div>
                 </div>
               </td>
-              <td class="p-3">{{ item.category }}</td>
-              <td class="p-3">
-                <div class="flex flex-wrap gap-1">
+              <td class="whitespace-nowrap p-3 font-medium">{{ item.category }}</td>
+              <td class="whitespace-nowrap p-3">
+                <div class="flex flex-nowrap gap-1">
                   <span
                     v-for="mode in item.modes"
                     :key="mode"
-                    class="rounded-full bg-muted px-2 py-1 text-xs"
+                    class="whitespace-nowrap rounded-full bg-muted px-2 py-1 text-xs"
                   >
                     {{ t(`workspace.${mode}`) }}
                   </span>
                 </div>
               </td>
-              <td class="p-3">{{ item.recommendedSize }}</td>
-              <td class="p-3">
-                <span class="rounded-full px-2 py-1 text-xs" :class="statusTone(item.status)">
+              <td class="whitespace-nowrap p-3">{{ item.recommendedSize }}</td>
+              <td class="whitespace-nowrap p-3">
+                <span
+                  class="inline-flex whitespace-nowrap rounded-full px-2 py-1 text-xs"
+                  :class="statusTone(item.status)"
+                >
                   {{ t(`promptCases.status.${item.status}`) }}
                 </span>
               </td>
-              <td class="max-w-[12rem] truncate p-3">
+              <td class="truncate p-3">
                 {{ item.sourceAuthor || item.sourceRepo || item.sourceLicense }}
               </td>
-              <td class="p-3 font-mono">{{ item.sortOrder }}</td>
+              <td class="whitespace-nowrap p-3 font-mono">{{ item.sortOrder }}</td>
               <td class="space-x-2 whitespace-nowrap p-3 text-right" @click.stop>
                 <button
                   class="ui-button ui-button-secondary h-8 text-xs"

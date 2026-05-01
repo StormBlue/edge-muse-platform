@@ -196,7 +196,7 @@ function currentSubmitGenerationEvent() {
 }
 
 function shouldOpenMobileCaseSheet() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 1535px)").matches;
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches;
 }
 
 onMounted(() => {
@@ -509,7 +509,7 @@ watch(
   }
 }
 
-@container (min-width: 96rem) {
+@container (min-width: 64rem) {
   .ai-image-page {
     overflow: hidden;
   }
@@ -519,7 +519,7 @@ watch(
   }
 
   .ai-image-grid--selecting {
-    grid-template-columns: minmax(30rem, 0.9fr) minmax(32rem, 1.1fr);
+    grid-template-columns: minmax(22rem, 0.86fr) minmax(24rem, 0.74fr);
   }
 
   .desktop-case-detail {
@@ -528,8 +528,25 @@ watch(
     overflow: hidden;
   }
 
+  .desktop-case-detail :deep(.panel) {
+    height: 100%;
+    min-height: 0;
+  }
+
   .ai-image-grid--generating {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .ai-image-grid--selecting {
+    grid-template-columns: minmax(22rem, 0.86fr) minmax(24rem, 0.74fr);
+  }
+
+  .desktop-case-detail {
+    display: block;
+    min-height: 0;
+    overflow: hidden;
   }
 }
 </style>

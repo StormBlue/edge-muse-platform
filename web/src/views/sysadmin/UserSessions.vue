@@ -105,39 +105,31 @@ const {
                 <div class="h-full min-h-0 overflow-hidden bg-muted/15">
                   <div class="flex h-full min-h-0 flex-col gap-4 p-3 sm:p-4">
                     <section class="min-h-0 flex-1 overflow-hidden">
-                      <div
-                        v-if="message.attachments.length"
-                        :class="[
-                          'grid h-full min-h-0 gap-3',
-                          message.attachments.length === 1
-                            ? 'grid-cols-1'
-                            : 'auto-rows-fr grid-cols-2 2xl:grid-cols-3'
-                        ]"
-                      >
-                        <div
-                          v-for="image in message.attachments"
-                          :key="image.id"
-                          class="flex h-full min-h-0 min-w-0 flex-col"
-                        >
+                      <ScrollArea v-if="message.attachments.length" class="h-full min-h-0">
+                        <div class="audit-detail-masonry">
                           <button
-                            class="min-h-0 w-full flex-1 overflow-hidden rounded-lg border border-border bg-muted"
+                            v-for="image in message.attachments"
+                            :key="image.id"
+                            class="audit-detail-masonry-item"
                             type="button"
                             :title="imageTitle(image)"
                             @click="openImage(image)"
                           >
                             <img
-                              class="h-full w-full object-contain"
+                              class="audit-detail-masonry-image"
                               :src="image.url"
+                              :width="image.width ?? undefined"
+                              :height="image.height ?? undefined"
                               alt=""
                               loading="lazy"
                             />
+                            <span class="audit-detail-masonry-meta">
+                              {{ imageIndexLabel(image.generationIndex) }}
+                              · {{ formatDuration(image.generationDurationMs) }}
+                            </span>
                           </button>
-                          <p class="mt-1 truncate font-mono text-xs text-muted-foreground">
-                            {{ imageIndexLabel(image.generationIndex) }}
-                            · {{ formatDuration(image.generationDurationMs) }}
-                          </p>
                         </div>
-                      </div>
+                      </ScrollArea>
                       <div
                         v-else
                         class="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
@@ -383,3 +375,78 @@ const {
     />
   </AppShell>
 </template>
+
+<style scoped>
+.audit-detail-masonry {
+  column-gap: 0.75rem;
+  column-width: 13rem;
+}
+
+.audit-detail-masonry-item {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  overflow: hidden;
+  break-inside: avoid;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--muted);
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.audit-detail-masonry-item:hover {
+  border-color: color-mix(in oklch, var(--primary), transparent 55%);
+  box-shadow: var(--shadow-panel);
+  transform: translateY(-1px);
+}
+
+.audit-detail-masonry-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(70dvh, 52rem);
+  object-fit: contain;
+}
+
+.audit-detail-masonry-meta {
+  display: block;
+  overflow: hidden;
+  padding: 0.35rem 0.5rem 0.45rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@supports (grid-template-rows: masonry) {
+  .audit-detail-masonry {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    grid-template-rows: masonry;
+    gap: 0.75rem;
+    column-width: auto;
+  }
+
+  .audit-detail-masonry-item {
+    display: block;
+    margin: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .audit-detail-masonry {
+    column-gap: 0.5rem;
+    column-width: 10.5rem;
+  }
+
+  .audit-detail-masonry-item {
+    margin-bottom: 0.5rem;
+  }
+}
+</style>

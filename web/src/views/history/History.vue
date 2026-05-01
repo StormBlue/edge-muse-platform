@@ -127,31 +127,27 @@ const {
                 >
                   <div class="h-full min-h-0 overflow-hidden bg-muted/15">
                     <div class="flex h-full min-h-0 flex-col p-3 sm:p-4">
-                      <div
-                        v-if="message.attachments.length"
-                        :class="[
-                          'grid min-h-0 flex-1 gap-3',
-                          message.attachments.length === 1
-                            ? 'grid-cols-1'
-                            : 'auto-rows-fr grid-cols-2 2xl:grid-cols-3'
-                        ]"
-                      >
-                        <button
-                          v-for="image in message.attachments"
-                          :key="image.id"
-                          class="h-full min-h-0 w-full overflow-hidden rounded-lg border border-border bg-muted"
-                          type="button"
-                          :title="t('workspace.openPreview')"
-                          @click="openImage(image)"
-                        >
-                          <img
-                            class="h-full w-full object-contain"
-                            :src="image.url"
-                            alt=""
-                            loading="lazy"
-                          />
-                        </button>
-                      </div>
+                      <ScrollArea v-if="message.attachments.length" class="min-h-0 flex-1">
+                        <div class="history-detail-masonry">
+                          <button
+                            v-for="image in message.attachments"
+                            :key="image.id"
+                            class="history-detail-masonry-item"
+                            type="button"
+                            :title="t('workspace.openPreview')"
+                            @click="openImage(image)"
+                          >
+                            <img
+                              class="history-detail-masonry-image"
+                              :src="image.url"
+                              :width="image.width ?? undefined"
+                              :height="image.height ?? undefined"
+                              alt=""
+                              loading="lazy"
+                            />
+                          </button>
+                        </div>
+                      </ScrollArea>
                       <div
                         v-else
                         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground"
@@ -359,3 +355,66 @@ const {
     />
   </AppShell>
 </template>
+
+<style scoped>
+.history-detail-masonry {
+  column-gap: 0.75rem;
+  column-width: 13rem;
+}
+
+.history-detail-masonry-item {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 0.75rem;
+  overflow: hidden;
+  break-inside: avoid;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--muted);
+  text-align: left;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.history-detail-masonry-item:hover {
+  border-color: color-mix(in oklch, var(--primary), transparent 55%);
+  box-shadow: var(--shadow-panel);
+  transform: translateY(-1px);
+}
+
+.history-detail-masonry-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: min(70dvh, 52rem);
+  object-fit: contain;
+}
+
+@supports (grid-template-rows: masonry) {
+  .history-detail-masonry {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    grid-template-rows: masonry;
+    gap: 0.75rem;
+    column-width: auto;
+  }
+
+  .history-detail-masonry-item {
+    display: block;
+    margin: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .history-detail-masonry {
+    column-gap: 0.5rem;
+    column-width: 10.5rem;
+  }
+
+  .history-detail-masonry-item {
+    margin-bottom: 0.5rem;
+  }
+}
+</style>

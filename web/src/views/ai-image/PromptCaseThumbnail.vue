@@ -12,8 +12,9 @@ const props = withDefaults(
     src: string | null;
     alt: string;
     iconClass?: string;
+    fit?: "contain" | "cover";
   }>(),
-  { iconClass: "h-6 w-6" }
+  { iconClass: "h-6 w-6", fit: "contain" }
 );
 
 const failed = ref(false);
@@ -30,7 +31,7 @@ watch(
   <div class="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
     <img
       v-if="src && !failed"
-      class="h-full w-full object-contain"
+      :class="['h-full w-full', fit === 'cover' ? 'object-cover' : 'object-contain']"
       :src="src"
       :alt="alt"
       @error="failed = true"

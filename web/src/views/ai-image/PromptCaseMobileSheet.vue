@@ -51,7 +51,7 @@ onBeforeUnmount(() => setPageScrollLocked(false));
     <Transition name="case-sheet">
       <div
         v-if="open && item"
-        class="case-sheet-backdrop fixed inset-0 z-50 bg-black/45 2xl:hidden"
+        class="case-sheet-backdrop fixed inset-0 z-50 bg-black/45 lg:hidden"
         role="dialog"
         aria-modal="true"
         @click.self="emit('close')"

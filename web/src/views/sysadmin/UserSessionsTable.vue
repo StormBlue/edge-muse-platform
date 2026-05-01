@@ -28,7 +28,7 @@ const emit = defineEmits<{
             <th class="p-3">{{ t("workspace.sessionTitle") }}</th>
             <th class="p-3">{{ t("sysadmin.userFilter") }}</th>
             <th class="p-3">{{ t("workspace.generationMode") }}</th>
-            <th class="p-3">{{ t("adminUsers.taskCount") }}</th>
+            <th class="p-3">{{ t("sysadmin.successImageCount") }}</th>
             <th class="p-3">{{ t("history.createdAt") }}</th>
             <th class="p-3">{{ t("history.updatedAt") }}</th>
             <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
@@ -60,7 +60,7 @@ const emit = defineEmits<{
               </p>
             </td>
             <td class="p-3">{{ modeLabel(session.mode) }}</td>
-            <td class="p-3 font-mono">{{ session.taskCount ?? 0 }}</td>
+            <td class="p-3 font-mono">{{ session.imageCount ?? 0 }}</td>
             <td class="p-3 text-muted-foreground">{{ formatDateTime(session.createdAt) }}</td>
             <td class="p-3 text-muted-foreground">
               {{ formatDateTime(session.lastMessageAt) }}
