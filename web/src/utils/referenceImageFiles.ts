@@ -12,12 +12,14 @@ export function imageFilesFromFileList(input: FileList | File[] | null | undefin
 export function imageFilesFromDataTransfer(input: DataTransfer | null | undefined): File[] {
   if (!input) return [];
   const files = imageFilesFromFileList(input.files);
+  if (files.length) return files;
+
   const itemFiles = Array.from(input.items ?? [])
     .filter((item) => item.kind === "file")
     .map((item) => item.getAsFile())
     .filter((file): file is File => Boolean(file))
     .filter(isImageFile);
-  return uniqueFiles([...files, ...itemFiles]);
+  return uniqueFiles(itemFiles);
 }
 
 export async function prepareReferenceImageFiles(inputFiles: File[]) {
