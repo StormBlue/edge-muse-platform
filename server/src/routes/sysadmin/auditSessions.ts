@@ -32,7 +32,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
       : 12;
     const offset = (page - 1) * pageSize;
     const hasUsername = await hasColumn(c.env, "users", "username");
-    const conditions = ["sessions.deleted_at IS NULL"];
+    const conditions = ["1 = 1"];
     const binds: unknown[] = [];
     if (userId !== "_") {
       binds.push(userId);
@@ -97,10 +97,47 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
                AND persisted_images.is_reference = 0
                AND persisted_image_tasks.message_id IS NOT NULL
            ) merged_success_images
-         ) AS image_count
+         ) AS image_count,
+         cover.id AS cover_image_id,
+         cover.mime AS cover_mime,
+         cover.width AS cover_width,
+         cover.height AS cover_height,
+         cover.byte_size AS cover_byte_size,
+         cover.task_id AS cover_task_id
        FROM sessions
        LEFT JOIN users ON users.id = sessions.user_id
        LEFT JOIN tasks ON tasks.session_id = sessions.id
+       LEFT JOIN image_objects cover ON cover.id = COALESCE(
+           (
+             SELECT latest_persisted_images.id
+             FROM image_objects latest_persisted_images
+             INNER JOIN tasks latest_image_tasks ON latest_image_tasks.id = latest_persisted_images.task_id
+             WHERE latest_persisted_images.session_id = sessions.id
+               AND latest_persisted_images.deleted_at IS NULL
+               AND latest_persisted_images.is_reference = 0
+               AND latest_image_tasks.message_id IS NOT NULL
+             ORDER BY latest_persisted_images.created_at DESC
+             LIMIT 1
+           ),
+           (
+             SELECT json_extract(cover_images.value, '$.id')
+             FROM messages cover_messages,
+               json_each(
+                 CASE
+                   WHEN json_valid(cover_messages.attachments)
+                     THEN cover_messages.attachments
+                   ELSE '[]'
+                 END
+               ) cover_images
+             WHERE cover_messages.session_id = sessions.id
+               AND cover_messages.deleted_at IS NULL
+               AND json_extract(cover_images.value, '$.id') IS NOT NULL
+             ORDER BY cover_messages.created_at DESC, CAST(cover_images.key AS INTEGER) DESC
+             LIMIT 1
+           )
+         )
+         AND cover.deleted_at IS NULL
+         AND cover.is_reference = 0
        WHERE ${conditions.join(" AND ")}
        GROUP BY sessions.id
        ORDER BY sessions.last_message_at DESC
@@ -125,6 +162,12 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         deleted_at: number | null;
         task_count: number;
         image_count: number;
+        cover_image_id: string | null;
+        cover_mime: string | null;
+        cover_width: number | null;
+        cover_height: number | null;
+        cover_byte_size: number | null;
+        cover_task_id: string | null;
       }>();
     const total = totalRows.results[0]?.total ?? 0;
     return c.json({
@@ -148,7 +191,19 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         archived: Boolean(row.archived),
         deletedAt: row.deleted_at,
         taskCount: row.task_count,
-        imageCount: row.image_count
+        imageCount: row.image_count,
+        coverImage: row.cover_image_id
+          ? {
+              id: row.cover_image_id,
+              url: `/api/i/${row.cover_image_id}`,
+              mime: row.cover_mime ?? "image/png",
+              width: row.cover_width,
+              height: row.cover_height,
+              byteSize: row.cover_byte_size ?? 0,
+              taskId: row.cover_task_id,
+              sessionId: row.id
+            }
+          : null
       })),
       page,
       pageSize,

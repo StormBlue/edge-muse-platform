@@ -205,7 +205,12 @@
     "references": "参考图",
     "model": "模型",
     "noCover": "暂无封面",
-    "noResults": "暂无生成结果"
+    "noResults": "暂无生成结果",
+    "deleteSession": "删除会话",
+    "deleteConfirm": "确认删除此历史会话？",
+    "deleteUnavailable": "仅支持删除已生成结束且状态为成功或失败的会话",
+    "sessionDeleted": "会话已删除",
+    "deleteFailed": "删除会话失败"
   },
   "errors": {
     "notFound": "页面不存在",
@@ -484,9 +489,10 @@
     "load": "加载",
     "auditSearchPlaceholder": "搜索会话标题或描述",
     "viewDetail": "查看详情",
-    "backToSessionTable": "返回会话表格",
+    "backToSessionTable": "返回会话列表",
     "sessionId": "会话 ID",
     "successImageCount": "成功图片",
+    "successImagesCount": "{count} 张成功图",
     "messageRole": "角色",
     "messageUser": "用户",
     "messageAssistant": "助手",
@@ -514,6 +520,7 @@
     "taskTrend": "30 日任务趋势",
     "topUsers": "Top 用户",
     "viewSessions": "查看会话",
-    "unbound": "未绑定"
+    "unbound": "未绑定",
+    "deletedSession": "已删除"
   }
 }

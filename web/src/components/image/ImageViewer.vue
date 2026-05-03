@@ -292,10 +292,13 @@ function formatBytes(bytes: number) {
       </div>
     </header>
 
-    <main class="relative min-h-0 overflow-hidden p-2 sm:p-4" @click.self="closeFromBackdrop">
+    <main
+      class="viewer-main relative min-h-0 overflow-hidden p-2 sm:p-4"
+      @click.self="closeFromBackdrop"
+    >
       <button
         v-if="hasPrevious"
-        class="viewer-nav left-4"
+        class="viewer-nav viewer-nav--desktop viewer-nav--previous"
         type="button"
         :title="t('viewer.previousImage')"
         @click="move(-1)"
@@ -327,7 +330,7 @@ function formatBytes(bytes: number) {
       </div>
       <button
         v-if="hasNext"
-        class="viewer-nav right-4"
+        class="viewer-nav viewer-nav--desktop viewer-nav--next"
         type="button"
         :title="t('viewer.nextImage')"
         @click="move(1)"
@@ -335,6 +338,25 @@ function formatBytes(bytes: number) {
         <ChevronRight class="h-6 w-6" />
       </button>
     </main>
+
+    <button
+      v-if="hasPrevious"
+      class="viewer-nav viewer-nav--mobile viewer-nav--previous"
+      type="button"
+      :title="t('viewer.previousImage')"
+      @click="move(-1)"
+    >
+      <ChevronLeft class="h-6 w-6" />
+    </button>
+    <button
+      v-if="hasNext"
+      class="viewer-nav viewer-nav--mobile viewer-nav--next"
+      type="button"
+      :title="t('viewer.nextImage')"
+      @click="move(1)"
+    >
+      <ChevronRight class="h-6 w-6" />
+    </button>
 
     <footer class="border-t border-white/10 px-3 py-2 sm:px-4 sm:py-3">
       <p class="line-clamp-2 text-xs text-white/70">{{ image.prompt }}</p>
@@ -349,16 +371,27 @@ function formatBytes(bytes: number) {
 }
 
 .viewer-image {
+  display: block;
+  margin: auto;
   max-width: min(100%, 92vw);
   max-height: min(100%, 78vh);
   user-select: none;
   transform-origin: center;
 }
 
+.viewer-main {
+  display: grid;
+  place-items: center;
+}
+
 .viewer-stage {
   display: flex;
-  min-height: 100%;
+  width: 100%;
+  min-width: 0;
   height: 100%;
+  min-height: 100%;
+  padding: 0;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -403,14 +436,42 @@ function formatBytes(bytes: number) {
   color: white;
 }
 
+.viewer-nav--previous {
+  left: 1rem;
+}
+
+.viewer-nav--next {
+  right: 1rem;
+}
+
+.viewer-nav--mobile {
+  display: none;
+}
+
 @media (max-width: 640px) {
+  header {
+    align-items: flex-start;
+  }
+
+  header > div:last-child {
+    max-width: 8.75rem;
+  }
+
   .image-viewer {
     grid-template-rows: auto minmax(0, 1fr);
   }
 
+  .viewer-main {
+    padding: 0;
+  }
+
+  .viewer-stage {
+    min-height: 0;
+  }
+
   .viewer-image {
-    max-width: calc(100vw - 1rem);
-    max-height: calc(100dvh - 8.75rem);
+    max-width: 100%;
+    max-height: 100%;
   }
 
   .viewer-button {
@@ -419,8 +480,29 @@ function formatBytes(bytes: number) {
   }
 
   .viewer-nav {
+    position: fixed;
+    top: calc(50dvh + 1.25rem);
+    z-index: 60;
     height: 2.5rem;
     width: 2.5rem;
+    background: rgb(255 255 255 / 0.2);
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.32);
+  }
+
+  .viewer-nav--desktop {
+    display: none;
+  }
+
+  .viewer-nav--mobile {
+    display: inline-flex;
+  }
+
+  .viewer-nav--previous {
+    left: max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .viewer-nav--next {
+    right: max(0.75rem, env(safe-area-inset-right));
   }
 
   footer {

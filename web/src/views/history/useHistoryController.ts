@@ -1,6 +1,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
 import {
   isSameStringQuery,
@@ -53,6 +54,15 @@ export function useHistoryController() {
     const message = displayResultMessages.value[activeResultIndex.value];
     return message ? [message] : [];
   });
+  const canDeleteSelectedSession = computed(
+    () =>
+      Boolean(selectedSession.value?.taskCount) &&
+      resultMessages.value.length > 0 &&
+      resultMessages.value.every((message) => {
+        const status = taskStatusValue(message);
+        return status === "succeeded" || status === "failed";
+      })
+  );
   const detailImages = computed(() =>
     detailMessages.value.flatMap((message) => [
       ...message.attachments.map(toViewerImage),
@@ -153,6 +163,29 @@ export function useHistoryController() {
     await pushHistoryQuery(historyListQuery(page.value, null));
   }
 
+  async function deleteSelectedSession() {
+    const session = selectedSession.value;
+    if (!session || !canDeleteSelectedSession.value) return;
+    try {
+      await apiFetch(`/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+    } catch (error) {
+      toast.error(errorMessage(error) || t("history.deleteFailed"));
+      return;
+    }
+    items.value = items.value.filter((item) => item.id !== session.id);
+    total.value = Math.max(total.value - 1, 0);
+    toast.success(t("history.sessionDeleted"));
+    await pushHistoryQuery(historyListQuery(page.value, null));
+    selectedSession.value = null;
+    detailMessages.value = [];
+    selectedImage.value = null;
+    if (items.value.length === 0 && page.value > 1) {
+      await load(page.value - 1);
+    } else {
+      await load(page.value, { syncRoute: false });
+    }
+  }
+
   /** GET /history/:id 拉会话头 + 全消息；后端已合并 D1 持久化图片，前端只做展示。 */
   async function loadDetail(sessionId: string) {
     detailLoading.value = true;
@@ -219,6 +252,21 @@ export function useHistoryController() {
 
   function openImage(image: ImageAttachment) {
     selectedImage.value = toViewerImage(image);
+  }
+
+  function errorMessage(error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "error" in error &&
+      error.error &&
+      typeof error.error === "object" &&
+      "message" in error.error
+    ) {
+      const message = error.error.message;
+      return typeof message === "string" ? message : "";
+    }
+    return "";
   }
 
   function formatDateTime(value?: number | null) {
@@ -356,6 +404,7 @@ export function useHistoryController() {
     selectedSession,
     selectedImage,
     activeResultIndex,
+    canDeleteSelectedSession,
     totalPages,
     resultMessages,
     displayResultMessages,
@@ -365,6 +414,7 @@ export function useHistoryController() {
     jumpToPage,
     openDetail,
     backToGrid,
+    deleteSelectedSession,
     openImage,
     formatDateTime,
     modeLabel,

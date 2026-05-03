@@ -1179,11 +1179,12 @@ openApiDocument.paths = {
       operationId: "deleteSession",
       summary: "软删除会话",
       description:
-        "要求登录和 CSRF。写入 `deletedAt`，列表和消息查询会过滤软删会话；不立即删除 R2 对象。",
+        "要求登录和 CSRF。仅允许删除至少包含一个任务、且所有任务均为 `succeeded` 或 `failed` 的生成会话。写入 `deletedAt` 后普通列表和消息查询会过滤软删会话；sysadmin 会话审计仍可查看；不立即删除 R2 对象。",
       security: csrfSecurity,
       parameters: [pathParam("id", "会话 ID。")],
       responses: {
         "200": jsonResponse("删除成功。", okBody),
+        ...validationError,
         ...forbiddenError,
         ...commonErrors
       }
@@ -2308,7 +2309,7 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
       operationId: "listAuditSessions",
       summary: "按用户读取会话审计列表",
       description:
-        "要求 sysadmin 登录。`id=me` 表示当前 sysadmin，`id=_` 表示全站会话；否则按指定 userId 筛选。返回会话、所属用户摘要、成功图片数和分页信息。",
+        "要求 sysadmin 登录。`id=me` 表示当前 sysadmin，`id=_` 表示全站会话；否则按指定 userId 筛选。返回会话、所属用户摘要、成功图片数和分页信息；包含用户已软删除的会话，`deletedAt` 非空表示普通历史已隐藏。",
       security: sysadminSecurity,
       parameters: [
         pathParam("id", "用户 ID；特殊值 `me` 和 `_` 分别代表当前 sysadmin 与全站。"),
@@ -2335,7 +2336,11 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
                   properties: {
                     user: ref("AuthUser"),
                     taskCount: { type: "integer" },
-                    imageCount: { type: "integer" }
+                    imageCount: { type: "integer" },
+                    coverImage: {
+                      nullable: true,
+                      oneOf: [{ type: "null" }, ref("ImageAttachment")]
+                    }
                   }
                 }
               ]

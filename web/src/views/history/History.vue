@@ -2,9 +2,26 @@
 /**
  * 历史会话列表与详情：按 API 分页拉会话，点进展开消息与任务信息；封面图来自接口 `coverImage`。
  */
-import { ArrowLeft, ChevronLeft, ChevronRight, Image as ImageIcon, Loader2 } from "lucide-vue-next";
+import { ref } from "vue";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Image as ImageIcon,
+  Loader2,
+  Trash2
+} from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import HistoryGrid from "./HistoryGrid.vue";
 import { useHistoryController } from "./useHistoryController";
@@ -22,6 +39,7 @@ const {
   selectedSession,
   selectedImage,
   activeResultIndex,
+  canDeleteSelectedSession,
   totalPages,
   resultMessages,
   displayResultMessages,
@@ -31,6 +49,7 @@ const {
   jumpToPage,
   openDetail,
   backToGrid,
+  deleteSelectedSession,
   openImage,
   formatDateTime,
   modeLabel,
@@ -47,12 +66,19 @@ const {
   previousResult,
   nextResult
 } = useHistoryController();
+
+const deleteDialogOpen = ref(false);
+
+async function confirmDeleteSession() {
+  await deleteSelectedSession();
+  deleteDialogOpen.value = false;
+}
 </script>
 
 <template>
   <AppShell>
     <template v-if="selectedSession || detailLoading">
-      <div class="flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden">
+      <div class="history-detail-shell flex min-h-0 flex-col">
         <div
           class="mb-4 flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between"
         >
@@ -72,30 +98,44 @@ const {
               {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
             </p>
           </div>
-          <div
-            v-if="displayResultMessages.length > 1"
-            class="flex shrink-0 items-center gap-2 text-sm"
-          >
+          <div class="flex shrink-0 flex-wrap items-center gap-2 text-sm">
+            <template v-if="displayResultMessages.length > 1">
+              <button
+                class="ui-button ui-button-secondary h-9 px-3"
+                type="button"
+                :disabled="activeResultIndex <= 0"
+                @click="previousResult"
+              >
+                <ChevronLeft class="h-4 w-4" />
+                {{ t("common.previous") }}
+              </button>
+              <span class="min-w-16 text-center text-muted-foreground">
+                {{ activeResultIndex + 1 }} / {{ displayResultMessages.length }}
+              </span>
+              <button
+                class="ui-button ui-button-secondary h-9 px-3"
+                type="button"
+                :disabled="activeResultIndex >= displayResultMessages.length - 1"
+                @click="nextResult"
+              >
+                {{ t("common.next") }}
+                <ChevronRight class="h-4 w-4" />
+              </button>
+            </template>
             <button
-              class="ui-button ui-button-secondary h-9 px-3"
+              v-if="selectedSession"
+              class="ui-button h-9 border-destructive/25 bg-destructive/10 px-3 text-sm text-destructive"
               type="button"
-              :disabled="activeResultIndex <= 0"
-              @click="previousResult"
+              :disabled="!canDeleteSelectedSession"
+              :title="
+                canDeleteSelectedSession
+                  ? t('history.deleteSession')
+                  : t('history.deleteUnavailable')
+              "
+              @click="deleteDialogOpen = true"
             >
-              <ChevronLeft class="h-4 w-4" />
-              {{ t("common.previous") }}
-            </button>
-            <span class="min-w-16 text-center text-muted-foreground">
-              {{ activeResultIndex + 1 }} / {{ displayResultMessages.length }}
-            </span>
-            <button
-              class="ui-button ui-button-secondary h-9 px-3"
-              type="button"
-              :disabled="activeResultIndex >= displayResultMessages.length - 1"
-              @click="nextResult"
-            >
-              {{ t("common.next") }}
-              <ChevronRight class="h-4 w-4" />
+              <Trash2 class="h-4 w-4" />
+              {{ t("history.deleteSession") }}
             </button>
           </div>
         </div>
@@ -120,14 +160,14 @@ const {
               <article
                 v-for="message in activeResultMessages"
                 :key="message.id"
-                class="panel h-full min-h-0 overflow-hidden"
+                class="panel history-detail-card overflow-hidden"
               >
                 <div
-                  class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(14rem,22rem)] lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_24rem]"
+                  class="history-detail-layout grid min-h-0 lg:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]"
                 >
-                  <div class="h-full min-h-0 overflow-hidden bg-muted/15">
-                    <div class="flex h-full min-h-0 flex-col p-3 sm:p-4">
-                      <ScrollArea v-if="message.attachments.length" class="min-h-0 flex-1">
+                  <div class="min-h-0 overflow-hidden bg-muted/15">
+                    <div class="history-detail-media flex min-h-0 flex-col p-3 sm:p-4">
+                      <ScrollArea v-if="message.attachments.length" class="history-detail-images">
                         <div class="history-detail-masonry">
                           <button
                             v-for="image in message.attachments"
@@ -150,7 +190,7 @@ const {
                       </ScrollArea>
                       <div
                         v-else
-                        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+                        class="history-detail-empty flex min-h-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground"
                       >
                         <ImageIcon class="h-6 w-6" />
                         {{ t("history.noResults") }}
@@ -158,7 +198,7 @@ const {
 
                       <ScrollArea
                         v-if="taskFailureMessage(message)"
-                        class="mt-3 h-40 shrink-0 rounded-lg border border-destructive/25 bg-destructive/5"
+                        class="history-detail-failure mt-3 rounded-lg border border-destructive/25 bg-destructive/5"
                       >
                         <div class="px-3 py-2 text-sm text-destructive">
                           <p class="font-semibold">
@@ -353,10 +393,59 @@ const {
       @close="selectedImage = null"
       @select="selectedImage = $event"
     />
+
+    <Dialog v-model:open="deleteDialogOpen">
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{{ t("history.deleteSession") }}</DialogTitle>
+          <DialogDescription>
+            {{ t("history.deleteConfirm") }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" type="button" @click="deleteDialogOpen = false">
+            {{ t("common.cancel") }}
+          </Button>
+          <Button variant="destructive" type="button" @click="confirmDeleteSession">
+            {{ t("common.delete") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </AppShell>
 </template>
 
 <style scoped>
+.history-detail-shell {
+  height: calc(100dvh - 6rem);
+  overflow: hidden;
+}
+
+.history-detail-card {
+  height: 100%;
+  min-height: 0;
+}
+
+.history-detail-layout {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.history-detail-media {
+  height: 100%;
+}
+
+.history-detail-images,
+.history-detail-empty {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.history-detail-failure {
+  height: 10rem;
+  flex: 0 0 auto;
+}
+
 .history-detail-masonry {
   column-gap: 0.75rem;
   column-width: 13rem;
@@ -404,6 +493,37 @@ const {
   .history-detail-masonry-item {
     display: block;
     margin: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  .history-detail-shell {
+    height: auto;
+    min-height: calc(100dvh - 9rem);
+    overflow: visible;
+  }
+
+  .history-detail-card,
+  .history-detail-layout,
+  .history-detail-media {
+    height: auto;
+  }
+
+  .history-detail-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .history-detail-images,
+  .history-detail-empty {
+    min-height: 18rem;
+    height: min(62dvh, 44rem);
+    flex: 0 0 auto;
+  }
+
+  .history-detail-failure {
+    height: auto;
+    max-height: 12rem;
   }
 }
 

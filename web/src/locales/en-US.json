@@ -205,7 +205,12 @@
     "references": "References",
     "model": "Model",
     "noCover": "No cover",
-    "noResults": "No generated results"
+    "noResults": "No generated results",
+    "deleteSession": "Delete session",
+    "deleteConfirm": "Delete this history session?",
+    "deleteUnavailable": "Only completed generated sessions with succeeded or failed tasks can be deleted",
+    "sessionDeleted": "Session deleted",
+    "deleteFailed": "Failed to delete session"
   },
   "errors": {
     "notFound": "Page not found",
@@ -484,9 +489,10 @@
     "load": "Load",
     "auditSearchPlaceholder": "Search session title or prompt",
     "viewDetail": "View detail",
-    "backToSessionTable": "Back to session table",
+    "backToSessionTable": "Back to session list",
     "sessionId": "Session ID",
     "successImageCount": "Succeeded images",
+    "successImagesCount": "{count} succeeded",
     "messageRole": "Role",
     "messageUser": "User",
     "messageAssistant": "Assistant",
@@ -514,6 +520,7 @@
     "taskTrend": "30-day task trend",
     "topUsers": "Top users",
     "viewSessions": "View sessions",
-    "unbound": "Unbound"
+    "unbound": "Unbound",
+    "deletedSession": "Deleted"
   }
 }

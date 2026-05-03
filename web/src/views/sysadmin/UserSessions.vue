@@ -67,7 +67,7 @@ const {
 <template>
   <AppShell>
     <template v-if="selectedSessionId">
-      <div class="flex h-[calc(100dvh-6rem)] min-h-0 flex-col overflow-hidden">
+      <div class="audit-detail-shell flex min-h-0 flex-col">
         <UserSessionsDetailHeader
           :selected-session="selectedSession"
           :active-message-index="activeMessageIndex"
@@ -97,15 +97,15 @@ const {
             <article
               v-for="message in activeMessages"
               :key="message.id"
-              class="panel h-full min-h-0 overflow-hidden"
+              class="panel audit-detail-card overflow-hidden"
             >
               <div
-                class="grid h-full min-h-0 grid-rows-[minmax(0,1fr)_minmax(16rem,24rem)] lg:grid-cols-[minmax(0,1fr)_24rem] lg:grid-rows-none 2xl:grid-cols-[minmax(0,1fr)_26rem]"
+                class="audit-detail-layout grid min-h-0 lg:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_26rem]"
               >
-                <div class="h-full min-h-0 overflow-hidden bg-muted/15">
-                  <div class="flex h-full min-h-0 flex-col gap-4 p-3 sm:p-4">
-                    <section class="min-h-0 flex-1 overflow-hidden">
-                      <ScrollArea v-if="message.attachments.length" class="h-full min-h-0">
+                <div class="min-h-0 overflow-hidden bg-muted/15">
+                  <div class="audit-detail-media flex min-h-0 flex-col gap-4 p-3 sm:p-4">
+                    <section class="audit-detail-images-section min-h-0 overflow-hidden">
+                      <ScrollArea v-if="message.attachments.length" class="audit-detail-images">
                         <div class="audit-detail-masonry">
                           <button
                             v-for="image in message.attachments"
@@ -132,7 +132,7 @@ const {
                       </ScrollArea>
                       <div
                         v-else
-                        class="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
+                        class="audit-detail-empty flex min-h-0 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted-foreground"
                       >
                         {{ t("history.noResults") }}
                       </div>
@@ -140,7 +140,7 @@ const {
 
                     <section
                       v-if="message.referenceImages?.length"
-                      class="rounded-lg border border-border bg-background/70 p-3"
+                      class="audit-detail-reference shrink-0 rounded-lg border border-border bg-background/70 p-3"
                     >
                       <p class="mb-2 text-xs font-medium text-muted-foreground">
                         {{ t("history.references") }}
@@ -377,6 +377,35 @@ const {
 </template>
 
 <style scoped>
+.audit-detail-shell {
+  height: calc(100dvh - 6rem);
+  overflow: hidden;
+}
+
+.audit-detail-card {
+  height: 100%;
+  min-height: 0;
+}
+
+.audit-detail-layout {
+  height: 100%;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.audit-detail-media {
+  height: 100%;
+}
+
+.audit-detail-images-section {
+  flex: 1 1 auto;
+}
+
+.audit-detail-images,
+.audit-detail-empty {
+  height: 100%;
+  min-height: 0;
+}
+
 .audit-detail-masonry {
   column-gap: 0.75rem;
   column-width: 13rem;
@@ -436,6 +465,35 @@ const {
   .audit-detail-masonry-item {
     display: block;
     margin: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  .audit-detail-shell {
+    height: auto;
+    min-height: calc(100dvh - 9rem);
+    overflow: visible;
+  }
+
+  .audit-detail-card,
+  .audit-detail-layout,
+  .audit-detail-media {
+    height: auto;
+  }
+
+  .audit-detail-layout {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .audit-detail-images-section {
+    flex: 0 0 auto;
+  }
+
+  .audit-detail-images,
+  .audit-detail-empty {
+    min-height: 18rem;
+    height: min(62dvh, 44rem);
   }
 }
 

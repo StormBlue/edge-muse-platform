@@ -33,6 +33,12 @@ const { t } = useI18n();
       <h1 class="truncate text-xl font-semibold leading-8">
         {{ selectedSession?.title ?? t("history.detail") }}
       </h1>
+      <span
+        v-if="selectedSession?.deletedAt"
+        class="mt-2 inline-flex rounded-full border border-destructive/25 bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive"
+      >
+        {{ t("sysadmin.deletedSession") }}
+      </span>
       <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
         {{ t("history.updatedAt") }} {{ updatedAtLabel }}
       </p>

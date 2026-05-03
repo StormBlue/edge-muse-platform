@@ -13,6 +13,8 @@ import { defaultSessionTitle } from "../../lib/sessionTitle";
 import { findActiveGenerationTaskForUser } from "../../lib/tasks";
 import { modeSchema, settingsSchema, type SessionRouter } from "./common";
 
+const deletableSessionTaskStatuses = new Set(["succeeded", "failed"]);
+
 export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
   // POST /api/sessions：新建会话行，标题缺省用 `defaultSessionTitle`。
   sessionRoutes.post(
@@ -140,18 +142,34 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
     }
   );
 
-  // 软删：写 deletedAt，列表与消息查询均过滤。
+  // 软删：仅允许删除已结束的生成会话；写 deletedAt，普通列表与消息查询均过滤。
   sessionRoutes.delete("/:id", async (c) => {
     const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
-    await getDb(c.env)
+    const db = getDb(c.env);
+    const taskRows = await db
+      .select({ status: tasks.status })
+      .from(tasks)
+      .where(eq(tasks.sessionId, session.id));
+    if (
+      taskRows.length === 0 ||
+      taskRows.some((task) => !deletableSessionTaskStatuses.has(task.status))
+    ) {
+      throw appError(
+        "VALIDATION_ERROR",
+        "Only generated sessions whose tasks have succeeded or failed can be deleted"
+      );
+    }
+    const timestamp = now();
+    await db
       .update(sessions)
-      .set({ deletedAt: now(), updatedAt: now() })
+      .set({ deletedAt: timestamp, updatedAt: timestamp })
       .where(eq(sessions.id, session.id));
     await audit(c.env, {
       actorId: c.get("user").id,
       action: "session.delete",
       targetType: "session",
-      targetId: session.id
+      targetId: session.id,
+      payload: { taskCount: taskRows.length }
     });
     return c.json({ ok: true });
   });

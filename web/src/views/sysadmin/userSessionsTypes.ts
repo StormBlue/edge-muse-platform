@@ -17,6 +17,7 @@ export type AuditSession = Session & {
   deletedAt?: number | null;
   taskCount?: number;
   imageCount?: number;
+  coverImage?: ImageAttachment | null;
 };
 
 /** 审计页图片：附加生成时刻、第几张、单张耗时等排障信息。 */

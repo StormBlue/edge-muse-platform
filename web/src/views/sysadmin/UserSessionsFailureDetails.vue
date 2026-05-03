@@ -17,7 +17,9 @@ defineProps<{
 </script>
 
 <template>
-  <ScrollArea class="h-40 rounded-lg border border-destructive/25 bg-destructive/5">
+  <ScrollArea
+    class="audit-detail-failure h-40 rounded-lg border border-destructive/25 bg-destructive/5"
+  >
     <div class="px-3 py-2 text-sm text-destructive">
       <p class="font-semibold">
         {{
@@ -62,3 +64,12 @@ defineProps<{
     </div>
   </ScrollArea>
 </template>
+
+<style scoped>
+@media (max-width: 1023px) {
+  .audit-detail-failure {
+    height: auto;
+    max-height: 12rem;
+  }
+}
+</style>
