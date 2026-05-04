@@ -220,17 +220,17 @@ function formatBytes(bytes: number) {
 <template>
   <div
     v-if="image"
-    class="image-viewer fixed inset-0 z-50 grid bg-black/90 text-white"
+    class="image-viewer w-full fixed flex flex-col inset-0 z-50 bg-black/90 text-white"
     @click.self="closeFromBackdrop"
   >
     <header
-      class="flex min-h-14 items-center justify-between gap-3 border-b border-white/10 px-3 py-2 sm:px-4"
+      class="flex w-full min-h-14 items-center justify-between gap-3 border-b border-white/10 py-2"
     >
-      <div class="min-w-0">
+      <div class="min-w-0 px-3 sm:px-4">
         <p class="truncate text-sm font-semibold">{{ displayTitle }}</p>
         <p class="truncate text-xs text-white/65">{{ metadata }}</p>
       </div>
-      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 sm:px-4">
         <button
           class="viewer-button"
           type="button"
@@ -293,18 +293,9 @@ function formatBytes(bytes: number) {
     </header>
 
     <main
-      class="viewer-main relative min-h-0 overflow-hidden p-2 sm:p-4"
+      class="viewer-main relative min-h-0 overflow-hidden p-2 sm:p-4 justify-center items-center flex-1"
       @click.self="closeFromBackdrop"
     >
-      <button
-        v-if="hasPrevious"
-        class="viewer-nav viewer-nav--desktop viewer-nav--previous"
-        type="button"
-        :title="t('viewer.previousImage')"
-        @click="move(-1)"
-      >
-        <ChevronLeft class="h-6 w-6" />
-      </button>
       <div
         ref="stageRef"
         class="viewer-stage"
@@ -327,16 +318,26 @@ function formatBytes(bytes: number) {
           }"
           @load="clampOffset"
         />
+
+        <button
+          v-if="hasPrevious"
+          class="viewer-nav viewer-nav--desktop viewer-nav--previous"
+          type="button"
+          :title="t('viewer.previousImage')"
+          @click="move(-1)"
+        >
+          <ChevronLeft class="h-6 w-6" />
+        </button>
+        <button
+          v-if="hasNext"
+          class="viewer-nav viewer-nav--desktop viewer-nav--next"
+          type="button"
+          :title="t('viewer.nextImage')"
+          @click="move(1)"
+        >
+          <ChevronRight class="h-6 w-6" />
+        </button>
       </div>
-      <button
-        v-if="hasNext"
-        class="viewer-nav viewer-nav--desktop viewer-nav--next"
-        type="button"
-        :title="t('viewer.nextImage')"
-        @click="move(1)"
-      >
-        <ChevronRight class="h-6 w-6" />
-      </button>
     </main>
 
     <button
@@ -423,12 +424,12 @@ function formatBytes(bytes: number) {
 
 .viewer-nav {
   position: absolute;
-  top: 50%;
   z-index: 1;
   display: inline-flex;
+  justify-content: center;
+  align-items: center;
   height: 3rem;
   width: 3rem;
-  transform: translateY(-50%);
   align-items: center;
   justify-content: center;
   border-radius: 999px;
