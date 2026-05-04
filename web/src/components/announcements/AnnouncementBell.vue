@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 import { ChevronLeft, ChevronRight, Megaphone, X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import {
@@ -10,11 +10,11 @@ import {
   type AnnouncementDetail,
   type AnnouncementListItem
 } from "@/api/announcements";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 const { t, locale } = useI18n();
 const AnnouncementMarkdown = defineAsyncComponent(() => import("./AnnouncementMarkdown.vue"));
-const rootRef = ref<HTMLElement | null>(null);
 const popoverOpen = ref(false);
 const listDialogOpen = ref(false);
 const detailDialogOpen = ref(false);
@@ -38,12 +38,11 @@ const bellTitle = computed(() =>
 );
 
 onMounted(() => {
-  document.addEventListener("pointerdown", closeOnOutsidePointer);
   void loadRecent();
 });
 
-onBeforeUnmount(() => {
-  document.removeEventListener("pointerdown", closeOnOutsidePointer);
+watch(popoverOpen, (open) => {
+  if (open) void loadRecent();
 });
 
 async function loadRecent() {
@@ -110,12 +109,6 @@ function markLocalRead(id: string) {
   );
 }
 
-function closeOnOutsidePointer(event: PointerEvent) {
-  if (!popoverOpen.value) return;
-  if (rootRef.value?.contains(event.target as Node)) return;
-  popoverOpen.value = false;
-}
-
 function formatDateTime(value?: number | null) {
   if (!value) return "-";
   return new Intl.DateTimeFormat(locale.value, {
@@ -128,27 +121,23 @@ function formatDateTime(value?: number | null) {
 </script>
 
 <template>
-  <div ref="rootRef" class="relative">
-    <button
-      class="ui-button ui-button-secondary ui-icon-button relative"
+  <Popover v-model:open="popoverOpen">
+    <PopoverTrigger
+      class="announcement-trigger ui-button ui-button-secondary ui-icon-button relative"
       type="button"
       :title="bellTitle"
       :aria-label="bellTitle"
-      :aria-expanded="popoverOpen"
-      aria-haspopup="dialog"
-      @click="
-        popoverOpen = !popoverOpen;
-        if (popoverOpen) loadRecent();
-      "
-      @keydown.esc="popoverOpen = false"
     >
       <Megaphone class="h-4 w-4" />
       <span v-if="hasUnread" class="announcement-dot" aria-hidden="true"></span>
-    </button>
+    </PopoverTrigger>
 
-    <div
-      v-if="popoverOpen"
-      class="absolute right-0 z-50 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+    <PopoverContent
+      align="end"
+      side="bottom"
+      :side-offset="8"
+      :collision-padding="12"
+      class="!w-[min(22rem,calc(100vw-2rem))] overflow-hidden !rounded-lg !p-0 shadow-xl"
       role="dialog"
     >
       <div class="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
@@ -163,7 +152,7 @@ function formatDateTime(value?: number | null) {
           </p>
         </div>
         <button
-          class="ui-button ui-button-secondary h-8 w-8 p-0"
+          class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
           type="button"
           :aria-label="t('common.close')"
           @click="popoverOpen = false"
@@ -211,7 +200,7 @@ function formatDateTime(value?: number | null) {
           {{ t("announcements.viewMore") }}
         </button>
       </div>
-    </div>
+    </PopoverContent>
 
     <Teleport to="body">
       <div
@@ -232,7 +221,7 @@ function formatDateTime(value?: number | null) {
               </p>
             </div>
             <button
-              class="ui-button ui-button-secondary ui-icon-button"
+              class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
               type="button"
               :aria-label="t('common.close')"
               @click="listDialogOpen = false"
@@ -320,7 +309,7 @@ function formatDateTime(value?: number | null) {
               </p>
             </div>
             <button
-              class="ui-button ui-button-secondary ui-icon-button shrink-0"
+              class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
               type="button"
               :aria-label="t('common.close')"
               @click="closeDetail"
@@ -339,10 +328,26 @@ function formatDateTime(value?: number | null) {
         </section>
       </div>
     </Teleport>
-  </div>
+  </Popover>
 </template>
 
 <style scoped>
+.announcement-trigger,
+.announcement-close-button {
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.announcement-trigger :deep(svg),
+.announcement-close-button :deep(svg) {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
 .announcement-dot {
   position: absolute;
   right: 0.35rem;
