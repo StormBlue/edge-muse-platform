@@ -21,13 +21,13 @@
   },
   "dependencies": {
     "@hono/zod-validator": "0.7.6",
-    "@scalar/hono-api-reference": "0.10.13",
+    "@scalar/hono-api-reference": "0.10.14",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.16",
-    "zod": "4.4.2"
+    "hono": "4.12.17",
+    "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260502.1",
+    "@cloudflare/workers-types": "4.20260505.1",
     "drizzle-kit": "0.31.10",
     "miniflare": "4.20260430.0",
     "typescript": "6.0.3",
