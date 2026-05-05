@@ -39,6 +39,17 @@ export function sizeToOption(size: string): SizeOption {
   };
 }
 
+export function maxEdgeForSize(size: string): number | null {
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) return null;
+  return Math.max(Number(match[1]), Number(match[2]));
+}
+
+export function isHighResolutionSize(size: string): boolean {
+  const maxEdge = maxEdgeForSize(size);
+  return maxEdge !== null && maxEdge >= 1600;
+}
+
 /** 用于筛「进行中」消息行，与 ChatMessage 展示条件一致。 */
 export function isGeneratingMessage(message: Message) {
   return message.status === "queued" || message.status === "running";

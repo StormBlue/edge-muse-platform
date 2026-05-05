@@ -8,8 +8,8 @@ import type { Context } from "hono";
 export type UserRole = "sysadmin" | "admin" | "user";
 /** 账号是否可用；禁用后 JWT 仍可能有效但 `requireAuth` 会拒 */
 export type UserStatus = "active" | "disabled";
-/** 会话与生图模式：文生图 / 图生图 / 多轮对话生图 */
-export type SessionMode = "text2image" | "image2image" | "chat";
+/** 会话与生图模式：文生图 / 图生图 */
+export type SessionMode = "text2image" | "image2image";
 /** 异步任务状态（tasks.status） */
 export type TaskStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
 

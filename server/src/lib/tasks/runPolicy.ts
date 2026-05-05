@@ -1,15 +1,24 @@
 import { now } from "../id";
 import { redactProviderResponse } from "./providerImages";
+import { MICU_REQUEST_FORMAT, resolveMicuParallelGenerations } from "../../providers/micuPolicy";
 import type { GenerationFailure } from "./types";
-import type { UserRole } from "../../types";
+import type { GenerateParams, UserRole } from "../../types";
 
 /** 普通用户多图并发槽；过大易打满 provider 速率。 */
 const DEFAULT_PARALLEL_GENERATIONS = 4;
 /** sysadmin 可提高并发，仍受单任务 n 上限约束。 */
 const SYSADMIN_PARALLEL_GENERATIONS = 10;
 
-export function resolveParallelGenerationsForRole(role: UserRole): number {
-  return role === "sysadmin" ? SYSADMIN_PARALLEL_GENERATIONS : DEFAULT_PARALLEL_GENERATIONS;
+export function resolveParallelGenerationsForRole(
+  role: UserRole,
+  provider?: { requestFormat: string; model: string; mode: GenerateParams["mode"]; size: string }
+): number {
+  const roleLimit =
+    role === "sysadmin" ? SYSADMIN_PARALLEL_GENERATIONS : DEFAULT_PARALLEL_GENERATIONS;
+  if (provider?.requestFormat === MICU_REQUEST_FORMAT) {
+    return Math.min(roleLimit, resolveMicuParallelGenerations(provider.model, provider.size));
+  }
+  return roleLimit;
 }
 
 /** 将单次 generate 或 persist 异常转为可序列化进 `provider_raw_response` 的失败项。 */

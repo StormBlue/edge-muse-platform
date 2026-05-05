@@ -2,7 +2,7 @@
  * 会话与消息 Pinia Store（工作台核心状态）
  *
  * 与 docs/archive/开发需求.md、根目录 ARCHITECTURE.md 对应：
- * - 「会话」sessions：文生图 / 图生图 / 对话 的容器，含默认 size、张数 n 等 settings。
+ * - 「会话」sessions：文生图 / 图生图 的容器，含默认 size、张数 n 等 settings。
  * - 「消息」messages：用户气泡 + 助手气泡；助手消息可挂 taskId，状态由后端持久化 + WebSocket 推送增量更新。
  *
  * 与后端的对应关系（简化）：
@@ -21,7 +21,7 @@ import { defineStore } from "pinia";
 import { apiFetch } from "@/api/client";
 
 /** 生图模式：与 server GenerateParams.mode 一致 */
-export type SessionMode = "text2image" | "image2image" | "chat";
+export type SessionMode = "text2image" | "image2image";
 /** 单张图片在消息中的展示元数据（来自 API 或 WS 推送） */
 export type ImageAttachment = {
   id: string;
@@ -115,7 +115,7 @@ export const useSessionStore = defineStore("sessions", {
       this.sessionsLoading = true;
       try {
         const body = await apiFetch<{ items: Session[]; nextCursor: number | null }>("/sessions");
-        this.sessions = body.items;
+        this.sessions = body.items.map(normalizeSession);
         this.nextSessionCursor = body.nextCursor;
       } finally {
         this.sessionsLoading = false;
@@ -127,7 +127,10 @@ export const useSessionStore = defineStore("sessions", {
       const body = await apiFetch<{ active: ActiveGeneration | null }>(
         "/sessions/active-generation"
       );
-      if (body.active?.session) this.upsertSession(body.active.session);
+      if (body.active?.session) {
+        body.active.session = normalizeSession(body.active.session);
+        this.upsertSession(body.active.session);
+      }
       return body.active;
     },
     /** 会话列表向下滚动分页，游标为 `nextSessionCursor` */
@@ -139,9 +142,10 @@ export const useSessionStore = defineStore("sessions", {
           `/sessions?cursor=${this.nextSessionCursor}`
         );
         const existingIds = new Set(this.sessions.map((session) => session.id));
+        const items = body.items.map(normalizeSession);
         this.sessions = [
           ...this.sessions,
-          ...body.items.filter((session) => !existingIds.has(session.id))
+          ...items.filter((session) => !existingIds.has(session.id))
         ];
         this.nextSessionCursor = body.nextCursor;
       } finally {
@@ -381,4 +385,15 @@ function normalizeMessageAttachments(message: Message): Message {
       prompt: image.prompt ?? message.prompt ?? null
     }))
   };
+}
+
+function normalizeSession(session: Session): Session {
+  return {
+    ...session,
+    mode: normalizeSessionMode(session.mode)
+  };
+}
+
+function normalizeSessionMode(mode: unknown): SessionMode {
+  return mode === "image2image" ? "image2image" : "text2image";
 }

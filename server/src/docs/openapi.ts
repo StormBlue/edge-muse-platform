@@ -305,7 +305,7 @@ export const openApiDocument: OpenApiObject = {
       },
       GenerationMode: {
         type: "string",
-        enum: ["text2image", "image2image", "chat"]
+        enum: ["text2image", "image2image"]
       },
       Task: {
         type: "object",

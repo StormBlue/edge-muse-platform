@@ -16,7 +16,11 @@ import {
   getAiImageSubmitBlockReason,
   type AiImageSubmitBlockReason
 } from "./aiImageSubmitValidation";
-import { defaultSessionTitle, sizeOptionsForProvider } from "@/views/workspace/workspaceOptions";
+import {
+  defaultSessionTitle,
+  isHighResolutionSize,
+  sizeOptionsForProvider
+} from "@/views/workspace/workspaceOptions";
 import type { PromptCaseMode } from "@/types/promptCases";
 
 export type AiImageSubmitGenerationEvent = {
@@ -37,7 +41,16 @@ export function useAiImageGenerationSubmit() {
   const activeTaskId = ref<string | null>(null);
   const activeSessionId = ref<string | null>(null);
 
-  const sizeOptions = computed(() => sizeOptionsForProvider(auth.providerCapabilities));
+  const sizeOptions = computed(() => {
+    const options = sizeOptionsForProvider(auth.providerCapabilities);
+    if (
+      auth.providerCapabilities?.requestFormat === "micu_images" &&
+      mode.value === "image2image"
+    ) {
+      return options.filter((option) => !isHighResolutionSize(option.value));
+    }
+    return options;
+  });
   const supportedModes = computed(() =>
     (auth.providerCapabilities?.supportedModes ?? ["text2image", "image2image"]).filter(
       (item): item is PromptCaseMode => item === "text2image" || item === "image2image"

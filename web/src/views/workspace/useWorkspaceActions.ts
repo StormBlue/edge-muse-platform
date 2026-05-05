@@ -73,7 +73,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       toast.error(t("workspace.sizeUnsupported"));
       return;
     }
-    if (input.mode !== "chat" && oneShotTaskLocked.value) return;
+    if (oneShotTaskLocked.value) return;
     if (input.mode === "image2image" && input.files.length === 0) {
       toast.error(t("workspace.referenceRequired"));
       return;

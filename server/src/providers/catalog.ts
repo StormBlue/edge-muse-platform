@@ -17,8 +17,21 @@ export const BUILT_IN_PROVIDERS = [
     name: "米醋API",
     baseUrl: "https://www.openclaudecode.cn",
     defaultModel: "gpt-image-2",
-    requestFormat: "openai_compatible",
-    supportedSizes: ["1024x1024", "1024x1536", "1536x1024", "auto"]
+    requestFormat: "micu_images",
+    supportedSizes: [
+      "1024x1024",
+      "1280x720",
+      "720x1280",
+      "1024x1536",
+      "1536x1024",
+      "1920x1088",
+      "1088x1920",
+      "2048x2048",
+      "2048x1152",
+      "1152x2048",
+      "3840x2160",
+      "2160x3840"
+    ]
   },
   {
     id: CUBENCE_PROVIDER_ID,

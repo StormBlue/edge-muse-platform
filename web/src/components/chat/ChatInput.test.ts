@@ -37,30 +37,28 @@ describe("ChatInput", () => {
     expect((textarea.element as HTMLTextAreaElement).value).toBe("不要在失败时丢掉这个提示词");
   });
 
-  it("sends chat composer with Enter and keeps Ctrl or Shift Enter for new lines", async () => {
+  it("locks Micu high-resolution generation to one image", async () => {
     const wrapper = mount(ChatInput, {
       props: {
-        mode: "chat",
-        variant: "chat",
-        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+        mode: "text2image",
+        allowCustomCount: true,
+        initialCount: 20,
+        initialSize: "2048x2048",
+        limitHighResolutionCount: true,
+        sizeOptions: [{ value: "2048x2048", ratio: "1:1", label: "2048 x 2048" }]
       }
     });
 
     const textarea = wrapper.get("textarea");
     await textarea.setValue("生成一张现代产品海报");
-    await textarea.trigger("keydown.enter", { ctrlKey: true });
-    await textarea.trigger("keydown.enter", { shiftKey: true });
-
-    expect(wrapper.emitted("submit")).toBeUndefined();
-
-    await textarea.trigger("keydown.enter");
+    await wrapper.get("form").trigger("submit");
 
     expect(wrapper.emitted("submit")).toEqual([
       [
         {
           prompt: "生成一张现代产品海报",
-          mode: "chat",
-          size: "1024x1024",
+          mode: "text2image",
+          size: "2048x2048",
           n: 1,
           files: []
         }

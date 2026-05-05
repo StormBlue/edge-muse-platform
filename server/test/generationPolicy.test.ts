@@ -12,8 +12,8 @@ describe("generation policy", () => {
     expect(resolveImageCountForRole("sysadmin", "text2image", 200)).toBe(200);
   });
 
-  it("forces chat mode to one image", () => {
-    expect(resolveImageCountForRole("sysadmin", "chat", 4)).toBe(1);
+  it("allows sysadmins to customize image-to-image count", () => {
+    expect(resolveImageCountForRole("sysadmin", "image2image", 4)).toBe(4);
   });
 
   it("rejects customized image count for admins and users", () => {

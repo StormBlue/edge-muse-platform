@@ -56,28 +56,19 @@ describe("useWorkspaceActions", () => {
     expect(router.replace).toHaveBeenCalledWith("/workspace/s/ses_1");
   });
 
-  it("passes generation metadata for continuous chat mode", async () => {
-    const { actions, sessions } = createActions();
+  it("does not submit again after a one-shot task already exists in the session", async () => {
+    const { actions, sessions, connect } = createActions({ oneShotLocked: true });
 
     await actions.submit({
       prompt: "继续优化上一轮结果",
-      mode: "chat",
+      mode: "text2image",
       size: "1024x1024",
       n: 1,
       files: []
     });
 
-    expect(sessions.generate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        generationEvent: expect.objectContaining({
-          route: "/workspace",
-          metadata: expect.objectContaining({
-            mode: "chat",
-            promptSource: "user"
-          })
-        })
-      })
-    );
+    expect(sessions.generate).not.toHaveBeenCalled();
+    expect(connect).not.toHaveBeenCalled();
   });
 
   it("sends retry generation context when retrying a failed task", async () => {
@@ -130,7 +121,7 @@ describe("useWorkspaceActions", () => {
   });
 });
 
-function createActions(overrides: { auth?: unknown } = {}) {
+function createActions(overrides: { auth?: unknown; oneShotLocked?: boolean } = {}) {
   const sessions = {
     messages: [] as Message[],
     generate: vi.fn().mockResolvedValue({
@@ -154,7 +145,7 @@ function createActions(overrides: { auth?: unknown } = {}) {
     submitting: ref(false),
     selectedImage: ref(null),
     hasRunningTask: computed(() => false),
-    oneShotTaskLocked: computed(() => false),
+    oneShotTaskLocked: computed(() => Boolean(overrides.oneShotLocked)),
     maxReferenceFiles: computed(() => 5),
     activeFailedMessage: computed(() => null),
     activePreviewImage: computed(() => null),

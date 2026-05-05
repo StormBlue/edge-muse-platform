@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 工作台底部输入：prompt、尺寸/张数（受角色限制）、图生图时本地上传参考图（最多 5）。
- * `variant=chat` 时可隐藏部分工具条；`readOnly` 用于仅展示历史参数。
+ * `readOnly` 用于仅展示历史参数。
  */
 import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "lucide-vue-next";
 import type { ImageAttachment } from "@/stores/session";
@@ -26,10 +26,9 @@ const {
   dragging,
   isReadOnly,
   isImageToImage,
-  isContinuousChat,
-  isChatVariant,
   isBusy,
   maxCustomCount,
+  highResolutionCountLocked,
   submitDisabled,
   countSelectionDisabled,
   submitLabel,
@@ -40,7 +39,6 @@ const {
   editablePreviews,
   uploaderLabel,
   submit,
-  onComposerEnter,
   onFiles,
   onDrop,
   onPaste,
@@ -52,60 +50,11 @@ const {
 
 <template>
   <form
-    class="panel min-h-0 overflow-hidden"
-    :class="isChatVariant ? 'chat-input-panel flex flex-col' : 'task-input-panel'"
+    class="panel task-input-panel min-h-0 overflow-hidden"
     @paste="onPaste"
     @submit.prevent="submit"
   >
-    <div v-if="isChatVariant" class="chat-composer-shell">
-      <div class="chat-settings-strip">
-        <span class="chat-settings-label">
-          <SlidersHorizontal class="h-3.5 w-3.5" />
-          {{ t("workspace.canvasSize") }}
-        </span>
-        <div class="thin-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto pb-0.5">
-          <button
-            v-for="option in visibleSizeOptions"
-            :key="option.value"
-            class="chat-size-chip"
-            :class="size === option.value ? 'chat-size-chip--active' : ''"
-            type="button"
-            :aria-pressed="size === option.value"
-            :aria-label="`${t('workspace.canvasSize')} ${option.label}`"
-            :title="option.label"
-            :disabled="isReadOnly"
-            @click="!isReadOnly && (size = option.value)"
-          >
-            {{ option.ratio }}
-          </button>
-        </div>
-      </div>
-
-      <label v-if="!isReadOnly" class="chat-composer-field">
-        <span class="sr-only">{{ t("workspace.prompt") }}</span>
-        <textarea
-          v-model="prompt"
-          class="ui-field chat-composer-textarea resize-none px-3 py-2.5 text-sm leading-6"
-          :placeholder="t('workspace.promptPlaceholder')"
-          rows="2"
-          @keydown.enter="onComposerEnter"
-        ></textarea>
-        <button
-          class="ui-button ui-button-primary chat-composer-submit"
-          type="submit"
-          :aria-busy="isBusy"
-          :aria-label="submitLabel"
-          :disabled="submitDisabled"
-          :title="submitLabel"
-        >
-          <Loader2 v-if="isBusy" class="h-4 w-4 animate-spin" />
-          <Send v-else class="h-4 w-4" />
-        </button>
-      </label>
-    </div>
-
     <div
-      v-else
       class="task-input-layout"
       :class="{
         'task-input-layout--readonly': isReadOnly,
@@ -220,10 +169,10 @@ const {
           </div>
         </div>
 
-        <div v-if="!isContinuousChat" class="task-setting-block task-count-block">
+        <div class="task-setting-block task-count-block">
           <p class="task-setting-inline-label">{{ t("workspace.imageCount") }}</p>
           <input
-            v-if="props.allowCustomCount && !isReadOnly"
+            v-if="props.allowCustomCount && !isReadOnly && !highResolutionCountLocked"
             class="ui-field h-9 w-24 px-3 text-sm"
             type="number"
             min="1"
@@ -252,7 +201,7 @@ const {
       </section>
     </div>
 
-    <div v-if="!isReadOnly && !isChatVariant" class="shrink-0 border-t border-border p-3">
+    <div v-if="!isReadOnly" class="shrink-0 border-t border-border p-3">
       <button
         class="ui-button ui-button-primary w-full"
         :aria-busy="isBusy"
@@ -268,36 +217,6 @@ const {
 </template>
 
 <style scoped>
-.chat-input-panel {
-  border-width: 1px 0 0;
-  border-radius: 0;
-  background: var(--card);
-}
-
-.chat-composer-shell {
-  display: grid;
-  gap: 0.625rem;
-  padding: 0.75rem;
-}
-
-.chat-settings-strip {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.chat-settings-label {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 0.375rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.chat-size-chip,
 .task-count-chip {
   display: inline-flex;
   height: 2rem;
@@ -317,34 +236,14 @@ const {
     color 160ms ease;
 }
 
-.chat-size-chip:hover,
 .task-count-chip:hover {
   background: var(--muted);
 }
 
-.chat-size-chip--active,
 .task-count-chip--active {
   border-color: color-mix(in oklch, var(--primary), transparent 35%);
   background: color-mix(in oklch, var(--primary), transparent 88%);
   color: var(--foreground);
-}
-
-.chat-composer-field {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 0.5rem;
-}
-
-.chat-composer-textarea {
-  max-height: 9.5rem;
-  min-height: 3rem;
-}
-
-.chat-composer-submit {
-  height: 2.75rem;
-  width: 2.75rem;
-  padding: 0;
 }
 
 .task-input-panel {

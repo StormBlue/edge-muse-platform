@@ -19,7 +19,6 @@ export type GenerateRequest = {
   apiKey: string;
   baseUrl: string;
   referenceImages?: Array<{ bytes: Uint8Array; mime: string }>;
-  messages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
   logContext?: ProviderLogContext;
 };
 

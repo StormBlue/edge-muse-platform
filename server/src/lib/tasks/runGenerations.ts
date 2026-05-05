@@ -1,8 +1,7 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { messages, type Provider, type Task } from "../../db/schema";
-import type { ImageProvider } from "../../providers/types";
-import { appError } from "../errors";
+import { ProviderError, type ImageProvider } from "../../providers/types";
 import { stringifyJson } from "../json";
 import { logInfo, logWarn } from "../log";
 import { mapWithConcurrency } from "./concurrency";
@@ -33,7 +32,6 @@ export async function runTaskGenerations(
   input: {
     apiKey: string;
     baseLogFields: Record<string, unknown>;
-    chatMessages?: Array<{ role: "user" | "assistant" | "system"; content: string }>;
     model: string;
     notify: (event: TaskEvent) => Promise<void>;
     parallelGenerations: number;
@@ -50,7 +48,6 @@ export async function runTaskGenerations(
   const {
     apiKey,
     baseLogFields,
-    chatMessages,
     model,
     notify,
     parallelGenerations,
@@ -99,8 +96,7 @@ export async function runTaskGenerations(
       mode: params.mode,
       size: params.size,
       model,
-      referenceImageCount: referenceImages.length,
-      messageCount: chatMessages?.length ?? null
+      referenceImageCount: referenceImages.length
     });
     const response = await providerImpl.generate({
       prompt: params.prompt,
@@ -110,7 +106,6 @@ export async function runTaskGenerations(
       apiKey,
       baseUrl: provider.baseUrl,
       referenceImages,
-      messages: chatMessages,
       logContext: {
         ...baseLogFields,
         providerId: provider.id,
@@ -132,14 +127,18 @@ export async function runTaskGenerations(
     });
     await touchTaskHeartbeat(env, taskId, startedAt);
     await assertTaskClaimCurrent(env, taskId, startedAt);
-    if (params.mode !== "chat" && response.images.length === 0) {
+    if (response.images.length === 0) {
+      const redactedRaw = redactProviderResponse(response.raw);
       logWarn("task.generation.no_usable_image", {
         ...baseLogFields,
         generationIndex: index,
         providerRequestId: response.requestId ?? null,
-        mode: params.mode
+        mode: params.mode,
+        rawResponse: redactedRaw
       });
-      throw appError("PROVIDER_ERROR", "No usable image was generated");
+      throw new ProviderError("PROVIDER_ERROR", "No usable image was generated", {
+        body: response.raw
+      });
     }
     const generatedRawResponses = [redactProviderResponse(response.raw)];
     if (response.images.length === 0 && response.text) {

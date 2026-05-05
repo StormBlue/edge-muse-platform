@@ -74,7 +74,7 @@ describe("Cubence integration regressions", () => {
         expect.objectContaining({
           id: MICU_PROVIDER_ID,
           name: "米醋API",
-          requestFormat: "openai_compatible"
+          requestFormat: "micu_images"
         }),
         expect.objectContaining({
           id: CUBENCE_PROVIDER_ID,

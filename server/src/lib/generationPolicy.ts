@@ -1,11 +1,10 @@
 /**
- * 生图张数、并发单任务等**产品策略**（与 docs「仅 sysadmin 可调张数」等对齐）。
- * `chat` 模式强制单张，避免与对话接口语义混淆。
+ * 生图张数等**产品策略**（与 docs「仅 sysadmin 可调张数」等对齐）。
  */
 import { appError } from "./errors";
 import type { SessionMode, UserRole } from "../types";
 
-/** 普通用户与 chat 模式下的固定张数 */
+/** 普通用户固定张数 */
 export const DEFAULT_IMAGE_COUNT = 1;
 /** sysadmin 单次任务允许的最大 n（与 zod、settings 上限一致） */
 export const MAX_SYSADMIN_IMAGE_COUNT = 200;
@@ -28,15 +27,12 @@ export function assertImageCountAllowed(role: UserRole, count: number): void {
   }
 }
 
-/**
- * 路由层与任务层共用的张数解析：普通用户 n 在 assert 后原样；chat 恒为 1。
- */
+/** 路由层与任务层共用的张数解析。 */
 export function resolveImageCountForRole(
   role: UserRole,
-  mode: SessionMode,
+  _mode: SessionMode,
   requestedCount: number
 ): number {
   assertImageCountAllowed(role, requestedCount);
-  // 多轮对话：每轮只出 1 张，与 UI/接口语义一致
-  return mode === "chat" ? DEFAULT_IMAGE_COUNT : requestedCount;
+  return requestedCount;
 }

@@ -1,12 +1,13 @@
 /**
  * 按 `providers.request_format` 解析具体适配器；未知格式回退到 openai_compatible（gpt-image-2 类）。
  */
-import { OpenAICompatibleProvider } from "./openai-compatible";
+import { MicuImagesProvider, OpenAICompatibleProvider } from "./openai-compatible";
 import { OpenAIImagesProvider } from "./openai-images";
 import type { ImageProvider } from "./types";
 
 const providers: Record<string, ImageProvider> = {
   openai_compatible: new OpenAICompatibleProvider(),
+  micu_images: new MicuImagesProvider(),
   openai_images: new OpenAIImagesProvider()
 };
 

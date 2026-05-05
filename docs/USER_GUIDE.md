@@ -12,7 +12,7 @@
 
 - Open **历史** to search prior sessions by title or prompt.
 - Sort by 最近, 最早, or 任务最多.
-- Select any session to resume the conversation.
+- Select any session to review or retry prior generation tasks.
 
 ## Accounts
 
@@ -26,7 +26,7 @@
 ## Sysadmin
 
 - Sysadmins manage provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference. Provider types are selected directly while creating a key; there is no separate provider management page.
-- Cubence keys support 文生图 and 图生图. 对话 mode is hidden for Cubence until its image chat endpoint is confirmed.
+- Provider keys currently expose 文生图 and 图生图 only. Continuous chat mode is not available.
 
 ## Related docs
 

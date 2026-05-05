@@ -31,9 +31,9 @@ export type ChatInputProps = {
   allowCustomCount?: boolean;
   referenceCount?: number;
   referenceImages?: ImageAttachment[];
-  variant?: "task" | "chat";
   sizeOptions?: ChatInputSizeOption[];
   maxReferenceFiles?: number | null;
+  limitHighResolutionCount?: boolean;
 };
 
 type SubmitEmit = (event: "submit", value: ChatInputSubmitValue) => void;
@@ -59,8 +59,6 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
 
   const isReadOnly = computed(() => Boolean(props.readOnly));
   const isImageToImage = computed(() => props.mode === "image2image");
-  const isContinuousChat = computed(() => props.mode === "chat");
-  const isChatVariant = computed(() => props.variant === "chat");
   const isBusy = computed(() => Boolean(props.loading || props.generating));
   const hasPrompt = computed(() => prompt.value.trim().length > 0);
   const submitDisabled = computed(
@@ -70,7 +68,12 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
       !hasPrompt.value ||
       (isImageToImage.value && files.value.length === 0)
   );
-  const countSelectionDisabled = computed(() => isReadOnly.value || !props.allowCustomCount);
+  const highResolutionCountLocked = computed(
+    () => Boolean(props.limitHighResolutionCount) && isHighResolutionSize(size.value)
+  );
+  const countSelectionDisabled = computed(
+    () => isReadOnly.value || !props.allowCustomCount || highResolutionCountLocked.value
+  );
   const submitLabel = computed(() => {
     if (props.loading) return t("workspace.submitting");
     if (props.generating) return t("workspace.generationRunning");
@@ -95,6 +98,7 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     isReadOnly.value ? [selectedSizeOption.value] : effectiveSizeOptions.value
   );
   const visibleCountOptions = computed(() => {
+    if (highResolutionCountLocked.value) return [1];
     if (isReadOnly.value) return [n.value];
     return [1];
   });
@@ -130,16 +134,23 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
   watch(
     () => [props.initialCount, props.allowCustomCount] as const,
     ([next]) => {
-      n.value = props.allowCustomCount && typeof next === "number" ? clampImageCount(next) : 1;
+      n.value =
+        props.allowCustomCount && typeof next === "number" && !highResolutionCountLocked.value
+          ? clampImageCount(next)
+          : 1;
     },
     { immediate: true }
   );
+
+  watch(highResolutionCountLocked, (locked) => {
+    if (locked) n.value = 1;
+  });
 
   watch(
     () => props.mode,
     (next) => {
       if (next !== "image2image") clearFiles();
-      if (next === "chat" || !props.allowCustomCount) n.value = 1;
+      if (!props.allowCustomCount) n.value = 1;
     }
   );
 
@@ -175,19 +186,10 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
       prompt: prompt.value.trim(),
       mode: props.mode,
       size: size.value,
-      n: isContinuousChat.value || !props.allowCustomCount ? 1 : clampImageCount(n.value),
+      n: props.allowCustomCount && !highResolutionCountLocked.value ? clampImageCount(n.value) : 1,
       files: isImageToImage.value ? files.value : []
     });
     if (!isImageToImage.value) clearFiles();
-  }
-
-  function onComposerEnter(event: KeyboardEvent) {
-    if (!isChatVariant.value) return;
-    if (event.isComposing || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
-      return;
-    }
-    event.preventDefault();
-    void submit();
   }
 
   async function onFiles(event: Event) {
@@ -258,10 +260,9 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     dragging,
     isReadOnly,
     isImageToImage,
-    isContinuousChat,
-    isChatVariant,
     isBusy,
     maxCustomCount,
+    highResolutionCountLocked,
     submitDisabled,
     countSelectionDisabled,
     submitLabel,
@@ -273,7 +274,6 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     editablePreviews,
     uploaderLabel,
     submit,
-    onComposerEnter,
     onFiles,
     onDrop,
     onPaste,
@@ -281,4 +281,10 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     setCount,
     normalizeCount
   };
+}
+
+function isHighResolutionSize(value: string): boolean {
+  const match = /^(\d+)x(\d+)$/i.exec(value);
+  if (!match) return false;
+  return Math.max(Number(match[1]), Number(match[2])) >= 1600;
 }

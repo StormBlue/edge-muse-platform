@@ -3,6 +3,7 @@ import { parseJson } from "../json";
 import type { Provider as ProviderRow } from "../../db/schema";
 import type { GenerateParams } from "../../types";
 import type { ImageProvider } from "../../providers/types";
+import { isMicuHighResolutionSize, MICU_REQUEST_FORMAT } from "../../providers/micuPolicy";
 
 /**
  * provider 能力校验必须尽量前置到任务创建阶段，避免「写入任务/扣配额/启动 Workflow 后」
@@ -41,10 +42,21 @@ export function assertProviderSupportsGenerateParams(
   ) {
     throw appError("VALIDATION_ERROR", `${provider.name} does not support size ${params.size}`);
   }
+
+  if (provider.requestFormat === MICU_REQUEST_FORMAT) {
+    if (params.mode === "image2image" && isMicuHighResolutionSize(params.size)) {
+      throw appError("VALIDATION_ERROR", `${provider.name} image-to-image only supports 1K sizes`);
+    }
+    if (params.n > 1 && isMicuHighResolutionSize(params.size)) {
+      throw appError(
+        "VALIDATION_ERROR",
+        `${provider.name} 2K/4K generation supports one image per task`
+      );
+    }
+  }
 }
 
 function modeLabel(mode: GenerateParams["mode"]): string {
   if (mode === "text2image") return "text-to-image";
-  if (mode === "image2image") return "image-to-image";
-  return "chat";
+  return "image-to-image";
 }

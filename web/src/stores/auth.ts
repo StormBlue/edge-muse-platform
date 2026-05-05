@@ -21,7 +21,7 @@ export type ProviderCapabilities = {
   providerKeyId: string;
   requestFormat: string;
   model: string;
-  supportedModes: Array<"text2image" | "image2image" | "chat">;
+  supportedModes: Array<"text2image" | "image2image">;
   supportedSizes: string[];
   maxReferenceImages: number | null;
 };

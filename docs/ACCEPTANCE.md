@@ -6,12 +6,12 @@ Date: 2026-04-27
 
 - ✅ Text-to-image task creation, async execution, R2 persistence, private image proxy, and history loading.
 - ✅ Image-to-image references through authenticated upload, R2 storage, and provider request payloads.
-- ✅ Chat mode context assembly with recent-message trimming and text/image response handling.
+- ✅ Generation sessions support text-to-image and image-to-image task flows.
 - ✅ Roles: sysadmin, admin, user; route guards and API role checks.
 - ✅ Quota pre-consumption, refund on system-side failures, admin quota grants, and quota ledger.
 - ✅ Provider abstraction with OpenAI-compatible implementation and robust response parsing.
 - ✅ Cubence/OpenAI Images provider implementation for `/v1/images/generations` and multipart `/v1/images/edits`.
-- ✅ Workspace mode, size, and reference-image controls follow the current provider key capabilities; Cubence chat is hidden and blocked server-side.
+- ✅ Workspace mode, size, and reference-image controls follow the current provider key capabilities; continuous chat mode is not exposed.
 - ✅ Sysadmin key page can create 米醋API or Cubence keys and run the provider health check without restoring the old provider management page.
 - ✅ Sysadmin key creation/rebinding and provider-key assignment are limited to built-in supported providers; legacy provider rows and keys remain display-only for existing records.
 - ✅ Key resolution is explicit; unbound users do not fall back to the newest global key, generation session reuse checks ownership, and blank `sessionId` is normalized before task creation.

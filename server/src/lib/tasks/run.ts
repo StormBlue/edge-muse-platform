@@ -60,7 +60,7 @@ export async function runGenerateTask(
     n: 1
   });
   const taskUser = await db.query.users.findFirst({ where: eq(users.id, task.userId) });
-  const parallelGenerations = resolveParallelGenerationsForRole(taskUser?.role ?? "user");
+  let parallelGenerations = resolveParallelGenerationsForRole(taskUser?.role ?? "user");
   const baseLogFields = {
     taskId,
     sessionId: task.sessionId,
@@ -96,6 +96,22 @@ export async function runGenerateTask(
     await send({ type: "task.update", task: { id: taskId, status: "running", progress: 0.1 } });
 
     const runContext = await resolveTaskRunContext(env, { task, params, baseLogFields });
+    parallelGenerations = resolveParallelGenerationsForRole(taskUser?.role ?? "user", {
+      requestFormat: runContext.provider.requestFormat,
+      model: runContext.model,
+      mode: params.mode,
+      size: params.size
+    });
+    logInfo("task.run.execution_plan", {
+      ...baseLogFields,
+      providerId: runContext.provider.id,
+      requestFormat: runContext.provider.requestFormat,
+      model: runContext.model,
+      mode: params.mode,
+      size: params.size,
+      imageCount: params.n,
+      parallelGenerations
+    });
     const {
       errorCode,
       errorMessage,

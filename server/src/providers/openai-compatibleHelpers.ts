@@ -107,19 +107,15 @@ export function parseProviderImages(payload: unknown): ProviderImage[] {
     }
     if (typeof value !== "object") return;
     const record = value as UnknownRecord;
-    const b64 = stringValue(record.b64_json) ?? stringValue(record.result);
-    if (b64 && looksLikeBase64Image(b64)) {
-      images.push({ kind: "base64", data: stripDataUrl(b64).data, mime: stripDataUrl(b64).mime });
-    }
-    const imageUrl = stringValue(record.image_url) ?? stringValue(record.url);
-    if (imageUrl) {
-      const parsed = imageFromUrlOrData(imageUrl);
-      if (parsed) images.push(parsed);
-    }
+    collectImagesFromRecord(record, images);
     const markdownContent = stringValue(record.content);
     if (markdownContent) {
       for (const image of extractImagesFromText(markdownContent)) images.push(image);
     }
+    if ("image_url" in record && typeof record.image_url !== "string") visit(record.image_url);
+    if ("attachments" in record) visit(record.attachments);
+    if ("src" in record) visit(record.src);
+    if ("image" in record) visit(record.image);
     if ("images" in record) visit(record.images);
     if ("data" in record) visit(record.data);
     if ("output" in record) visit(record.output);
@@ -129,6 +125,30 @@ export function parseProviderImages(payload: unknown): ProviderImage[] {
   };
   visit(payload);
   return dedupeImages(images);
+}
+
+function collectImagesFromRecord(record: UnknownRecord, images: ProviderImage[]): void {
+  for (const key of [
+    "b64_json",
+    "base64_json",
+    "result",
+    "image_base64",
+    "base64",
+    "b64",
+    "data_url"
+  ]) {
+    const value = stringValue(record[key]);
+    if (!value) continue;
+    const image = imageFromUrlOrData(value);
+    if (image) images.push(image);
+  }
+
+  for (const key of ["image_url", "url", "src", "image", "asset_url", "download_url"]) {
+    const value = stringValue(record[key]);
+    if (!value) continue;
+    const image = imageFromUrlOrData(value, { allowAnyHttpUrl: true });
+    if (image) images.push(image);
+  }
 }
 
 export function imageKindCounts(images: ProviderImage[]): Record<string, number> {
@@ -201,7 +221,10 @@ function extractImagesFromText(text: string): ProviderImage[] {
     /<img[^>]+src=["']([^"']+)["']/gi,
     /!\[[^\]]*]\(([^)]+)\)/g,
     /(data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+)/g,
-    /(https?:\/\/[^\s"'<>)]*\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?)/gi
+    /(https?:\/\/[^\s"'<>)]*\.(?:png|jpe?g|webp|gif)(?:\?[^\s"'<>)]*)?)/gi,
+    /"((?:https?:\/\/)[^"]+)"/gi,
+    /'((?:https?:\/\/)[^']+)'/gi,
+    /([A-Za-z0-9+/=]{200,})/g
   ];
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
@@ -212,15 +235,64 @@ function extractImagesFromText(text: string): ProviderImage[] {
   return images;
 }
 
-function imageFromUrlOrData(value: string): ProviderImage | null {
+function imageFromUrlOrData(
+  value: string,
+  options: { allowAnyHttpUrl?: boolean } = {}
+): ProviderImage | null {
   if (value.startsWith("data:image/")) {
     const stripped = stripDataUrl(value);
     return { kind: "base64", data: stripped.data, mime: stripped.mime };
   }
-  if (/^https?:\/\//.test(value)) return { kind: "url", url: value };
-  if (looksLikeBase64Image(value))
-    return { kind: "base64", data: stripDataUrl(value).data, mime: "image/png" };
+  if (/^https?:\/\//.test(value) && (options.allowAnyHttpUrl || isUsableImageUrl(value))) {
+    return { kind: "url", url: value };
+  }
+  if (looksLikeBase64Image(value)) {
+    const data = stripDataUrl(value).data;
+    return { kind: "base64", data, mime: detectImageMime(data) };
+  }
   return null;
+}
+
+function detectImageMime(base64: string): string {
+  try {
+    const sample = base64.slice(0, 64).padEnd(Math.ceil(Math.min(base64.length, 64) / 4) * 4, "=");
+    const bytes = base64ToBytes(sample);
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+      return "image/png";
+    }
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return "image/gif";
+    if (
+      bytes[0] === 0x52 &&
+      bytes[1] === 0x49 &&
+      bytes[2] === 0x46 &&
+      bytes[8] === 0x57 &&
+      bytes[9] === 0x45 &&
+      bytes[10] === 0x42 &&
+      bytes[11] === 0x50
+    ) {
+      return "image/webp";
+    }
+  } catch {
+    return "image/png";
+  }
+  return "image/png";
+}
+
+function isUsableImageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const pathname = url.pathname.toLowerCase();
+    return (
+      /\.(?:png|jpe?g|webp|gif|avif|bmp|tiff?)$/.test(pathname) ||
+      url.searchParams.has("X-Amz-Signature") ||
+      url.searchParams.has("response-content-type") ||
+      url.searchParams.get("format")?.startsWith("image/") === true ||
+      url.searchParams.get("content-type")?.startsWith("image/") === true
+    );
+  } catch {
+    return false;
+  }
 }
 
 function stripDataUrl(value: string): { data: string; mime: string } {

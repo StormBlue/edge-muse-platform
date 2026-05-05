@@ -5,7 +5,6 @@ import { getProvider } from "../../providers/registry";
 import { decryptString } from "../crypto";
 import { appError } from "../errors";
 import { logInfo, logWarn, urlSummary } from "../log";
-import { buildChatMessages } from "./chat";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
 import { loadReferenceImages } from "./references";
 import type { AppBindings, GenerateParams } from "../../types";
@@ -67,21 +66,8 @@ export async function resolveTaskRunContext(
     referenceImageBytes
   });
 
-  const chatMessages =
-    params.mode === "chat"
-      ? await buildChatMessages(env, task.sessionId, params.prompt)
-      : undefined;
-  if (chatMessages) {
-    logInfo("task.chat_context.built", {
-      ...baseLogFields,
-      messageCount: chatMessages.length,
-      contentChars: chatMessages.reduce((sum, message) => sum + message.content.length, 0)
-    });
-  }
-
   return {
     apiKey,
-    chatMessages,
     model,
     provider,
     providerImpl,

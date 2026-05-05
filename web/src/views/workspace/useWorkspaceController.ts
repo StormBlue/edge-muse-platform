@@ -1,8 +1,8 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { Image as ImageIcon, MessageSquare, Type } from "lucide-vue-next";
+import { Image as ImageIcon, Type } from "lucide-vue-next";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -14,6 +14,7 @@ import {
 import { useWorkspaceActions } from "./useWorkspaceActions";
 import {
   defaultSessionTitle,
+  isHighResolutionSize,
   isGeneratingMessage,
   sizeOptionsForProvider,
   type ModeOption
@@ -36,8 +37,6 @@ export function useWorkspaceController() {
   const activeMode = ref<SessionMode>("text2image");
   const draftTitle = ref(defaultSessionTitle());
   const submitting = ref(false);
-  const messageList = ref<HTMLElement | null>(null);
-  const topSentinel = ref<HTMLElement | null>(null);
 
   const allImages = computed(() =>
     sessions.messages.flatMap((message) => [
@@ -66,7 +65,6 @@ export function useWorkspaceController() {
     return message.status === "failed" && message.attachments.length === 0 ? message : null;
   });
 
-  const isConversationMode = computed(() => activeMode.value === "chat");
   const promptRecords = computed(() =>
     sessions.messages
       .filter((message) => message.role === "user" && message.prompt)
@@ -99,10 +97,8 @@ export function useWorkspaceController() {
   );
   const inputLoading = computed(() => submitting.value || sessions.loading);
   const latestUserMessage = computed(() => latestUserPromptMessage(sessions.messages));
-  const oneShotTaskLocked = computed(
-    () =>
-      activeMode.value !== "chat" &&
-      sessions.messages.some((message) => message.role === "assistant" && Boolean(message.taskId))
+  const oneShotTaskLocked = computed(() =>
+    sessions.messages.some((message) => message.role === "assistant" && Boolean(message.taskId))
   );
   const taskInputMode = computed<SessionMode>({
     get: () => {
@@ -130,20 +126,28 @@ export function useWorkspaceController() {
   );
   const allModeOptions = computed<ModeOption[]>(() => [
     { value: "text2image", label: t("workspace.text2image"), icon: Type },
-    { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon },
-    { value: "chat", label: t("workspace.continuousChat"), icon: MessageSquare }
+    { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon }
   ]);
   const providerCapabilities = computed(() => auth.providerCapabilities);
   const supportedModes = computed<SessionMode[]>(
-    () => providerCapabilities.value?.supportedModes ?? ["text2image", "image2image", "chat"]
+    () => providerCapabilities.value?.supportedModes ?? ["text2image", "image2image"]
   );
   const modeOptions = computed(() =>
     allModeOptions.value.filter((option) => supportsMode(option.value))
   );
-  const providerSizeOptions = computed(() => sizeOptionsForProvider(providerCapabilities.value));
+  const isMicuProvider = computed(
+    () => providerCapabilities.value?.requestFormat === "micu_images"
+  );
+  const providerSizeOptions = computed(() => {
+    const options = sizeOptionsForProvider(providerCapabilities.value);
+    if (isMicuProvider.value && taskInputMode.value === "image2image") {
+      return options.filter((option) => !isHighResolutionSize(option.value));
+    }
+    return options;
+  });
+  const limitHighResolutionCount = computed(() => isMicuProvider.value);
   const maxReferenceFiles = computed(() => providerCapabilities.value?.maxReferenceImages ?? 5);
 
-  let messageObserver: IntersectionObserver | null = null;
   let restoringActiveGeneration = false;
 
   const { status, connect, disconnect } = useTaskWebSocket((payload) => {
@@ -174,12 +178,10 @@ export function useWorkspaceController() {
     } else if (!restored) {
       resetWorkspaceDraft();
     }
-    await nextTick();
-    setupMessageObserver();
   });
 
   onBeforeUnmount(() => {
-    messageObserver?.disconnect();
+    disconnect();
   });
 
   watch(
@@ -225,12 +227,6 @@ export function useWorkspaceController() {
     },
     { immediate: true }
   );
-
-  watch(isConversationMode, async (enabled) => {
-    if (!enabled) return;
-    await nextTick();
-    setupMessageObserver();
-  });
 
   async function newSession() {
     if (!auth.isSysadmin && hasRunningTask.value) {
@@ -324,23 +320,6 @@ export function useWorkspaceController() {
       openActiveGeneration
     });
 
-  function setupMessageObserver() {
-    messageObserver?.disconnect();
-    if (!topSentinel.value || !messageList.value) return;
-    messageObserver = new IntersectionObserver(
-      async ([entry]) => {
-        if (!entry?.isIntersecting || !sessions.nextMessageCursor) return;
-        const list = messageList.value;
-        const previousHeight = list?.scrollHeight ?? 0;
-        await sessions.loadOlderMessages();
-        await nextTick();
-        if (list) list.scrollTop += list.scrollHeight - previousHeight;
-      },
-      { root: messageList.value, rootMargin: "160px 0px 0px 0px" }
-    );
-    messageObserver.observe(topSentinel.value);
-  }
-
   return {
     t,
     sessions,
@@ -350,13 +329,10 @@ export function useWorkspaceController() {
     activeMode,
     draftTitle,
     submitting,
-    messageList,
-    topSentinel,
     allImages,
     resultImages,
     activePreviewImage,
     activeFailedMessage,
-    isConversationMode,
     latestPrompt,
     generationProgress,
     generationStatusLabel,
@@ -374,6 +350,7 @@ export function useWorkspaceController() {
     modeSelectionDisabled,
     modeOptions,
     providerSizeOptions,
+    limitHighResolutionCount,
     maxReferenceFiles,
     hasRunningTask,
     status,

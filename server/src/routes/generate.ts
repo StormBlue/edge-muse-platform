@@ -72,7 +72,7 @@ const generateSchema = z.object({
   sessionId: optionalSessionIdSchema,
   title: z.string().trim().min(1).max(80).optional(),
   prompt: z.string().min(1).max(4000),
-  mode: z.enum(["text2image", "image2image", "chat"]).default("text2image"),
+  mode: z.enum(["text2image", "image2image"]).default("text2image"),
   size: z
     .string()
     .refine((value) => allowedSizes.includes(value) || /^\d+x\d+$/.test(value), "Invalid size")
@@ -126,7 +126,7 @@ generateRoutes.post(
       });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
-    // 非 sysadmin 的 n 可能被压到 1（多轮 chat 等策略见 lib/generationPolicy）
+    // 非 sysadmin 的 n 会被压到 1；sysadmin 仍受服务商能力校验约束。
     const body = {
       ...generateBody,
       n: resolveImageCountForRole(user.role, generateBody.mode, generateBody.n),

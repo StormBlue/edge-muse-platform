@@ -4,7 +4,7 @@
  * 与 `OpenAICompatibleProvider` 的区别：
  * - 不先尝试 `/v1/responses`，文生图直接走 `/v1/images/generations`。
  * - 图生图直接走 multipart 的 `/v1/images/edits`。
- * - 不声明 chat 支持，任务创建阶段会提前拦截 Cubence 的连续对话模式。
+ * - 只声明文生图和图生图，任务创建阶段会提前拦截不支持的模式。
  */
 import { logError, logInfo, logWarn, urlSummary } from "../lib/log";
 import { toArrayBuffer } from "../lib/encoding";
@@ -88,7 +88,7 @@ export class OpenAIImagesProvider implements ImageProvider {
     });
     if (req.mode === "text2image") return this.generations(req);
     if (req.mode === "image2image") return this.edits(req);
-    throw new ProviderError("PROVIDER_UNSUPPORTED_MODE", `${this.name} does not support chat mode`);
+    throw new ProviderError("PROVIDER_UNSUPPORTED_MODE", `${this.name} does not support this mode`);
   }
 
   /** Cubence 文生图：JSON 请求，返回 data[].b64_json。 */

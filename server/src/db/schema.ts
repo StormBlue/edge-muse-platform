@@ -154,7 +154,7 @@ export const quotaTransactions = sqliteTable(
 );
 
 /**
- * 聊天/生图会话：`mode` 与 `tasks.mode` 对齐；`settings` 存 `size`/`n`/`model` JSON；
+ * 生图会话：`mode` 与 `tasks.mode` 对齐；`settings` 存 `size`/`n`/`model` JSON；
  * `lastMessageAt` 供列表排序；`archived` 为布尔；`deleted_at` 为软删。
  */
 export const sessions = sqliteTable("sessions", {
@@ -163,7 +163,7 @@ export const sessions = sqliteTable("sessions", {
     .notNull()
     .references(() => users.id),
   title: text("title").notNull(),
-  mode: text("mode", { enum: ["text2image", "image2image", "chat"] }).notNull(),
+  mode: text("mode", { enum: ["text2image", "image2image"] }).notNull(),
   providerKeyId: text("provider_key_id").references(() => providerKeys.id),
   settings: text("settings").notNull(),
   createdAt: integer("created_at").notNull(),
@@ -222,7 +222,7 @@ export const tasks = sqliteTable(
     status: text("status", {
       enum: ["queued", "running", "succeeded", "failed", "cancelled"]
     }).notNull(),
-    mode: text("mode", { enum: ["text2image", "image2image", "chat"] }).notNull(),
+    mode: text("mode", { enum: ["text2image", "image2image"] }).notNull(),
     params: text("params").notNull(),
     errorCode: text("error_code"),
     errorMsg: text("error_msg"),
