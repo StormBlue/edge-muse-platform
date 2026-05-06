@@ -1,5 +1,6 @@
-import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +8,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const serverRoot = join(scriptDir, "..");
 const repoRoot = join(serverRoot, "..");
 const wranglerBin = join(serverRoot, "node_modules", "wrangler", "bin", "wrangler.js");
+const execFileAsync = promisify(execFile);
 
 const args = parseArgs(process.argv.slice(2));
 const manifestPath = args.manifest
@@ -21,6 +23,8 @@ const outPath = args.out
 const dryRun = Boolean(args.dryRun);
 const remote = args.local ? "--local" : "--remote";
 const retries = Number.isFinite(Number(args.retries)) ? Math.max(1, Number(args.retries)) : 5;
+const progressEvery = Number.isFinite(Number(args.progressEvery)) ? Math.max(1, Number(args.progressEvery)) : 50;
+const concurrency = Number.isFinite(Number(args.concurrency)) ? Math.max(1, Number(args.concurrency)) : 1;
 
 if (!publicBaseUrl) {
   throw new Error(
@@ -38,12 +42,15 @@ const mapping = {
   sourceManifest: relativePath(manifestPath),
   dryRun,
   total: downloaded.length,
+  concurrency,
   success: 0,
   failed: 0,
   items: []
 };
 
-for (const item of downloaded) {
+let completed = 0;
+
+await runPool(downloaded, concurrency, async (item) => {
   const localPath = resolveFromRepo(item.localPath);
   const objectKey = `${prefix}/${categoryPathSegment(item.category)}/${basename(localPath)}`;
   const publicUrl = `${publicBaseUrl}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
@@ -64,7 +71,7 @@ for (const item of downloaded) {
 
   try {
     if (!dryRun) {
-      runWithRetries([
+      await runWithRetries([
         wranglerBin,
         "r2",
         "object",
@@ -87,8 +94,15 @@ for (const item of downloaded) {
     mapping.failed += 1;
   }
   mapping.items.push(result);
-}
+  completed += 1;
+  if (completed % progressEvery === 0 || completed === downloaded.length) {
+    console.log(`${dryRun ? "Prepared" : "Uploaded"} ${completed}/${downloaded.length}`);
+  }
+});
 
+mapping.items.sort((left, right) => (left.objectKey || "").localeCompare(right.objectKey || ""));
+
+mkdirSync(dirname(outPath), { recursive: true });
 writeFileSync(outPath, JSON.stringify(mapping, null, 2) + "\n");
 
 console.log(`${dryRun ? "Prepared" : "Uploaded"} ${mapping.success}/${mapping.total} prompt case images`);
@@ -116,7 +130,7 @@ function parseArgs(values) {
 }
 
 function resolveFromRepo(path) {
-  if (/^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("\\\\")) return path;
+  if (/^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("\\\\")) return path;
   return join(repoRoot, path);
 }
 
@@ -140,7 +154,27 @@ function categoryPathSegment(value) {
     "角色与世界观": "character-worldbuilding",
     "UI 与社媒截图": "ui-social-screenshots",
     "信息图与知识卡": "infographics-knowledge-cards",
-    "视频感关键帧": "cinematic-keyframes"
+    "视频感关键帧": "cinematic-keyframes",
+    "摄影写实与胶片": "photoreal-film",
+    "商品广告与营销": "product-marketing",
+    "电商商品展示": "ecommerce-products",
+    "食品餐饮广告": "food-restaurant-ads",
+    "Logo 与品牌系统": "logo-brand-identity",
+    "海报与字体设计": "poster-typography",
+    "插画艺术与风格化": "illustration-stylized-art",
+    "古典历史与国风": "classical-chinese-history",
+    "角色设定与参考图": "character-reference-sheets",
+    "IP 角色与世界观": "character-worldbuilding",
+    "UI 界面与产品图": "ui-product-screens",
+    "聊天与社交截图": "chat-social-screenshots",
+    "直播与短视频界面": "live-short-video-screens",
+    "信息图表与数据": "infographics-data",
+    "知识卡片与科普": "knowledge-science-cards",
+    "文档排版与出版": "document-publication-layout",
+    "电影分镜与关键帧": "cinematic-storyboard-keyframes",
+    "游戏与娱乐场景": "game-entertainment-scenes",
+    "建筑空间与室内": "architecture-interiors",
+    "社交媒体截图": "social-media-screenshots"
   };
   return explicit[String(value ?? "").trim()] ?? slugify(value || "uncategorized");
 }
@@ -159,20 +193,32 @@ function slugify(value) {
   return cleaned || "uncategorized";
 }
 
-function runWithRetries(args) {
+async function runWithRetries(args) {
   let lastError = null;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      execFileSync(process.execPath, args, { cwd: serverRoot, stdio: "pipe" });
+      await execFileAsync(process.execPath, args, { cwd: serverRoot, maxBuffer: 1024 * 1024 * 8 });
       return;
     } catch (error) {
       lastError = error;
       if (attempt === retries) break;
       const delayMs = Math.min(5000, 500 * attempt);
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, delayMs));
     }
   }
   throw lastError;
+}
+
+async function runPool(items, maxConcurrent, worker) {
+  let index = 0;
+  const runners = Array.from({ length: maxConcurrent }, async () => {
+    while (index < items.length) {
+      const item = items[index];
+      index += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 function commandErrorMessage(error) {

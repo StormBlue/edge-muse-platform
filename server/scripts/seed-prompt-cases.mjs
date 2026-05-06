@@ -6,10 +6,20 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const serverRoot = join(scriptDir, "..");
-const seedPath = join(scriptDir, "prompt-cases.seed.json");
+const repoRoot = join(serverRoot, "..");
+const args = parseArgs(process.argv.slice(2));
+const seedPath = args.seed ? resolveFromRepo(args.seed) : join(scriptDir, "prompt-cases.seed.json");
 const wranglerBin = join(serverRoot, "node_modules", "wrangler", "bin", "wrangler.js");
 const timestamp = Date.now();
-const remoteArg = process.argv.includes("--remote") ? "--remote" : "--local";
+const remoteArg = args.remote ? "--remote" : "--local";
+const batchSize = Math.max(1, intArg(args.batchSize ?? args["batch-size"], 10));
+const statementsPerFile = Math.max(
+  1,
+  intArg(args.statementsPerFile ?? args["statements-per-file"], args.remote ? 20 : 1)
+);
+const retries = Math.max(1, intArg(args.retries, 3));
+const quiet = Boolean(args.quiet);
+const progressEvery = Math.max(1, intArg(args.progressEvery ?? args["progress-every"], 1));
 
 const seed = JSON.parse(readFileSync(seedPath, "utf8"));
 
@@ -52,14 +62,15 @@ function toRow(item) {
 )`;
 }
 
-// 种子案例走 UPSERT：可重复执行，便于本地演示和远端首批案例发布。
-const command = `
+function renderCommand(items) {
+  // 种子案例走 UPSERT：可重复执行，便于本地演示和远端首批案例发布。
+  return `
 INSERT INTO prompt_cases (
   id, title, category, modes, recommended_size, tags, prompt_template, prompt_summary,
   thumbnail_url, source_url, source_author, source_license, source_repo, popularity,
   status, featured, sort_order, locale, created_by, updated_by, created_at, updated_at
 ) VALUES
-${seed.cases.map(toRow).join(",\n")}
+${items.map(toRow).join(",\n")}
 ON CONFLICT(id) DO UPDATE SET
   title = excluded.title,
   category = excluded.category,
@@ -80,21 +91,94 @@ ON CONFLICT(id) DO UPDATE SET
   locale = excluded.locale,
   updated_at = excluded.updated_at;
 `;
+}
 
 const tmp = mkdtempSync(join(tmpdir(), "edge-muse-prompt-cases-"));
-const sqlPath = join(tmp, "seed-prompt-cases.sql");
 
 try {
-  writeFileSync(sqlPath, command, "utf8");
-  execFileSync(
-    process.execPath,
-    [wranglerBin, "d1", "execute", "edge-muse", remoteArg, "--file", sqlPath],
-    {
-      cwd: serverRoot,
-      stdio: "inherit"
+  const cases = Array.isArray(seed.cases) ? seed.cases : [];
+  let fileNumber = 0;
+  for (let index = 0; index < cases.length; index += batchSize * statementsPerFile) {
+    fileNumber += 1;
+    const fileStart = index;
+    const commands = [];
+    for (
+      let statementIndex = index;
+      statementIndex < Math.min(index + batchSize * statementsPerFile, cases.length);
+      statementIndex += batchSize
+    ) {
+      commands.push(renderCommand(cases.slice(statementIndex, statementIndex + batchSize)));
     }
-  );
-  console.log(`Seeded ${seed.cases.length} prompt cases from ${seed.source}`);
+    const sqlPath = join(tmp, `seed-prompt-cases-${fileNumber}.sql`);
+    writeFileSync(sqlPath, commands.join("\n"), "utf8");
+    executeD1File(sqlPath);
+    const fileEnd = Math.min(index + batchSize * statementsPerFile, cases.length);
+    if (fileNumber % progressEvery === 0 || fileEnd >= cases.length) {
+      console.log(`Seeded prompt case batch ${fileStart + 1}-${fileEnd}/${cases.length}`);
+    }
+  }
+  console.log(`Seeded ${cases.length} prompt cases from ${seed.source ?? seedPath}`);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
+}
+
+function executeD1File(sqlPath) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      execFileSync(
+        process.execPath,
+        [wranglerBin, "d1", "execute", "edge-muse", remoteArg, "--file", sqlPath],
+        {
+          cwd: serverRoot,
+          stdio: quiet ? "pipe" : "inherit"
+        }
+      );
+      return;
+    } catch (error) {
+      lastError = error;
+      if (quiet) printCommandOutput(error);
+      if (attempt >= retries) break;
+      console.warn(`D1 batch failed, retrying ${attempt + 1}/${retries}...`);
+      sleep(1000 * attempt);
+    }
+  }
+  throw lastError;
+}
+
+function intArg(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : fallback;
+}
+
+function printCommandOutput(error) {
+  for (const output of [error.stdout, error.stderr]) {
+    const text = output?.toString?.();
+    if (text) process.stderr.write(text);
+  }
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function parseArgs(values) {
+  const parsed = {};
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (!value.startsWith("--")) continue;
+    const key = value.slice(2);
+    const next = values[index + 1];
+    if (!next || next.startsWith("--")) parsed[key] = true;
+    else {
+      parsed[key] = next;
+      index += 1;
+    }
+  }
+  return parsed;
+}
+
+function resolveFromRepo(path) {
+  if (/^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("/") || path.startsWith("\\\\")) return path;
+  return join(repoRoot, path);
 }
