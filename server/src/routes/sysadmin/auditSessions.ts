@@ -5,6 +5,7 @@ import { appError } from "../../lib/errors";
 import { parseJson } from "../../lib/json";
 import {
   hasColumn,
+  normalizeSysadminSessionMode,
   type AuditImageAttachment,
   type SysadminRouter,
   type TaskParamsWithReferences
@@ -152,7 +153,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         user_nickname: string | null;
         user_role: "sysadmin" | "admin" | "user" | null;
         title: string;
-        mode: "text2image" | "image2image" | "chat";
+        mode: string;
         provider_key_id: string | null;
         settings: string;
         created_at: number;
@@ -182,7 +183,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
           role: row.user_role
         },
         title: row.title,
-        mode: row.mode,
+        mode: normalizeSysadminSessionMode(row.mode),
         providerKeyId: row.provider_key_id,
         settings: parseJson(row.settings, {}),
         createdAt: row.created_at,
@@ -234,7 +235,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         id: string;
         user_id: string;
         title: string;
-        mode: "text2image" | "image2image" | "chat";
+        mode: string;
         provider_key_id: string | null;
         settings: string;
         created_at: number;
@@ -283,7 +284,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         task_id: string | null;
         status: string;
         created_at: number;
-        task_mode: "text2image" | "image2image" | "chat" | null;
+        task_mode: string | null;
         task_params: string | null;
         task_status: string | null;
         task_error_code: string | null;
@@ -304,7 +305,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
         id: session.id,
         userId: session.user_id,
         title: session.title,
-        mode: session.mode,
+        mode: normalizeSysadminSessionMode(session.mode),
         providerKeyId: session.provider_key_id,
         settings: parseJson(session.settings, {}),
         createdAt: session.created_at,
@@ -352,7 +353,7 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
           task: row.task_id
             ? {
                 id: row.task_id,
-                mode: row.task_mode,
+                mode: row.task_mode ? normalizeSysadminSessionMode(row.task_mode) : null,
                 params: taskParams,
                 status: row.task_status,
                 errorCode: row.task_error_code,

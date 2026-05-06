@@ -45,6 +45,12 @@ describe("useAiImageCases", () => {
     expect(mocks.listPublishedPromptCases).toHaveBeenCalledWith({ locale: "en-US" });
   });
 
+  it("defaults the selected mode to image to image", () => {
+    const cases = useAiImageCases();
+
+    expect(cases.selectedMode.value).toBe("image2image");
+  });
+
   it("keeps case mode filters independent from the initially selected case", async () => {
     mocks.listPublishedPromptCases.mockResolvedValueOnce([
       promptCase({ id: "txt", modes: ["text2image"] }),

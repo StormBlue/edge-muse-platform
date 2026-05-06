@@ -868,7 +868,7 @@ openApiDocument.paths = {
             description: "新会话标题；省略时服务端自动生成。"
           },
           prompt: { type: "string", minLength: 1, maxLength: 4000 },
-          mode: { $ref: "#/components/schemas/GenerationMode", default: "text2image" },
+          mode: { $ref: "#/components/schemas/GenerationMode", default: "image2image" },
           size: {
             type: "string",
             default: "1024x1024",
@@ -1090,7 +1090,7 @@ openApiDocument.paths = {
         type: "object",
         properties: {
           title: { type: "string", minLength: 1, maxLength: 80 },
-          mode: { $ref: "#/components/schemas/GenerationMode", default: "text2image" },
+          mode: { $ref: "#/components/schemas/GenerationMode", default: "image2image" },
           settings: {
             $ref: "#/components/schemas/SessionSettings",
             default: { size: "1024x1024", n: 1 }

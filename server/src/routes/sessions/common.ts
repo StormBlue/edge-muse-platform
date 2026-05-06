@@ -7,6 +7,10 @@ export type SessionRouter = Hono<AppEnv>;
 
 export const modeSchema = z.enum(["text2image", "image2image"]);
 
+export function normalizeSessionMode(value: unknown) {
+  return value === "text2image" ? "text2image" : "image2image";
+}
+
 /** 会话默认生图参数，整段 JSON 存 D1 `sessions.settings`。 */
 export const settingsSchema = z.object({
   size: z.string().default("1024x1024"),

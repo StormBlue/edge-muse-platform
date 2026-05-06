@@ -101,7 +101,6 @@
     "generationFailedHint": "这次没有生成可用图片，可以重试或调整描述后重新提交。",
     "text2image": "文生图",
     "image2image": "图生图",
-    "chat": "对话",
     "referenceImage": "参考图",
     "referenceImages": "{count} 张参考图",
     "addReferenceImage": "添加参考图",

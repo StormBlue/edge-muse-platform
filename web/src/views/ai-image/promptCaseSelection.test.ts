@@ -126,6 +126,15 @@ describe("prompt case selection", () => {
       mode: "text2image"
     });
   });
+
+  it("prefers image to image when legacy mixed cases list text to image first", () => {
+    expect(
+      promptCaseApplyResult({ ...cases[1], modes: ["text2image", "image2image"] }, "")
+    ).toEqual({
+      prompt: "保留参考图轮廓，生成角色设定",
+      mode: "image2image"
+    });
+  });
 });
 
 function promptCase(overrides: Partial<PromptCase>): PromptCase {

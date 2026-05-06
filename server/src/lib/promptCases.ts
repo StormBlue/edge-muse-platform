@@ -15,7 +15,7 @@ import { newId, now } from "./id";
 import { parseJson, stringifyJson } from "./json";
 import type { AppBindings } from "../types";
 
-export const PROMPT_CASE_MODES = ["text2image", "image2image"] as const;
+export const PROMPT_CASE_MODES = ["image2image", "text2image"] as const;
 export const PROMPT_CASE_STATUSES = ["draft", "published", "hidden", "archived"] as const;
 export const PROMPT_CASE_LOCALES = ["zh-CN", "en-US"] as const;
 export const PROMPT_CASE_LICENSES = ["CC BY 4.0", "original", "internal"] as const;

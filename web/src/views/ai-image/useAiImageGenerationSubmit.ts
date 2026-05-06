@@ -33,7 +33,7 @@ export function useAiImageGenerationSubmit() {
   const { t } = useI18n();
   const auth = useAuthStore();
   const sessions = useSessionStore();
-  const mode = ref<PromptCaseMode>("text2image");
+  const mode = ref<PromptCaseMode>("image2image");
   const size = ref("1024x1024");
   const files = ref<File[]>([]);
   const previews = ref<Array<{ file: File; url: string }>>([]);
@@ -52,7 +52,7 @@ export function useAiImageGenerationSubmit() {
     return options;
   });
   const supportedModes = computed(() =>
-    (auth.providerCapabilities?.supportedModes ?? ["text2image", "image2image"]).filter(
+    (auth.providerCapabilities?.supportedModes ?? ["image2image", "text2image"]).filter(
       (item): item is PromptCaseMode => item === "text2image" || item === "image2image"
     )
   );

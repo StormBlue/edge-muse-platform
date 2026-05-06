@@ -34,7 +34,7 @@ export function useWorkspaceController() {
 
   const selectedImage = ref<ImageAttachment | null>(null);
   const activePreviewImageId = ref<string | null>(null);
-  const activeMode = ref<SessionMode>("text2image");
+  const activeMode = ref<SessionMode>("image2image");
   const draftTitle = ref(defaultSessionTitle());
   const submitting = ref(false);
 
@@ -125,12 +125,12 @@ export function useWorkspaceController() {
     () => submitting.value || hasRunningTask.value || oneShotTaskLocked.value
   );
   const allModeOptions = computed<ModeOption[]>(() => [
-    { value: "text2image", label: t("workspace.text2image"), icon: Type },
-    { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon }
+    { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon },
+    { value: "text2image", label: t("workspace.text2image"), icon: Type }
   ]);
   const providerCapabilities = computed(() => auth.providerCapabilities);
   const supportedModes = computed<SessionMode[]>(
-    () => providerCapabilities.value?.supportedModes ?? ["text2image", "image2image"]
+    () => providerCapabilities.value?.supportedModes ?? ["image2image", "text2image"]
   );
   const modeOptions = computed(() =>
     allModeOptions.value.filter((option) => supportsMode(option.value))
@@ -279,7 +279,7 @@ export function useWorkspaceController() {
     sessions.nextMessageCursor = null;
     activePreviewImageId.value = null;
     selectedImage.value = null;
-    activeMode.value = "text2image";
+    activeMode.value = "image2image";
     normalizeActiveMode();
     draftTitle.value = defaultSessionTitle();
   }
@@ -291,7 +291,7 @@ export function useWorkspaceController() {
   function normalizeActiveMode() {
     if (supportsMode(activeMode.value)) return;
     if (modeSelectionDisabled.value) return;
-    activeMode.value = supportedModes.value[0] ?? "text2image";
+    activeMode.value = supportedModes.value[0] ?? "image2image";
   }
 
   function supportsSize(size: string) {

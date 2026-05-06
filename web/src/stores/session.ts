@@ -153,7 +153,7 @@ export const useSessionStore = defineStore("sessions", {
       }
     },
     /** 创建新会话并切到该会话，清空当前消息流与消息游标 */
-    async createSession(mode: SessionMode = "text2image") {
+    async createSession(mode: SessionMode = "image2image") {
       const body = await apiFetch<{ session: Session }>("/sessions", {
         method: "POST",
         body: JSON.stringify({ mode, settings: { size: "1024x1024", n: 1 } })
@@ -395,5 +395,5 @@ function normalizeSession(session: Session): Session {
 }
 
 function normalizeSessionMode(mode: unknown): SessionMode {
-  return mode === "image2image" ? "image2image" : "text2image";
+  return mode === "text2image" ? "text2image" : "image2image";
 }

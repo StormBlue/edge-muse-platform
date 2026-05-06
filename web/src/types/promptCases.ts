@@ -4,7 +4,7 @@
  * 这些枚举与 server/src/lib/promptCases.ts 保持一致；前端集中声明后，
  * sysadmin 管理页、用户端案例库和 AI 图像生成页都复用同一套类型。
  */
-export const PROMPT_CASE_MODES = ["text2image", "image2image"] as const;
+export const PROMPT_CASE_MODES = ["image2image", "text2image"] as const;
 export const PROMPT_CASE_STATUSES = ["draft", "published", "hidden", "archived"] as const;
 export const PROMPT_CASE_LOCALES = ["zh-CN", "en-US"] as const;
 export const PROMPT_CASE_LICENSES = ["CC BY 4.0", "original", "internal"] as const;
@@ -84,7 +84,7 @@ export function emptyPromptCaseForm(): PromptCaseFormInput {
   return {
     title: "",
     category: "",
-    modes: ["text2image"],
+    modes: ["image2image"],
     recommendedSize: "1:1",
     tags: [],
     promptTemplate: "",

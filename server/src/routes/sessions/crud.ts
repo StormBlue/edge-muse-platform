@@ -23,7 +23,7 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
       "json",
       z.object({
         title: z.string().trim().min(1).max(80).optional(),
-        mode: modeSchema.default("text2image"),
+        mode: modeSchema.default("image2image"),
         settings: settingsSchema.default({ size: "1024x1024", n: 1 })
       })
     ),

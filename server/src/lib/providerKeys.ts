@@ -26,7 +26,7 @@ export type ProviderCapabilities = {
 };
 
 const PLATFORM_REFERENCE_IMAGE_LIMIT = 5;
-const ALL_SESSION_MODES: SessionMode[] = ["text2image", "image2image"];
+const ALL_SESSION_MODES: SessionMode[] = ["image2image", "text2image"];
 
 /**
  * 为任务解析实际使用的 `provider_keys` 行：优先用户偏好的 key →

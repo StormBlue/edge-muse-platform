@@ -45,7 +45,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
   id = "openai_compatible";
   name = "OpenAI Compatible";
   supportedSizes = DEFAULT_SIZES;
-  supportedModes: ImageProvider["supportedModes"] = ["text2image", "image2image"];
+  supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
 
   /** 以 GET /v1/models 探测密钥是否可用 */
   async health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean> {
@@ -260,7 +260,7 @@ export class MicuImagesProvider extends OpenAICompatibleProvider {
   id = "micu_images";
   name = "Micu Images";
   supportedSizes = DEFAULT_SIZES;
-  supportedModes: ImageProvider["supportedModes"] = ["text2image", "image2image"];
+  supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
   maxReferenceImages = 1;
 
   async generate(req: GenerateRequest): Promise<GenerateResponse> {

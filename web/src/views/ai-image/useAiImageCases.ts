@@ -30,7 +30,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   const selectedId = ref<string | null>(null);
   const category = ref("");
   const filterMode = ref<"" | PromptCaseMode>("");
-  const selectedMode = ref<PromptCaseMode>("text2image");
+  const selectedMode = ref<PromptCaseMode>("image2image");
   const size = ref("");
   const search = ref("");
   const finalPrompt = ref("");
@@ -151,7 +151,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       caseContextId.value = null;
       if (finalPromptSource.value === "case") clearPrompt({ discardResetTarget: true });
       if (resettablePromptSource.value === "case") discardResetTarget();
-      selectedMode.value = supportedModes.value[0] ?? "text2image";
+      selectedMode.value = supportedModes.value[0] ?? "image2image";
       return;
     }
     const contextAvailable = caseContextId.value

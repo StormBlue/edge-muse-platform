@@ -101,7 +101,6 @@
     "generationFailedHint": "No usable image was generated. Retry or adjust the prompt and submit again.",
     "text2image": "Text to image",
     "image2image": "Image to image",
-    "chat": "Chat",
     "referenceImage": "Reference",
     "referenceImages": "{count} references",
     "addReferenceImage": "Add reference",

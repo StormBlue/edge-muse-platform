@@ -4,6 +4,10 @@ import type { AppEnv } from "../../types";
 
 export type SysadminRouter = Hono<AppEnv>;
 
+export function normalizeSysadminSessionMode(value: unknown) {
+  return value === "text2image" ? "text2image" : "image2image";
+}
+
 /** 巡查接口返回的附件形状：比前台多生成耗时、第几张等排障字段。 */
 export type AuditImageAttachment = {
   id: string;

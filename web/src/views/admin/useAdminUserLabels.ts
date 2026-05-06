@@ -53,7 +53,6 @@ export function useAdminUserLabels(input: {
   function modeLabel(mode: string) {
     if (mode === "text2image") return t("workspace.text2image");
     if (mode === "image2image") return t("workspace.image2image");
-    if (mode === "chat") return t("workspace.chat");
     return mode;
   }
 

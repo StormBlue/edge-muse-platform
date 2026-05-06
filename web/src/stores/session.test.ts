@@ -15,6 +15,24 @@ describe("session store task events", () => {
     mockedApiFetch.mockReset();
   });
 
+  it("creates sessions in image to image mode by default", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      session: {
+        id: "ses_1",
+        title: "New session",
+        mode: "image2image",
+        settings: { size: "1024x1024", n: 1 },
+        lastMessageAt: 1
+      }
+    });
+    const sessions = useSessionStore();
+
+    await sessions.createSession();
+
+    const request = mockedApiFetch.mock.calls[0]?.[1] as { body: string };
+    expect(JSON.parse(request.body)).toMatchObject({ mode: "image2image" });
+  });
+
   it("keeps partial images from failed task events", () => {
     const sessions = useSessionStore();
     sessions.messages = [

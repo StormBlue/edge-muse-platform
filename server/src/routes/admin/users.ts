@@ -363,7 +363,14 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
       .select({ count: sql<number>`count(*)` })
       .from(tasks)
       .where(eq(tasks.userId, target.id));
-    return c.json({ stats: stats.results, trend: trend.results, total: totalRow[0]?.count ?? 0 });
+    return c.json({
+      stats: stats.results.map((row) => ({
+        ...row,
+        mode: row.mode === "text2image" ? "text2image" : "image2image"
+      })),
+      trend: trend.results,
+      total: totalRow[0]?.count ?? 0
+    });
   });
 
   adminRoutes.post(

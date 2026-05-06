@@ -66,9 +66,17 @@ describe("useAiImageGenerationSubmit", () => {
     });
   });
 
+  it("defaults new AI image submissions to image to image", () => {
+    const generation = useAiImageGenerationSubmit();
+
+    expect(generation.mode.value).toBe("image2image");
+    expect(generation.supportedModes.value).toEqual(["image2image", "text2image"]);
+  });
+
   it("exposes failed task state and retries through the shared retry API", async () => {
     const generation = useAiImageGenerationSubmit();
     const sessions = useSessionStore();
+    generation.mode.value = "text2image";
 
     await generation.submit("失败后重试的 prompt", undefined, {
       route: "/ai-image",

@@ -3,7 +3,7 @@
  *
  * 组件和组合函数只负责状态绑定；筛选规则集中在这里，便于覆盖搜索、模式和尺寸边界。
  */
-import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
+import { PROMPT_CASE_MODES, type PromptCase, type PromptCaseMode } from "@/types/promptCases";
 
 export type PromptCaseSelectionFilters = {
   category: string;
@@ -79,9 +79,10 @@ export function promptCaseApplyResult(
     : item.modes;
   const supportedMode =
     currentMode && itemSupportedModes.includes(currentMode) ? currentMode : null;
+  const preferredMode = PROMPT_CASE_MODES.find((mode) => itemSupportedModes.includes(mode));
   return {
     prompt: item.promptTemplate,
-    mode: supportedMode || itemSupportedModes[0] || "text2image"
+    mode: supportedMode || preferredMode || "image2image"
   };
 }
 

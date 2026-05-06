@@ -36,7 +36,7 @@ export class OpenAIImagesProvider implements ImageProvider {
   id = "openai_images";
   name = "OpenAI Images";
   supportedSizes = DEFAULT_SIZES;
-  supportedModes: ImageProvider["supportedModes"] = ["text2image", "image2image"];
+  supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
   /** Cubence 文档只展示一个 `image` 字段，首版按单参考图严格处理。 */
   maxReferenceImages = 1;
 
