@@ -10,18 +10,18 @@ Edge Muse 使用 **Cloudflare D1**（SQLite）存储平台状态；Schema 以 **
 
 ## 主要实体（概念层）
 
-| 领域      | 表（见 schema 实名）                                         | 说明                                                    |
-| --------- | ------------------------------------------------------------ | ------------------------------------------------------- |
-| 账号      | `users`                                                      | sysadmin / admin / user；`preferred_provider_key_id` 等 |
-| 配额      | `quotas`                                                     | 按用户张数配额与扣减                                    |
-| 服务商    | `providers`                                                  | `request_format`、`supported_sizes`、内置 catalog 维护  |
-| 密钥      | `provider_keys`                                              | AES-GCM 密文；与 `providers` 外键                       |
-| 绑定      | `user_provider_keys`                                         | 用户与密钥行一对一绑定                                  |
-| 会话/消息 | `sessions`, `messages`                                       | 工作台上下文与附件 JSON                                 |
-| 任务      | `tasks`                                                      | 异步生图状态与 provider 原始响应等                      |
-| 实验      | `experiments`, `experiment_assignments`, `experiment_events` | 生成入口 A/B、按用户分配覆盖、结构化事件                |
-| 图片      | `image_objects`                                              | R2 对象元数据                                           |
-| 审计      | `audit_logs`                                                 | 管理类写操作                                            |
+| 领域      | 表（见 schema 实名）                             | 说明                                                                       |
+| --------- | ------------------------------------------------ | -------------------------------------------------------------------------- |
+| 账号      | `users`                                          | sysadmin / admin / user；`preferred_provider_key_id` 等                    |
+| 配额      | `quotas`                                         | 按用户张数配额与扣减                                                       |
+| 服务商    | `providers`                                      | `request_format`、`supported_sizes`、内置 catalog 维护                     |
+| 密钥      | `provider_keys`                                  | AES-GCM 密文；与 `providers` 外键                                          |
+| 绑定      | `user_provider_keys`                             | 用户与密钥行一对一绑定                                                     |
+| 会话/消息 | `sessions`, `messages`                           | 工作台上下文与附件 JSON                                                    |
+| 任务      | `tasks`                                          | 异步生图状态与 provider 原始响应等                                         |
+| 生成入口  | `generation_entry_settings`, `generation_events` | 普通用户可见工作台/AI 图像页开关、漏斗与任务归因事件（最近 30 天用量摘要） |
+| 图片      | `image_objects`                                  | R2 对象元数据                                                              |
+| 审计      | `audit_logs`                                     | 管理类写操作                                                               |
 
 ## 迁移流程
 

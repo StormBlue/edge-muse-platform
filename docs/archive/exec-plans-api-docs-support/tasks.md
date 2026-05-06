@@ -1,6 +1,8 @@
 # 任务列表 — API 文档支持
 
-**关联需求**: [`requirements.md`](./requirements.md)
+**关联需求**: [`requirements.md`](./requirements.md)  
+**归档位置**: `docs/archive/exec-plans-api-docs-support/` — 本计划已交付；后续只维护 OpenAPI 源码与 `docs/API.md` / `docs/README.md`。
+
 **估算量级**: 中 (审核轮数：5)
 **总体进度**: ✅ 6 / 6
 
@@ -33,7 +35,7 @@ graph TD
 
 ### Task 1.1 ✅ 建立需求与任务文档
 
-**描述**: 在 `docs/exec-plans/api-docs-support/` 记录需求、风险、任务和验收标准。
+**描述**: 在 `docs/archive/exec-plans-api-docs-support/` 记录需求、风险、任务和验收标准（本计划已归档）。
 **依赖**: 无
 **阻塞**: T2.1
 **验收**:
@@ -173,7 +175,8 @@ graph TD
 
 ## 变更记录
 
-| 日期       | 变更           |
-| ---------- | -------------- |
-| 2026-04-30 | 初稿，6 个任务 |
-| 2026-04-30 | 完成实现与验证 |
+| 日期       | 变更                                                                       |
+| ---------- | -------------------------------------------------------------------------- |
+| 2026-04-30 | 初稿，6 个任务                                                             |
+| 2026-04-30 | 完成实现与验证                                                             |
+| 2026-05-06 | 迁至 `docs/archive/exec-plans-api-docs-support/`；任务描述中的路径已更新。 |

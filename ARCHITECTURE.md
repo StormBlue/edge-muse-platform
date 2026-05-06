@@ -46,14 +46,14 @@ flowchart LR
 
 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 为对外稳定导出面；实现按目录拆分在 [`server/src/lib/tasks/`](server/src/lib/tasks/)（`create`、`dispatch`、`run`、`recovery`、`failure` 等）。路由、Workflow、DO 仅需依赖 `tasks.ts`，不需关心子路径。
 
-## 生成入口实验（A/B）
+## 生成入口与行为事件
 
-- **持久化**：D1 表 `experiments`、`experiment_assignments`、`experiment_events`（见 [`docs/DATABASE.md`](docs/DATABASE.md)）。
-- **业务聚合**：[`server/src/lib/experiments.ts`](server/src/lib/experiments.ts) re-export `experimentCore`、分配、事件写入与 Schema；事件名 catalog 见 [`server/src/lib/generationExperimentEvents.ts`](server/src/lib/generationExperimentEvents.ts)。
-- **用户侧**：[`GET /api/me`](server/src/routes/me.ts) / 登录响应携带 `generationExperience`（导航目标如 `/ai-image`）；[`POST /api/experiments/events`](server/src/routes/experiments.ts) 采集客户端事件；[`POST /api/generate`](server/src/routes/generate.ts) 可附 `experimentEvent`。
-- **系统管理**：[`/api/sysadmin/experiments/generation*`](server/src/routes/sysadmin/generationExperiment.ts) 配置实验、指标与按用户覆盖。
+- **持久化**：D1 表 `generation_entry_settings`（单行 `key=default`）、`generation_events`（漏斗与任务关联事件，见 [`docs/DATABASE.md`](docs/DATABASE.md)）。
+- **领域逻辑**：[`server/src/lib/generationEntry.ts`](server/src/lib/generationEntry.ts) — 普通用户可见入口开关、`navTarget`、客户端/服务端事件写入、按路由聚合的最近用量指标（默认 30 天窗口）。
+- **用户侧**：[`GET /api/me`](server/src/routes/me.ts) 与登录响应携带 `generationEntry`（`showWorkspace` / `showAiImage` / `navTarget`）；[`POST /api/generation/events`](server/src/routes/generationEvents.ts) 采集允许白名单内的客户端事件；[`POST /api/generate`](server/src/routes/generate.ts) 可附 `generationEvent` 以归因路由与案例。
+- **系统管理**：[`GET/PATCH /api/sysadmin/generation-entry`](server/src/routes/sysadmin/generationEntry.ts) 配置入口开关并返回按页统计；**不**再做流量百分比 A/B 分配。
 
-详见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。
+详见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)（文件名沿用历史链接；内容描述当前「生成入口」模型）。
 
 ## 请求与数据流（摘要）
 

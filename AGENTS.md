@@ -23,7 +23,7 @@ pnpm dev
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `server/src/index.ts`   | Worker 入口：中间件、路由挂载、WebSocket、cron                                                                                  |
 | `server/src/routes/`    | REST 路由（含 `experiments`、`promptAssistant`、`promptCases`；auth、me、sessions、generate、images、uploads、admin、sysadmin） |
-| `server/src/lib/`       | `tasks/` 生图管线子模块、`experiments.ts` 实验聚合出口、配额、密钥、R2、JWT、审计等                                             |
+| `server/src/lib/`       | `tasks/` 生图管线子模块、`generationEntry.ts` 生成入口与事件、配额、密钥、R2、JWT、审计等                                       |
 | `server/src/lib/tasks/` | 任务创建/点火/运行/失败/恢复等实现（对外仍经 `lib/tasks.ts` 再导出）                                                            |
 | `server/src/providers/` | 多服务商适配器与内置 catalog                                                                                                    |
 | `server/src/workflows/` | 生图 Workflow                                                                                                                   |
@@ -33,32 +33,32 @@ pnpm dev
 
 ## 架构一览
 
-单一 Worker 托管 API + SPA 静态资源；异步生图走 Workflow/`waitUntil`，状态经 Durable Object WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。生成入口 A/B、`/api/experiments/events` 与 `/api/me` 中的 `generationExperience` 见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+单一 Worker 托管 API + SPA 静态资源；异步生图走 Workflow/`waitUntil`，状态经 Durable Object WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。生成入口开关、导航目标、`POST /api/generation/events` 与 `/api/me` 中的 `generationEntry` 见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 文档地图
 
-| 文档                                                                       | 内容                         |
-| -------------------------------------------------------------------------- | ---------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                       | 组件图、数据流、关键文件索引 |
-| [`docs/README.md`](docs/README.md)                                         | `docs/` 目录索引             |
-| [`docs/DESIGN.md`](docs/DESIGN.md)                                         | 代码组织与约定               |
-| [`docs/API.md`](docs/API.md)                                               | REST 路径与错误格式          |
-| [`docs/DATABASE.md`](docs/DATABASE.md)                                     | D1 表与迁移流程              |
-| [`docs/FRONTEND.md`](docs/FRONTEND.md)                                     | Vue 路由、状态、组件分层     |
-| [`docs/FRONTEND_UI_REDESIGN_BRIEF.md`](docs/FRONTEND_UI_REDESIGN_BRIEF.md) | 前端 UI 重设计功能描述       |
-| [`docs/SECURITY.md`](docs/SECURITY.md)                                     | 认证、密钥、数据边界         |
-| [`docs/RELIABILITY.md`](docs/RELIABILITY.md)                               | 任务恢复、cron、备份         |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                                 | Wrangler、CI/CD、环境        |
-| [`docs/TESTING.md`](docs/TESTING.md)                                       | Vitest 与验证命令            |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md)                                 | 迁移、密钥、日志、演练       |
-| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)                               | 生成入口 A/B、实验事件与配置 |
-| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)                                 | 终端用户说明                 |
-| [`docs/DEMO.md`](docs/DEMO.md)                                             | 内部演示脚本                 |
-| [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)                                 | 验收与发布前检查             |
-| [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md)                           | 质量与已知债                 |
-| [`docs/PRODUCT_SENSE.md`](docs/PRODUCT_SENSE.md)                           | 角色与核心旅程               |
-| [`docs/design-docs/index.md`](docs/design-docs/index.md)                   | 设计决策索引                 |
-| [`docs/archive/README.md`](docs/archive/README.md)                         | 已归档 PRD / 任务书          |
+| 文档                                                                       | 内容                               |
+| -------------------------------------------------------------------------- | ---------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                       | 组件图、数据流、关键文件索引       |
+| [`docs/README.md`](docs/README.md)                                         | `docs/` 目录索引                   |
+| [`docs/DESIGN.md`](docs/DESIGN.md)                                         | 代码组织与约定                     |
+| [`docs/API.md`](docs/API.md)                                               | REST 路径与错误格式                |
+| [`docs/DATABASE.md`](docs/DATABASE.md)                                     | D1 表与迁移流程                    |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md)                                     | Vue 路由、状态、组件分层           |
+| [`docs/FRONTEND_UI_REDESIGN_BRIEF.md`](docs/FRONTEND_UI_REDESIGN_BRIEF.md) | 前端 UI 重设计功能描述             |
+| [`docs/SECURITY.md`](docs/SECURITY.md)                                     | 认证、密钥、数据边界               |
+| [`docs/RELIABILITY.md`](docs/RELIABILITY.md)                               | 任务恢复、cron、备份               |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                                 | Wrangler、CI/CD、环境              |
+| [`docs/TESTING.md`](docs/TESTING.md)                                       | Vitest 与验证命令                  |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md)                                 | 迁移、密钥、日志、演练             |
+| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)                               | 生成入口、行为事件与 sysadmin 配置 |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)                                 | 终端用户说明                       |
+| [`docs/DEMO.md`](docs/DEMO.md)                                             | 内部演示脚本                       |
+| [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)                                 | 验收与发布前检查                   |
+| [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md)                           | 质量与已知债                       |
+| [`docs/PRODUCT_SENSE.md`](docs/PRODUCT_SENSE.md)                           | 角色与核心旅程                     |
+| [`docs/design-docs/index.md`](docs/design-docs/index.md)                   | 设计决策索引                       |
+| [`docs/archive/README.md`](docs/archive/README.md)                         | 已归档 PRD / 任务书                |
 
 ## 关键约定
 

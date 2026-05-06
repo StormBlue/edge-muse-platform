@@ -1,17 +1,20 @@
 # 执行计划 / 技术债
 
-本目录用于存放可追踪的开发任务清单、里程碑和技术债分解；发布前总验收见 [`../ACCEPTANCE.md`](../ACCEPTANCE.md)，模块质量摘要见 [`../QUALITY_SCORE.md`](../QUALITY_SCORE.md)。
+本目录用于存放**进行中**、可追踪的开发任务清单与里程碑；发布前总验收见 [`../ACCEPTANCE.md`](../ACCEPTANCE.md)，模块质量摘要见 [`../QUALITY_SCORE.md`](../QUALITY_SCORE.md)。
 
-## 活跃计划
+## 当前状态
 
-| 计划                                                                       | 用途                                                                    |
-| -------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| [`ai-image-generation-page-tasks.md`](./ai-image-generation-page-tasks.md) | AI 图像生成独立页面、案例管理、提示词助手、A/B 测试管理的分层级任务清单 |
+**暂无活跃的里程碑型执行计划**。最近完成的计划全文已归档：
 
-与本计划配套的 **已实现** 实验后端（路由、分配、指标、sysadmin API）参见 [`../EXPERIMENTS.md`](../EXPERIMENTS.md)。
+| 归档内容                                         | 路径                                                                                                                                                                             | 说明                                                                          |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| AI 图像生成页、案例库、Prompt 助手、生成入口实验 | [`../archive/ai-image-generation-page-tasks.md`](../archive/ai-image-generation-page-tasks.md) · 短链 [`ai-image-generation-page-tasks.md`](./ai-image-generation-page-tasks.md) | 工程交付已完成；未完成勾选项仅限 **AIG-042** 生产灰度运维动作                 |
+| API 文档（OpenAPI + Scalar）                     | [`../archive/exec-plans-api-docs-support/`](../archive/exec-plans-api-docs-support/)                                                                                             | 权威维护：`server/src/docs/openapi.ts`；入口见 [`../README.md`](../README.md) |
+
+实验与运行时行为以 [`../EXPERIMENTS.md`](../EXPERIMENTS.md) 与代码为准。
 
 ## 维护约定
 
-- 任务使用稳定 ID，例如 `AIG-021`，避免后续讨论时引用漂移。
+- 任务使用稳定 ID（例如 `AIG-021`），避免后续讨论引用漂移。
 - 状态使用 `TODO`、`DOING`、`REVIEW`、`DONE`、`BLOCKED`、`DEFERRED`。
-- 完成任务时同步填写验收证据，例如测试命令、截图、PR 或提交号。
+- 完成并封板后：将全文迁入 `docs/archive/`，在本目录保留**短链**说明（参考 `ai-image-generation-page-tasks.md`），并更新 [`../archive/README.md`](../archive/README.md)。

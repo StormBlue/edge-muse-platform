@@ -1,12 +1,13 @@
 # Edge Muse User Guide
 
-## Workspace
+## Workspace and AI image
 
-1. Open **工作台**.
-2. Choose an available mode. The visible modes and sizes follow the provider key assigned to your account.
-3. Enter a prompt, choose size and image count, then click **生成**.
-4. For 图生图, drag, paste, or select reference images. Large images are compressed before upload. Some providers have stricter limits; Cubence currently accepts one reference image for image-to-image.
-5. Click a generated image to open the viewer. The viewer supports zoom, previous/next image, download, prompt copy, and message deletion.
+1. Depending on **Generation entry** settings, you may see **工作台** (`/workspace`), **AI 图像生成** (`/ai-image`), or both. Sysadmins always see both; normal users follow [`EXPERIMENTS.md`](./EXPERIMENTS.md).
+2. Open **工作台** or **AI 图像生成** from the sidebar.
+3. Choose an available mode. The visible modes and sizes follow the provider key assigned to your account.
+4. Enter a prompt, choose size and image count, then click **生成**.
+5. For 图生图, drag, paste, or select reference images. Large images are compressed before upload. Some providers have stricter limits; Cubence currently accepts one reference image for image-to-image.
+6. Click a generated image to open the viewer. The viewer supports zoom, previous/next image, download, prompt copy, and message deletion.
 
 ## History
 
@@ -25,10 +26,11 @@
 
 ## Sysadmin
 
-- Sysadmins manage provider keys, admins, admin passwords, global dashboard metrics, user session audits, and their own default provider key preference. Provider types are selected directly while creating a key; there is no separate provider management page.
+- Sysadmins manage provider keys, admins, admin passwords, global dashboard metrics, user session audits, **`/sysadmin/generation-entry`（入口开关与用量）**，and their own default provider key preference. Provider types are selected directly while creating a key; there is no separate provider management page.
 - Provider keys currently expose 文生图 and 图生图 only. Continuous chat mode is not available.
 
 ## Related docs
 
+- [EXPERIMENTS.md](./EXPERIMENTS.md) — generation entry flags and funnel events
 - [PRODUCT_SENSE.md](./PRODUCT_SENSE.md) — roles and journeys
 - [OPERATIONS.md](./OPERATIONS.md) — sysadmin configuration (operators)
