@@ -20,5 +20,6 @@
 ## 相关文档
 
 - [`ACCEPTANCE.md`](./ACCEPTANCE.md)
+- [`DESIGN.md`](./DESIGN.md)
 - [`design-docs/index.md`](./design-docs/index.md)
 - [`EXPERIMENTS.md`](./EXPERIMENTS.md)

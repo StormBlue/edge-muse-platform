@@ -37,28 +37,28 @@ pnpm dev
 
 ## 文档地图
 
-| 文档                                                                       | 内容                               |
-| -------------------------------------------------------------------------- | ---------------------------------- |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md)                                       | 组件图、数据流、关键文件索引       |
-| [`docs/README.md`](docs/README.md)                                         | `docs/` 目录索引                   |
-| [`docs/DESIGN.md`](docs/DESIGN.md)                                         | 代码组织与约定                     |
-| [`docs/API.md`](docs/API.md)                                               | REST 路径与错误格式                |
-| [`docs/DATABASE.md`](docs/DATABASE.md)                                     | D1 表与迁移流程                    |
-| [`docs/FRONTEND.md`](docs/FRONTEND.md)                                     | Vue 路由、状态、组件分层           |
-| [`docs/FRONTEND_UI_REDESIGN_BRIEF.md`](docs/FRONTEND_UI_REDESIGN_BRIEF.md) | 前端 UI 重设计功能描述             |
-| [`docs/SECURITY.md`](docs/SECURITY.md)                                     | 认证、密钥、数据边界               |
-| [`docs/RELIABILITY.md`](docs/RELIABILITY.md)                               | 任务恢复、cron、备份               |
-| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)                                 | Wrangler、CI/CD、环境              |
-| [`docs/TESTING.md`](docs/TESTING.md)                                       | Vitest 与验证命令                  |
-| [`docs/OPERATIONS.md`](docs/OPERATIONS.md)                                 | 迁移、密钥、日志、演练             |
-| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)                               | 生成入口、行为事件与 sysadmin 配置 |
-| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)                                 | 终端用户说明                       |
-| [`docs/DEMO.md`](docs/DEMO.md)                                             | 内部演示脚本                       |
-| [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)                                 | 验收与发布前检查                   |
-| [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md)                           | 质量与已知债                       |
-| [`docs/PRODUCT_SENSE.md`](docs/PRODUCT_SENSE.md)                           | 角色与核心旅程                     |
-| [`docs/design-docs/index.md`](docs/design-docs/index.md)                   | 设计决策索引                       |
-| [`docs/archive/README.md`](docs/archive/README.md)                         | 已归档 PRD / 任务书                |
+| 文档                                                     | 内容                                    |
+| -------------------------------------------------------- | --------------------------------------- |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md)                     | 组件图、数据流、关键文件索引            |
+| [`CLAUDE.md`](CLAUDE.md)                                 | Claude Code：指向 AGENTS.md，不重贴正文 |
+| [`docs/README.md`](docs/README.md)                       | `docs/` 目录索引                        |
+| [`docs/DESIGN.md`](docs/DESIGN.md)                       | 代码组织与约定                          |
+| [`docs/API.md`](docs/API.md)                             | REST 路径与错误格式                     |
+| [`docs/DATABASE.md`](docs/DATABASE.md)                   | D1 表与迁移流程                         |
+| [`docs/FRONTEND.md`](docs/FRONTEND.md)                   | Vue 路由、状态、双入口 UI、组件分层     |
+| [`docs/SECURITY.md`](docs/SECURITY.md)                   | 认证、密钥、数据边界                    |
+| [`docs/RELIABILITY.md`](docs/RELIABILITY.md)             | 任务恢复、cron、备份                    |
+| [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)               | Wrangler、CI/CD、环境                   |
+| [`docs/TESTING.md`](docs/TESTING.md)                     | Vitest 与验证命令                       |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md)               | 迁移、密钥、日志、演练                  |
+| [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)             | 生成入口、行为事件与 sysadmin 配置      |
+| [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md)               | 终端用户说明                            |
+| [`docs/DEMO.md`](docs/DEMO.md)                           | 内部演示脚本                            |
+| [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md)               | 验收与发布前检查                        |
+| [`docs/QUALITY_SCORE.md`](docs/QUALITY_SCORE.md)         | 质量与已知债                            |
+| [`docs/PRODUCT_SENSE.md`](docs/PRODUCT_SENSE.md)         | 角色与核心旅程                          |
+| [`docs/design-docs/index.md`](docs/design-docs/index.md) | 设计决策索引                            |
+| [`docs/archive/README.md`](docs/archive/README.md)       | 已归档 PRD / 任务书                     |
 
 ## 关键约定
 
@@ -78,4 +78,4 @@ pnpm dev
 
 ## 工具说明
 
-本仓库使用 Cursor 时可将本文件作为项目记忆入口；与 Claude Code 共用同一套 `docs/`，无需维护两套文档地图。
+本仓库使用 Cursor 时可将 [`AGENTS.md`](./AGENTS.md) 作为项目记忆入口；使用 Claude Code 时另见根目录 [`CLAUDE.md`](./CLAUDE.md)（仅指向本文，避免双份维护）。与 Codex 共用同一套 `docs/`。

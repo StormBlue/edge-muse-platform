@@ -88,7 +88,7 @@ GitHub Actions 在 `main` 分支推送时执行同一套 `db:migrate:remote` + `
 
 ## 文档
 
-- AI 助手入口：[AGENTS.md](./AGENTS.md)
+- AI 助手入口：[AGENTS.md](./AGENTS.md)（Cursor / 通用）；Claude Code 见 [CLAUDE.md](./CLAUDE.md)
 - 架构详解：[ARCHITECTURE.md](./ARCHITECTURE.md)
 - API 文档页面：本地启动 Worker 后访问 `http://localhost:8787/api/docs`；OpenAPI 维护入口为 [`server/src/docs/openapi.ts`](./server/src/docs/openapi.ts)
 - 完整索引：[docs/README.md](./docs/README.md)

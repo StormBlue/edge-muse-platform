@@ -8,7 +8,7 @@
 
 | 归档内容                                         | 路径                                                                                                                                                                             | 说明                                                                          |
 | ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| AI 图像生成页、案例库、Prompt 助手、生成入口实验 | [`../archive/ai-image-generation-page-tasks.md`](../archive/ai-image-generation-page-tasks.md) · 短链 [`ai-image-generation-page-tasks.md`](./ai-image-generation-page-tasks.md) | 工程交付已完成；未完成勾选项仅限 **AIG-042** 生产灰度运维动作                 |
+| AI 图像生成页、案例库、Prompt 助手、生成入口实验 | [`../archive/ai-image-generation-page-tasks.md`](../archive/ai-image-generation-page-tasks.md) · 短链 [`ai-image-generation-page-tasks.md`](./ai-image-generation-page-tasks.md) | 工程交付已完成；未完成勾选项仅限 **AIG-042** 中与生产灰度/运维勾选相关的备忘  |
 | API 文档（OpenAPI + Scalar）                     | [`../archive/exec-plans-api-docs-support/`](../archive/exec-plans-api-docs-support/)                                                                                             | 权威维护：`server/src/docs/openapi.ts`；入口见 [`../README.md`](../README.md) |
 
 实验与运行时行为以 [`../EXPERIMENTS.md`](../EXPERIMENTS.md) 与代码为准。
