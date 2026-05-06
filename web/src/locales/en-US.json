@@ -349,6 +349,7 @@
     "createCase": "Create case",
     "created": "Case created",
     "editCase": "Edit case",
+    "editorDescription": "Edit case title, category, prompt, thumbnail, attribution, and publish status.",
     "externalAttributionHint": "External cases must include source URL, author, and license before publishing.",
     "externalSource": "External",
     "feature": "Feature",

@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
+import { nextTick } from "vue";
 import PromptCaseEditor from "./PromptCaseEditor.vue";
 import PromptCaseImportDialog from "./PromptCaseImportDialog.vue";
 import PromptCaseTable from "./PromptCaseTable.vue";
@@ -48,6 +49,7 @@ describe("PromptCaseEditor", () => {
       tags: ["旧标签"]
     };
     const wrapper = mount(PromptCaseEditor, {
+      attachTo: document.body,
       props: {
         open: true,
         initial,
@@ -55,18 +57,19 @@ describe("PromptCaseEditor", () => {
         title: "编辑案例"
       }
     });
+    await nextTick();
 
-    const textInputs = wrapper.findAll("input.ui-field");
-    await textInputs[0].setValue("  新标题  ");
-    await textInputs[1].setValue("  商品海报  ");
-    const tagsInput = textInputs.find(
-      (input) => (input.element as HTMLInputElement).value === "旧标签"
-    );
+    const textInputs = Array.from(document.querySelectorAll<HTMLInputElement>("input.ui-field"));
+    await setInputValue(textInputs[0], "  新标题  ");
+    await setInputValue(textInputs[1], "  商品海报  ");
+    const tagsInput = textInputs.find((input) => input.value === "旧标签");
     if (!tagsInput) throw new Error("Tags input not found");
-    await tagsInput.setValue("产品, 海报, 质感");
-    await wrapper.findAll("textarea")[0].setValue("  用于商品详情页  ");
-    await wrapper.findAll("textarea")[1].setValue("  专业棚拍 prompt  ");
-    await wrapper.find("form").trigger("submit");
+    await setInputValue(tagsInput, "产品, 海报, 质感");
+    const textareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>("textarea"));
+    await setInputValue(textareas[0], "  用于商品详情页  ");
+    await setInputValue(textareas[1], "  专业棚拍 prompt  ");
+    document.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true }));
+    await nextTick();
 
     const saved = wrapper.emitted("save")?.[0]?.[0];
     expect(saved).toMatchObject({
@@ -76,6 +79,7 @@ describe("PromptCaseEditor", () => {
       promptTemplate: "专业棚拍 prompt",
       tags: ["产品", "海报", "质感"]
     });
+    wrapper.unmount();
   });
 });
 
@@ -110,6 +114,16 @@ function buttonByText(wrapper: ReturnType<typeof mount>, text: string) {
   const button = wrapper.findAll("button").find((item) => item.text().includes(text));
   if (!button) throw new Error(`Button not found: ${text}`);
   return button;
+}
+
+async function setInputValue(
+  input: HTMLInputElement | HTMLTextAreaElement | undefined,
+  value: string
+) {
+  if (!input) throw new Error("Form field not found");
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  await nextTick();
 }
 
 function promptCase(overrides: Partial<PromptCase> = {}): PromptCase {

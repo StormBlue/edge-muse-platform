@@ -349,6 +349,7 @@
     "createCase": "创建案例",
     "created": "案例已创建",
     "editCase": "编辑案例",
+    "editorDescription": "编辑案例标题、分类、提示词、缩略图、来源归因与发布状态。",
     "externalAttributionHint": "外部来源发布前必须补齐来源链接、作者和许可证。",
     "externalSource": "外部来源",
     "feature": "精选",
