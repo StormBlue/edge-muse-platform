@@ -394,6 +394,9 @@
     "thumbnailUrl": "Thumbnail URL",
     "title": "Title",
     "unfeature": "Unfeature",
+    "uploadImage": "Upload image",
+    "uploadImageFailed": "Image upload failed",
+    "uploadingImage": "Uploading",
     "updated": "Case updated",
     "userPreview": "User preview",
     "userPreviewHint": "Shows only the case details, prompt template, and attribution users will see."

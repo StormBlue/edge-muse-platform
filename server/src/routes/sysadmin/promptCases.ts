@@ -5,7 +5,9 @@
  */
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
+import { putPromptCaseAsset } from "../../lib/assets";
 import { audit } from "../../lib/audit";
+import { appError } from "../../lib/errors";
 import {
   bulkUpdatePromptCases,
   createPromptCase,
@@ -66,6 +68,36 @@ export function registerSysadminPromptCaseRoutes(sysadminRoutes: SysadminRouter)
       payload: auditPayload(item)
     });
     return c.json({ item }, 201);
+  });
+
+  sysadminRoutes.post("/prompt-cases/assets", async (c) => {
+    const user = c.get("user");
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) {
+      throw appError("VALIDATION_ERROR", "No image file uploaded");
+    }
+    const category = typeof form.get("category") === "string" ? String(form.get("category")) : null;
+    const asset = await putPromptCaseAsset(c.env, {
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      mime: file.type,
+      filename: file.name,
+      category
+    });
+    await audit(c.env, {
+      actorId: user.id,
+      action: "sys.prompt_case_asset_upload",
+      targetType: "prompt_case_asset",
+      targetId: asset.key,
+      payload: {
+        key: asset.key,
+        url: asset.url,
+        mime: asset.mime,
+        byteSize: asset.byteSize,
+        sha256: asset.sha256
+      }
+    });
+    return c.json({ asset }, 201);
   });
 
   sysadminRoutes.post(

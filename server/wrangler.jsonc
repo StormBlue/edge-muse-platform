@@ -41,6 +41,7 @@
     "AI_GATEWAY_URL": "",
     "PROMPT_ASSISTANT_ENABLED": "true",
     "PROMPT_ASSISTANT_MODEL": "@cf/qwen/qwen3-30b-a3b-fp8",
+    "ASSETS_PUBLIC_BASE_URL": "https://assets.pinkteck.com",
     "TURNSTILE_SITE_KEY": "0x4AAAAAADDgU0ueTVgP8AUe",
     "ALERT_EMAIL": ""
   },
@@ -58,6 +59,10 @@
     {
       "binding": "R2",
       "bucket_name": "edge-muse-images"
+    },
+    {
+      "binding": "ASSETS_R2",
+      "bucket_name": "edge-muse-assets"
     }
   ],
   "kv_namespaces": [

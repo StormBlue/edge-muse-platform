@@ -394,6 +394,9 @@
     "thumbnailUrl": "缩略图 URL",
     "title": "标题",
     "unfeature": "取消精选",
+    "uploadImage": "上传图片",
+    "uploadImageFailed": "图片上传失败",
+    "uploadingImage": "上传中",
     "updated": "案例已更新",
     "userPreview": "用户视角预览",
     "userPreviewHint": "仅展示用户端会看到的案例详情、生成描述模板和归因。"

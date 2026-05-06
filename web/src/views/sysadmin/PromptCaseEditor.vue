@@ -6,6 +6,8 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { toast } from "vue-sonner";
+import { uploadSysadminPromptCaseAsset } from "@/api/promptCases";
 import {
   PROMPT_CASE_LICENSES,
   PROMPT_CASE_LOCALES,
@@ -35,6 +37,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const form = ref<PromptCaseFormInput>(clonePromptCaseForm(props.initial));
 const tagsText = ref("");
+const uploadInput = ref<HTMLInputElement | null>(null);
+const uploadingAsset = ref(false);
 
 const externalSource = computed(
   () =>
@@ -74,6 +78,30 @@ function toggleMode(mode: PromptCaseMode, checked: boolean) {
 
 function submit() {
   emit("save", normalizePromptCaseEditorForm(form.value, tagsText.value));
+}
+
+function pickAssetFile() {
+  if (props.saving || uploadingAsset.value) return;
+  uploadInput.value?.click();
+}
+
+async function uploadAsset(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || uploadingAsset.value) return;
+  uploadingAsset.value = true;
+  try {
+    const asset = await uploadSysadminPromptCaseAsset({
+      file,
+      category: form.value.category
+    });
+    form.value.thumbnailUrl = asset.url;
+  } catch {
+    toast.error(t("promptCases.uploadImageFailed"));
+  } finally {
+    uploadingAsset.value = false;
+  }
 }
 
 function onEscape(event: KeyboardEvent) {
@@ -168,7 +196,24 @@ function onEscape(event: KeyboardEvent) {
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
             {{ t("promptCases.thumbnailUrl") }}
           </span>
-          <input v-model="form.thumbnailUrl" class="ui-field h-10 px-3" />
+          <div class="flex gap-2">
+            <input v-model="form.thumbnailUrl" class="ui-field h-10 min-w-0 flex-1 px-3" />
+            <button
+              class="ui-button ui-button-secondary shrink-0"
+              type="button"
+              :disabled="saving || uploadingAsset"
+              @click="pickAssetFile"
+            >
+              {{ uploadingAsset ? t("promptCases.uploadingImage") : t("promptCases.uploadImage") }}
+            </button>
+          </div>
+          <input
+            ref="uploadInput"
+            class="hidden"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            @change="uploadAsset"
+          />
         </label>
         <label class="block">
           <span class="mb-1.5 block text-xs font-medium text-muted-foreground">

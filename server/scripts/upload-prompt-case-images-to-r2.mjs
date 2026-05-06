@@ -12,14 +12,15 @@ const args = parseArgs(process.argv.slice(2));
 const manifestPath = args.manifest
   ? resolveFromRepo(args.manifest)
   : join(repoRoot, "uploads", "prompt-cases", "2026-05-04-prompt-cases", "reports", "manifest.json");
-const bucket = args.bucket ?? "edge-muse-images";
-const prefix = trimSlashes(args.prefix ?? "public/prompt-cases/2026-05-04");
+const bucket = args.bucket ?? "edge-muse-assets";
+const prefix = trimSlashes(args.prefix ?? `prompt-cases/${new Date().getUTCFullYear()}`);
 const publicBaseUrl = trimTrailingSlash(args.publicBaseUrl ?? "");
 const outPath = args.out
   ? resolveFromRepo(args.out)
   : join(dirname(manifestPath), "r2-upload-mapping.json");
 const dryRun = Boolean(args.dryRun);
 const remote = args.local ? "--local" : "--remote";
+const retries = Number.isFinite(Number(args.retries)) ? Math.max(1, Number(args.retries)) : 5;
 
 if (!publicBaseUrl) {
   throw new Error(
@@ -44,7 +45,7 @@ const mapping = {
 
 for (const item of downloaded) {
   const localPath = resolveFromRepo(item.localPath);
-  const objectKey = `${prefix}/${slugify(item.category || "uncategorized")}/${basename(localPath)}`;
+  const objectKey = `${prefix}/${categoryPathSegment(item.category)}/${basename(localPath)}`;
   const publicUrl = `${publicBaseUrl}/${objectKey.split("/").map(encodeURIComponent).join("/")}`;
   const result = {
     id: item.id,
@@ -63,24 +64,20 @@ for (const item of downloaded) {
 
   try {
     if (!dryRun) {
-      execFileSync(
-        process.execPath,
-        [
-          wranglerBin,
-          "r2",
-          "object",
-          "put",
-          `${bucket}/${objectKey}`,
-          remote,
-          "--file",
-          localPath,
-          "--content-type",
-          item.contentType ?? "application/octet-stream",
-          "--cache-control",
-          "public, max-age=31536000, immutable"
-        ],
-        { cwd: serverRoot, stdio: "pipe" }
-      );
+      runWithRetries([
+        wranglerBin,
+        "r2",
+        "object",
+        "put",
+        `${bucket}/${objectKey}`,
+        remote,
+        "--file",
+        localPath,
+        "--content-type",
+        item.contentType ?? "application/octet-stream",
+        "--cache-control",
+        "public, max-age=31536000, immutable"
+      ]);
     }
     result.status = dryRun ? "dry-run" : "uploaded";
     mapping.success += 1;
@@ -135,15 +132,47 @@ function trimTrailingSlash(value) {
   return String(value).replace(/\/+$/g, "");
 }
 
+function categoryPathSegment(value) {
+  const explicit = {
+    "人像与摄影": "portrait-photography",
+    "商品与广告": "product-advertising",
+    "海报与插画": "poster-illustration",
+    "角色与世界观": "character-worldbuilding",
+    "UI 与社媒截图": "ui-social-screenshots",
+    "信息图与知识卡": "infographics-knowledge-cards",
+    "视频感关键帧": "cinematic-keyframes"
+  };
+  return explicit[String(value ?? "").trim()] ?? slugify(value || "uncategorized");
+}
+
 function slugify(value) {
   const cleaned = String(value)
     .trim()
     .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{ASCII}]/gu, "")
     .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
   return cleaned || "uncategorized";
+}
+
+function runWithRetries(args) {
+  let lastError = null;
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      execFileSync(process.execPath, args, { cwd: serverRoot, stdio: "pipe" });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt === retries) break;
+      const delayMs = Math.min(5000, 500 * attempt);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs);
+    }
+  }
+  throw lastError;
 }
 
 function commandErrorMessage(error) {

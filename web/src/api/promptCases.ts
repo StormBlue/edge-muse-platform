@@ -25,6 +25,16 @@ export type PromptCaseImportResponse = {
   errors: string[];
 };
 
+export type PromptCaseAssetUploadResponse = {
+  asset: {
+    url: string;
+    key: string;
+    mime: string;
+    byteSize: number;
+    sha256: string;
+  };
+};
+
 export async function listSysadminPromptCases(filters: PromptCaseFilters) {
   const params = new URLSearchParams();
   if (filters.status) params.set("status", filters.status);
@@ -96,6 +106,17 @@ export async function importSysadminPromptCases(input: {
     method: "POST",
     body: JSON.stringify(input)
   });
+}
+
+export async function uploadSysadminPromptCaseAsset(input: { file: File; category?: string }) {
+  const form = new FormData();
+  form.append("file", input.file);
+  if (input.category?.trim()) form.append("category", input.category.trim());
+  const body = await apiFetch<PromptCaseAssetUploadResponse>("/sysadmin/prompt-cases/assets", {
+    method: "POST",
+    body: form
+  });
+  return body.asset;
 }
 
 function filterBySource(items: PromptCase[], source: PromptCaseFilters["source"]) {
