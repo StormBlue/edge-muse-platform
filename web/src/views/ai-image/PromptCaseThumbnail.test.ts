@@ -9,6 +9,9 @@ describe("PromptCaseThumbnail", () => {
       props: { src: "https://example.invalid/thumb.png", alt: "案例图" }
     });
 
+    expect(wrapper.get("img").attributes("loading")).toBe("lazy");
+    expect(wrapper.get("img").attributes("decoding")).toBe("async");
+
     await wrapper.find("img").trigger("error");
 
     expect(wrapper.find("img").exists()).toBe(false);

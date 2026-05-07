@@ -8,6 +8,8 @@
 - 生产：CI 或手动 `pnpm -F server db:migrate:remote`（需 Wrangler 凭证）
 - 生成迁移：改 `server/src/db/schema.ts` 后 `pnpm -F server db:gen`，**人工审阅** SQL 再提交
 
+当前案例库分页依赖 `0007_prompt_case_public_pagination_indexes.sql` 中的公共列表索引；部署前确认 D1 已应用该迁移，否则 1000+ 案例下 `GET /api/prompt-cases` 可能退化为较慢扫描。
+
 ## 密钥与 Secrets
 
 - Worker Secrets：`pnpm -F server wrangler secret put <NAME>`（如 `JWT_SECRET`、`KEY_ENCRYPTION_KEY`、`TURNSTILE_SECRET_KEY`）

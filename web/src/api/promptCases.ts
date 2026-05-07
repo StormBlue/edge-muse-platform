@@ -8,11 +8,28 @@ import type {
   PromptCase,
   PromptCaseBulkPatchInput,
   PromptCaseFilters,
-  PromptCaseFormInput
+  PromptCaseFormInput,
+  PromptCaseMode,
+  PromptCasePage
 } from "@/types/promptCases";
 
 export type PromptCaseListResponse = {
   items: PromptCase[];
+};
+
+export type PublishedPromptCaseListParams = {
+  category?: string;
+  mode?: PromptCaseMode | "";
+  size?: string;
+  locale?: string;
+  limit?: number;
+  cursor?: string | null;
+  featured?: boolean;
+  search?: string;
+};
+
+export type PublishedPromptCaseDetailParams = {
+  locale?: string;
 };
 
 export type PromptCaseWriteResponse = {
@@ -51,24 +68,34 @@ export async function listSysadminPromptCases(filters: PromptCaseFilters) {
   return filterBySource(body.items, filters.source);
 }
 
-export async function listPublishedPromptCases(filters: {
-  category?: string;
-  mode?: string;
-  locale?: string;
-  featured?: boolean;
-  search?: string;
-}) {
+export async function listPublishedPromptCases(filters: PublishedPromptCaseListParams) {
+  return listPublishedPromptCasePage(filters);
+}
+
+export async function listPublishedPromptCasePage(filters: PublishedPromptCaseListParams) {
   const params = new URLSearchParams();
   if (filters.category?.trim()) params.set("category", filters.category.trim());
   if (filters.mode) params.set("mode", filters.mode);
+  if (filters.size?.trim()) params.set("size", filters.size.trim());
   if (filters.locale) params.set("locale", filters.locale);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.featured !== undefined) params.set("featured", filters.featured ? "1" : "0");
   if (filters.search?.trim()) params.set("search", filters.search.trim());
 
-  const body = await apiFetch<PromptCaseListResponse>(
-    `/prompt-cases${params.size ? `?${params.toString()}` : ""}`
+  return apiFetch<PromptCasePage>(`/prompt-cases${params.size ? `?${params.toString()}` : ""}`);
+}
+
+export async function getPublishedPromptCase(
+  id: string,
+  filters: PublishedPromptCaseDetailParams = {}
+) {
+  const params = new URLSearchParams();
+  if (filters.locale) params.set("locale", filters.locale);
+  const body = await apiFetch<PromptCaseWriteResponse>(
+    `/prompt-cases/${encodeURIComponent(id)}${params.size ? `?${params.toString()}` : ""}`
   );
-  return body.items;
+  return body.item;
 }
 
 export async function createSysadminPromptCase(input: PromptCaseFormInput) {

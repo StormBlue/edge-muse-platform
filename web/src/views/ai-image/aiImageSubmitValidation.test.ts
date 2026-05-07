@@ -6,7 +6,7 @@ const validInput = {
   submitting: false,
   hasRunningTask: false,
   mode: "text2image" as const,
-  supportedModes: ["text2image", "image2image"] as Array<"text2image" | "image2image">,
+  supportedModes: ["image2image", "text2image"] as Array<"image2image" | "text2image">,
   size: "1024x1024",
   sizeOptions: [{ value: "1024x1024" }],
   referenceImageCount: 0

@@ -316,6 +316,6 @@ describe("provider response parsing", () => {
 
   it("exposes only one-shot modes for OpenAI Images providers", () => {
     const provider = new OpenAIImagesProvider();
-    expect(provider.supportedModes).toEqual(["text2image", "image2image"]);
+    expect(provider.supportedModes).toEqual(["image2image", "text2image"]);
   });
 });

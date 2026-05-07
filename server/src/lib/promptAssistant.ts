@@ -10,7 +10,7 @@ import { appError } from "./errors";
 import { logWarn } from "./log";
 import type { AppBindings } from "../types";
 
-export const PROMPT_ASSISTANT_MODES = ["text2image", "image2image"] as const;
+export const PROMPT_ASSISTANT_MODES = ["image2image", "text2image"] as const;
 export const PROMPT_ASSISTANT_LOCALES = ["zh-CN", "en-US"] as const;
 export const MAX_PROMPT_ASSISTANT_TURNS = 8;
 

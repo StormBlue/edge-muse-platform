@@ -5,7 +5,7 @@ import type { AppEnv } from "../../types";
 
 export type SessionRouter = Hono<AppEnv>;
 
-export const modeSchema = z.enum(["text2image", "image2image"]);
+export const modeSchema = z.enum(["image2image", "text2image"]);
 
 export function normalizeSessionMode(value: unknown) {
   return value === "text2image" ? "text2image" : "image2image";

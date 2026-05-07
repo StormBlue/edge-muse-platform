@@ -4,7 +4,9 @@ import { promptCaseImports, users } from "../src/db/schema";
 import {
   bulkUpdatePromptCases,
   createPromptCase,
+  getPublishedPromptCase,
   importPromptCases,
+  listPublishedPromptCasePage,
   listPromptCases,
   type PromptCaseCreateInput,
   promptCaseCreateSchema,
@@ -54,6 +56,156 @@ describe("prompt cases D1 integration", () => {
 
     const imageCases = await listPromptCases(ctx.env, { mode: "image2image" }, true);
     expect(imageCases.map((item) => item.title)).toEqual(["外部图生图案例"]);
+  });
+
+  it("returns lightweight public pages with stable cursor pagination", async () => {
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "精选案例", featured: true, sortOrder: 10 })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "普通案例一", sortOrder: 1 })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "普通案例二", sortOrder: 2 })
+    );
+
+    const firstPage = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      limit: 2
+    });
+    const secondPage = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      limit: 2,
+      cursor: firstPage.pageInfo.nextCursor ?? undefined
+    });
+
+    expect(firstPage.items.map((item) => item.title)).toEqual(["精选案例", "普通案例一"]);
+    expect(firstPage.pageInfo.hasMore).toBe(true);
+    expect(firstPage.pageInfo.nextCursor).toEqual(expect.any(String));
+    expect(firstPage.items[0]).not.toHaveProperty("promptTemplate");
+    expect(secondPage.items.map((item) => item.title)).toEqual(["普通案例二"]);
+    expect(secondPage.pageInfo.hasMore).toBe(false);
+    expect(secondPage.pageInfo.nextCursor).toBeNull();
+  });
+
+  it("filters and searches public pages across full data with facets", async () => {
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({
+        title: "人像大片",
+        category: "人像与摄影",
+        modes: ["text2image"],
+        recommendedSize: "3:4",
+        tags: ["棚拍", "人物"],
+        promptSummary: "胶片人像"
+      })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({
+        title: "商品海报",
+        category: "商品与广告",
+        modes: ["image2image", "text2image"],
+        recommendedSize: "1:1",
+        tags: ["电商", "新品"],
+        promptSummary: "新品投放海报"
+      })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({
+        title: "英文案例",
+        category: "Product",
+        locale: "en-US"
+      })
+    );
+
+    const searched = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      search: "新品",
+      limit: 10
+    });
+    const imageToImage = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      mode: "image2image",
+      limit: 10
+    });
+
+    expect(searched.items.map((item) => item.title)).toEqual(["商品海报"]);
+    expect(searched.facets.categories).toEqual([{ value: "商品与广告", count: 1 }]);
+    expect(imageToImage.items.map((item) => item.title)).toEqual(["商品海报"]);
+    expect(imageToImage.facets.modes).toEqual(
+      expect.arrayContaining([
+        { value: "image2image", count: 1 },
+        { value: "text2image", count: 2 }
+      ])
+    );
+  });
+
+  it("ignores stale cursors when filters change", async () => {
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "分类 A 一", category: "A", sortOrder: 1 })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "分类 A 二", category: "A", sortOrder: 2 })
+    );
+    await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "分类 B 一", category: "B", sortOrder: 1 })
+    );
+
+    const firstPage = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      category: "A",
+      limit: 1
+    });
+    const changedFilterPage = await listPublishedPromptCasePage(ctx.env, {
+      locale: "zh-CN",
+      category: "B",
+      limit: 10,
+      cursor: firstPage.pageInfo.nextCursor ?? undefined
+    });
+
+    expect(changedFilterPage.items.map((item) => item.title)).toEqual(["分类 B 一"]);
+  });
+
+  it("returns complete detail only for published visible cases", async () => {
+    const published = await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "详情案例", promptTemplate: "完整详情 prompt" })
+    );
+    const hidden = await createPromptCase(
+      ctx.env,
+      "sys_1",
+      promptCaseInput({ title: "隐藏详情", status: "hidden" })
+    );
+
+    await expect(getPublishedPromptCase(ctx.env, published.id, "zh-CN")).resolves.toMatchObject({
+      id: published.id,
+      promptTemplate: "完整详情 prompt",
+      status: "published"
+    });
+    await expect(getPublishedPromptCase(ctx.env, hidden.id, "zh-CN")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
+    await expect(getPublishedPromptCase(ctx.env, published.id, "en-US")).rejects.toMatchObject({
+      code: "NOT_FOUND"
+    });
   });
 
   it("rejects publishing external cases without complete attribution", async () => {

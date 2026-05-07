@@ -44,6 +44,47 @@ export type PromptCase = {
   updatedAt: number;
 };
 
+export type PromptCaseListItem = Pick<
+  PromptCase,
+  | "id"
+  | "title"
+  | "category"
+  | "modes"
+  | "recommendedSize"
+  | "tags"
+  | "promptSummary"
+  | "thumbnailUrl"
+  | "sourceAuthor"
+  | "sourceLicense"
+  | "sourceRepo"
+  | "featured"
+  | "sortOrder"
+  | "locale"
+>;
+
+export type PromptCaseFacet = {
+  value: string;
+  count: number;
+};
+
+export type PromptCaseFacets = {
+  categories: PromptCaseFacet[];
+  sizes: PromptCaseFacet[];
+  modes: PromptCaseFacet[];
+};
+
+export type PromptCasePageInfo = {
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+};
+
+export type PromptCasePage = {
+  items: PromptCaseListItem[];
+  pageInfo: PromptCasePageInfo;
+  facets: PromptCaseFacets;
+};
+
 export type PromptCaseFilters = {
   status: "" | PromptCaseStatus;
   category: string;

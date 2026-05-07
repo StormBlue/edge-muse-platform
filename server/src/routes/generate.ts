@@ -72,7 +72,7 @@ const generateSchema = z.object({
   sessionId: optionalSessionIdSchema,
   title: z.string().trim().min(1).max(80).optional(),
   prompt: z.string().min(1).max(4000),
-  mode: z.enum(["text2image", "image2image"]).default("image2image"),
+  mode: z.enum(["image2image", "text2image"]).default("image2image"),
   size: z
     .string()
     .refine((value) => allowedSizes.includes(value) || /^\d+x\d+$/.test(value), "Invalid size")

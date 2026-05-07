@@ -17,6 +17,7 @@ Date: 2026-04-27
 - ✅ Key resolution is explicit; unbound users do not fall back to the newest global key, generation session reuse checks ownership, and blank `sessionId` is normalized before task creation.
 - ✅ Admin user management, quota UI, usage charts, and manual password reset flow.
 - ✅ Sysadmin key/admin management, dashboard, user session audit, and preference selection. Provider selection now happens from key creation.
+- ✅ AI 图像生成案例库使用轻量分页列表、服务端 facets、详情按需加载和缩略图懒加载；应用 prompt 前会先获取完整 `promptTemplate`。
 - ✅ i18n base zh-CN/en-US, light/dark/system theme, responsive layout.
 - ⏸ Online deployment, DNS cutover, and real Cloudflare resource smoke tests are blocked until account resource IDs and secrets are available.
 
@@ -46,6 +47,14 @@ Latest Cubence audit-fix verification on 2026-04-27:
 - `pnpm -F server build`
 
 Real Cubence text-to-image and image-to-image smoke tests still require a live Cubence key with `gpt-image-2` share group and balance.
+
+Prompt cases pagination verification checklist:
+
+- `GET /api/prompt-cases?locale=zh-CN&limit=60` response omits `promptTemplate` and includes `items`, `pageInfo`, and `facets`.
+- Switch category, mode, size, search, and locale on `/ai-image`; each change should refresh from the first page and not reuse stale cursor results.
+- Click “加载更多 / Load more cases” until `hasMore=false`; no duplicate cards should appear.
+- Open a case and apply it; `GET /api/prompt-cases/:id` should load once per case id, and generated events should keep the selected case id semantics.
+- Inspect the Network panel for case thumbnails; off-screen card images should be delayed by native lazy loading.
 
 ## Related docs
 

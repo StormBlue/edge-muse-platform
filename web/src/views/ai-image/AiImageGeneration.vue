@@ -7,7 +7,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { ArrowLeft, WandSparkles } from "lucide-vue-next";
+import { ArrowLeft, Search, WandSparkles } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
@@ -21,7 +21,7 @@ import { useAiImageCases } from "./useAiImageCases";
 import { useAiImageGenerationSubmit } from "./useAiImageGenerationSubmit";
 import { promptCasePreviewImage } from "./promptCasePreviewImage";
 import type { ImageAttachment } from "@/stores/session";
-import type { PromptCase } from "@/types/promptCases";
+import type { PromptCase, PromptCaseListItem } from "@/types/promptCases";
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -39,6 +39,7 @@ const selectedImage = ref<ImageAttachment | null>(null);
 const sizeFallback = ref<AiImageSizeFallback | null>(null);
 
 const activeCase = computed(() => cases.caseContext.value);
+const activeCaseDetail = computed(() => cases.caseContextDetail.value);
 const selectedCaseTitle = computed(() => activeCase.value?.title ?? t("aiImage.blankCase"));
 const pageInteractionLocked = computed(
   () => generation.submitting.value || generation.hasRunningTask.value
@@ -59,16 +60,18 @@ const sizeFallbackNotice = computed(() =>
     : ""
 );
 
-function selectCase(item: PromptCase) {
+function selectCase(item: PromptCaseListItem | PromptCase) {
   caseBrowserCollapsed.value = false;
   cases.previewCase(item, { userSelected: true });
   mobileCaseSheetOpen.value = shouldOpenMobileCaseSheet();
   trackPromptCaseSelected(item);
 }
 
-function applyCase(item: PromptCase) {
-  const result = cases.applyCasePrompt(item);
-  syncGenerationFromCase(item, result.mode);
+async function applyCase(item: PromptCaseListItem | PromptCase) {
+  const result = await cases.applyCasePrompt(item);
+  const detail = cases.caseContextDetail.value;
+  if (!detail) return;
+  syncGenerationFromCase(detail, result.mode);
   caseBrowserCollapsed.value = true;
   mobileCaseSheetOpen.value = false;
 }
@@ -93,7 +96,7 @@ function syncGenerationFromCase(item: PromptCase, mode: PromptCase["modes"][numb
 }
 
 function syncCurrentCaseToGeneration() {
-  const item = cases.selected.value;
+  const item = cases.selectedDetail.value;
   if (!item) {
     const fallbackMode = generation.supportedModes.value[0];
     if (fallbackMode && !generation.supportedModes.value.includes(generation.mode.value)) {
@@ -155,8 +158,8 @@ function openGeneratedImage(image: ImageAttachment) {
 }
 
 function openSelectedCasePreview() {
-  if (pageInteractionLocked.value || !activeCase.value) return;
-  selectedImage.value = promptCasePreviewImage(activeCase.value);
+  if (pageInteractionLocked.value || !activeCaseDetail.value) return;
+  selectedImage.value = promptCasePreviewImage(activeCaseDetail.value);
 }
 
 async function submitGeneration() {
@@ -270,6 +273,30 @@ watch(
               {{ category }}
             </button>
           </div>
+          <div class="case-filter-row">
+            <label class="case-search-field">
+              <Search class="h-4 w-4 text-muted-foreground" />
+              <input
+                class="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                :placeholder="t('aiImage.searchCases')"
+                :value="cases.search.value"
+                type="search"
+                @input="cases.search.value = ($event.target as HTMLInputElement).value"
+              />
+            </label>
+            <select v-model="cases.filterMode.value" class="ui-field h-10 min-w-36 px-3 text-sm">
+              <option value="">{{ t("promptCases.allModes") }}</option>
+              <option v-for="mode in generation.supportedModes.value" :key="mode" :value="mode">
+                {{ t(`workspace.${mode}`) }}
+              </option>
+            </select>
+            <select v-model="cases.size.value" class="ui-field h-10 min-w-36 px-3 text-sm">
+              <option value="">{{ t("aiImage.allSizes") }}</option>
+              <option v-for="caseSize in cases.sizes.value" :key="caseSize" :value="caseSize">
+                {{ caseSize }}
+              </option>
+            </select>
+          </div>
         </div>
       </section>
 
@@ -300,12 +327,22 @@ watch(
         <PromptCaseGallery
           v-if="!caseBrowserCollapsed"
           :items="cases.filteredItems.value"
-          :loading="cases.loading.value"
+          :error="cases.loadMoreError.value"
+          :has-more="cases.hasMore.value"
+          :loading-initial="cases.loadingInitial.value"
+          :loading-more="cases.loadingMore.value"
           :selected-id="cases.selectedId.value"
+          @load-more="cases.loadMore"
           @select="selectCase"
         />
         <div v-if="!caseBrowserCollapsed" class="desktop-case-detail">
-          <PromptCaseDetail :item="cases.selected.value" @apply="applyCase" />
+          <PromptCaseDetail
+            :applying="cases.applying.value"
+            :error="cases.detailError.value"
+            :item="cases.selectedDetail.value"
+            :loading="cases.detailLoading.value"
+            @apply="(item) => void applyCase(item)"
+          />
         </div>
         <AiImagePromptPanel
           v-if="caseBrowserCollapsed"
@@ -313,7 +350,7 @@ watch(
           :active-failed="generation.activeFailed.value"
           :assistant-enabled="auth.promptAssistantEnabled"
           :can-reset-prompt="cases.canResetPrompt.value"
-          :case-item="cases.caseContext.value"
+          :case-item="activeCaseDetail"
           :failed-message="generation.failedMessage.value"
           :failed-title="generation.failedTitle.value"
           :generation-progress="generation.generationProgress.value"
@@ -350,8 +387,12 @@ watch(
 
       <PromptCaseMobileSheet
         :item="cases.selected.value"
+        :applying="cases.applying.value"
+        :detail-item="cases.selectedDetail.value"
+        :error="cases.detailError.value"
+        :loading="cases.detailLoading.value"
         :open="mobileCaseSheetOpen"
-        @apply="applyCase"
+        @apply="(item) => void applyCase(item)"
         @close="mobileCaseSheetOpen = false"
       />
 
@@ -378,6 +419,25 @@ watch(
   display: grid;
   min-width: 0;
   gap: 0.75rem;
+}
+
+.case-filter-row {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(12rem, 1fr);
+  gap: 0.5rem;
+}
+
+.case-search-field {
+  display: flex;
+  min-width: 0;
+  height: 2.5rem;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: color-mix(in oklch, var(--card), transparent 8%);
+  padding: 0 0.75rem;
 }
 
 .direct-create-entry {
@@ -478,6 +538,11 @@ watch(
   .case-picker-toolbar {
     grid-template-columns: minmax(21rem, 0.9fr) minmax(0, 1.1fr);
     align-items: stretch;
+  }
+
+  .case-filter-row {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(14rem, 1fr) minmax(9rem, 12rem) minmax(9rem, 12rem);
   }
 
   .ai-image-grid {

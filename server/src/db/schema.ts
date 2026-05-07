@@ -163,7 +163,7 @@ export const sessions = sqliteTable("sessions", {
     .notNull()
     .references(() => users.id),
   title: text("title").notNull(),
-  mode: text("mode", { enum: ["text2image", "image2image"] }).notNull(),
+  mode: text("mode", { enum: ["image2image", "text2image"] }).notNull(),
   providerKeyId: text("provider_key_id").references(() => providerKeys.id),
   settings: text("settings").notNull(),
   createdAt: integer("created_at").notNull(),
@@ -222,7 +222,7 @@ export const tasks = sqliteTable(
     status: text("status", {
       enum: ["queued", "running", "succeeded", "failed", "cancelled"]
     }).notNull(),
-    mode: text("mode", { enum: ["text2image", "image2image"] }).notNull(),
+    mode: text("mode", { enum: ["image2image", "text2image"] }).notNull(),
     params: text("params").notNull(),
     errorCode: text("error_code"),
     errorMsg: text("error_msg"),
@@ -312,6 +312,28 @@ export const promptCases = sqliteTable(
   (table) => ({
     statusSortIdx: index("idx_prompt_cases_status_sort").on(table.status, table.sortOrder),
     localeStatusIdx: index("idx_prompt_cases_locale_status").on(table.locale, table.status),
+    publicSortIdx: index("idx_prompt_cases_public_sort").on(
+      table.status,
+      table.locale,
+      table.featured,
+      table.sortOrder,
+      table.updatedAt,
+      table.id
+    ),
+    publicCategorySortIdx: index("idx_prompt_cases_public_category_sort").on(
+      table.status,
+      table.locale,
+      table.category,
+      table.featured,
+      table.sortOrder,
+      table.updatedAt,
+      table.id
+    ),
+    publicSizeIdx: index("idx_prompt_cases_public_size").on(
+      table.status,
+      table.locale,
+      table.recommendedSize
+    ),
     categoryIdx: index("idx_prompt_cases_category").on(table.category),
     featuredIdx: index("idx_prompt_cases_featured").on(table.featured),
     sourceUrlIdx: index("idx_prompt_cases_source_url").on(table.sourceUrl)

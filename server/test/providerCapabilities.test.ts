@@ -46,8 +46,8 @@ describe("provider capability validation", () => {
   });
 
   it("declares only text-to-image and image-to-image modes", () => {
-    expect(providerImpl.supportedModes).toEqual(["text2image", "image2image"]);
-    expect(micuImpl.supportedModes).toEqual(["text2image", "image2image"]);
+    expect(providerImpl.supportedModes).toEqual(["image2image", "text2image"]);
+    expect(micuImpl.supportedModes).toEqual(["image2image", "text2image"]);
   });
 
   it("rejects Cubence image-to-image with more than one reference image", () => {

@@ -603,7 +603,7 @@ function resolveSourceImage(value, root) {
 function inferModes(prompt, category) {
   const text = `${prompt} ${category}`.toLowerCase();
   if (/参考图|上传|原图|基于.*图|attached image|reference image|same subject|same person|edit|redesign|style transfer/.test(text)) {
-    return text.includes("generate") || text.includes("生成") ? ["text2image", "image2image"] : ["image2image"];
+    return text.includes("generate") || text.includes("生成") ? ["image2image", "text2image"] : ["image2image"];
   }
   return ["text2image"];
 }

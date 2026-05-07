@@ -3,7 +3,6 @@ type OpenApiObject = Record<string, unknown>;
 const jsonContent = (schema: OpenApiObject) => ({
   "application/json": { schema }
 });
-
 const jsonResponse = (description: string, schema: OpenApiObject) => ({
   description,
   content: jsonContent(schema)
@@ -305,7 +304,7 @@ export const openApiDocument: OpenApiObject = {
       },
       GenerationMode: {
         type: "string",
-        enum: ["text2image", "image2image"]
+        enum: ["image2image", "text2image"]
       },
       Task: {
         type: "object",
@@ -423,7 +422,7 @@ export const openApiDocument: OpenApiObject = {
           id: { type: "string" },
           title: { type: "string" },
           category: { type: "string" },
-          modes: arrayOf({ type: "string", enum: ["text2image", "image2image"] }),
+          modes: arrayOf({ type: "string", enum: ["image2image", "text2image"] }),
           recommendedSize: { type: "string" },
           tags: arrayOf({ type: "string" }),
           promptTemplate: { type: "string" },
@@ -445,6 +444,68 @@ export const openApiDocument: OpenApiObject = {
         },
         additionalProperties: false
       },
+      PromptCaseListItem: {
+        type: "object",
+        required: [
+          "id",
+          "title",
+          "category",
+          "modes",
+          "recommendedSize",
+          "tags",
+          "promptSummary",
+          "sourceLicense",
+          "featured",
+          "sortOrder",
+          "locale"
+        ],
+        properties: {
+          id: { type: "string" },
+          title: { type: "string" },
+          category: { type: "string" },
+          modes: arrayOf({ type: "string", enum: ["image2image", "text2image"] }),
+          recommendedSize: { type: "string" },
+          tags: arrayOf({ type: "string" }),
+          promptSummary: { type: "string" },
+          thumbnailUrl: { type: "string", nullable: true },
+          sourceAuthor: { type: "string", nullable: true },
+          sourceLicense: { type: "string", enum: ["CC BY 4.0", "original", "internal"] },
+          sourceRepo: { type: "string", nullable: true },
+          featured: { type: "boolean" },
+          sortOrder: { type: "integer" },
+          locale: { type: "string", enum: ["zh-CN", "en-US"] }
+        },
+        additionalProperties: false
+      },
+      PromptCaseFacet: {
+        type: "object",
+        required: ["value", "count"],
+        properties: {
+          value: { type: "string" },
+          count: { type: "integer", minimum: 0 }
+        },
+        additionalProperties: false
+      },
+      PromptCasePageInfo: {
+        type: "object",
+        required: ["nextCursor", "hasMore", "limit"],
+        properties: {
+          nextCursor: { type: "string", nullable: true },
+          hasMore: { type: "boolean" },
+          limit: { type: "integer", minimum: 1, maximum: 100 }
+        },
+        additionalProperties: false
+      },
+      PromptCaseFacets: {
+        type: "object",
+        required: ["categories", "sizes", "modes"],
+        properties: {
+          categories: arrayOf(ref("PromptCaseFacet")),
+          sizes: arrayOf(ref("PromptCaseFacet")),
+          modes: arrayOf(ref("PromptCaseFacet"))
+        },
+        additionalProperties: false
+      },
       PromptCaseInput: {
         type: "object",
         required: [
@@ -462,7 +523,7 @@ export const openApiDocument: OpenApiObject = {
             type: "array",
             minItems: 1,
             maxItems: 2,
-            items: { type: "string", enum: ["text2image", "image2image"] }
+            items: { type: "string", enum: ["image2image", "text2image"] }
           },
           recommendedSize: { type: "string", minLength: 1, maxLength: 40 },
           tags: {
@@ -1381,7 +1442,7 @@ openApiDocument.paths = {
         type: "object",
         required: ["mode", "messages", "turnIndex"],
         properties: {
-          mode: { type: "string", enum: ["text2image", "image2image"] },
+          mode: { type: "string", enum: ["image2image", "text2image"] },
           locale: { type: "string", enum: ["zh-CN", "en-US"], default: "zh-CN" },
           forceFinalize: { type: "boolean", default: false },
           messages: {
@@ -1474,11 +1535,25 @@ openApiDocument.paths = {
     get: {
       tags: ["Prompt Cases"],
       operationId: "listPublicPromptCases",
-      summary: "读取用户侧已发布案例",
+      summary: "分页读取用户侧已发布案例",
       description:
-        "要求登录。只返回 `published` 案例，完整 promptTemplate 会返回给前端用于回填，但不会写入日志。",
+        "要求登录。只返回 `published` 案例的轻量列表项；列表不包含 `promptTemplate`，详情通过 `/api/prompt-cases/{id}` 按需读取。排序为 `featured desc, sortOrder asc, updatedAt desc, id asc`。cursor 与当前筛选条件绑定；筛选变化时旧 cursor 会被安全忽略并从第一页返回。",
       security: authSecurity,
       parameters: [
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", minimum: 1, maximum: 100, default: 60 },
+          required: false,
+          description: "单页数量，默认 60，最大 100。"
+        },
+        {
+          name: "cursor",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 1000 },
+          required: false,
+          description: "上一页返回的不透明游标。"
+        },
         {
           name: "category",
           in: "query",
@@ -1489,9 +1564,16 @@ openApiDocument.paths = {
         {
           name: "mode",
           in: "query",
-          schema: { type: "string", enum: ["text2image", "image2image"] },
+          schema: { type: "string", enum: ["image2image", "text2image"] },
           required: false,
           description: "按可用模式筛选。"
+        },
+        {
+          name: "size",
+          in: "query",
+          schema: { type: "string", minLength: 1, maxLength: 40 },
+          required: false,
+          description: "按推荐尺寸筛选。"
         },
         {
           name: "locale",
@@ -1512,14 +1594,54 @@ openApiDocument.paths = {
           in: "query",
           schema: { type: "string", minLength: 1, maxLength: 120 },
           required: false,
-          description: "按标题或摘要搜索。"
+          description: "按标题、摘要、分类或标签搜索。"
         }
       ],
       responses: {
         "200": jsonResponse("案例列表。", {
           type: "object",
-          required: ["items"],
-          properties: { items: arrayOf(ref("PromptCase")) },
+          required: ["items", "pageInfo", "facets"],
+          properties: {
+            items: arrayOf(ref("PromptCaseListItem")),
+            pageInfo: ref("PromptCasePageInfo"),
+            facets: ref("PromptCaseFacets")
+          },
+          additionalProperties: false
+        }),
+        ...validationError,
+        ...commonErrors
+      }
+    }
+  },
+  "/api/prompt-cases/{id}": {
+    get: {
+      tags: ["Prompt Cases"],
+      operationId: "getPublicPromptCase",
+      summary: "读取用户侧案例详情",
+      description:
+        "要求登录。只返回已发布案例的完整详情，包含 `promptTemplate`。传入 locale 时，案例语言不匹配返回 NOT_FOUND。",
+      security: authSecurity,
+      parameters: [
+        {
+          name: "id",
+          in: "path",
+          required: true,
+          schema: { type: "string" },
+          description: "案例 ID。"
+        },
+        {
+          name: "locale",
+          in: "query",
+          required: false,
+          schema: { type: "string", enum: ["zh-CN", "en-US"] },
+          description: "可选语言约束，不匹配时返回 404。"
+        }
+      ],
+      responses: {
+        "200": jsonResponse("案例详情。", {
+          type: "object",
+          required: ["item"],
+          properties: { item: ref("PromptCase") },
           additionalProperties: false
         }),
         ...validationError,
@@ -2156,7 +2278,6 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
     }
   }
 });
-
 Object.assign(openApiDocument.paths as OpenApiObject, {
   "/api/sysadmin/admins": {
     get: {
@@ -2556,7 +2677,7 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
           name: "mode",
           in: "query",
           required: false,
-          schema: { type: "string", enum: ["text2image", "image2image"] },
+          schema: { type: "string", enum: ["image2image", "text2image"] },
           description: "按模式过滤。"
         },
         {
@@ -2688,7 +2809,7 @@ Object.assign(openApiDocument.paths as OpenApiObject, {
           modes: {
             type: "array",
             minItems: 1,
-            items: { type: "string", enum: ["text2image", "image2image"] }
+            items: { type: "string", enum: ["image2image", "text2image"] }
           },
           recommendedSize: { type: "string", minLength: 1, maxLength: 40 },
           tags: {

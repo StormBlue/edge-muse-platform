@@ -5,6 +5,7 @@
  * 避免保存前清洗逻辑散在模板组件里难以测试。
  */
 import type { PromptCaseFormInput, PromptCaseMode } from "@/types/promptCases";
+import { PROMPT_CASE_MODES } from "@/types/promptCases";
 
 export function clonePromptCaseForm(value: PromptCaseFormInput): PromptCaseFormInput {
   return {
@@ -43,7 +44,7 @@ export function applyPromptCaseModeToggle(
   const next = new Set(currentModes);
   if (checked) next.add(mode);
   if (!checked && next.size > 1) next.delete(mode);
-  return Array.from(next);
+  return PROMPT_CASE_MODES.filter((item) => next.has(item));
 }
 
 function parseTagsText(value: string) {

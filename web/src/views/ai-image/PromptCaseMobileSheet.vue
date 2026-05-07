@@ -8,12 +8,19 @@ import { computed, onBeforeUnmount, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
-import type { PromptCase } from "@/types/promptCases";
+import type { PromptCase, PromptCaseListItem } from "@/types/promptCases";
 
-const props = defineProps<{
-  open: boolean;
-  item: PromptCase | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    item: PromptCaseListItem | PromptCase | null;
+    detailItem: PromptCase | null;
+    loading?: boolean;
+    error?: string | null;
+    applying?: boolean;
+  }>(),
+  { applying: false, error: null, loading: false }
+);
 
 const emit = defineEmits<{
   close: [];
@@ -84,7 +91,10 @@ onBeforeUnmount(() => setPageScrollLocked(false));
             </div>
           </div>
           <PromptCaseDetail
-            :item="item"
+            :applying="applying"
+            :error="error"
+            :item="detailItem"
+            :loading="loading"
             variant="sheet"
             @apply="(caseItem) => emit('apply', caseItem)"
           />

@@ -4,6 +4,9 @@
  * 组件和组合函数只负责状态绑定；筛选规则集中在这里，便于覆盖搜索、模式和尺寸边界。
  */
 import { PROMPT_CASE_MODES, type PromptCase, type PromptCaseMode } from "@/types/promptCases";
+import type { PromptCaseListItem } from "@/types/promptCases";
+
+export type PromptCaseSelectable = PromptCase | PromptCaseListItem;
 
 export type PromptCaseSelectionFilters = {
   category: string;
@@ -32,17 +35,21 @@ const PROMPT_CASE_CATEGORY_INDEX = new Map(
 );
 
 export function promptCaseCategories(items: PromptCase[]) {
-  return uniqueSorted(
-    items.map((item) => item.category),
-    comparePromptCaseCategories
-  );
+  return sortPromptCaseCategories(items.map((item) => item.category));
 }
 
-export function promptCaseSizes(items: PromptCase[]) {
+export function sortPromptCaseCategories(values: string[]) {
+  return uniqueSorted(values, comparePromptCaseCategories);
+}
+
+export function promptCaseSizes(items: PromptCaseSelectable[]) {
   return uniqueSorted(items.map((item) => item.recommendedSize));
 }
 
-export function filterPromptCases(items: PromptCase[], filters: PromptCaseSelectionFilters) {
+export function filterPromptCases<T extends PromptCaseSelectable>(
+  items: T[],
+  filters: PromptCaseSelectionFilters
+) {
   const keyword = filters.search.trim().toLowerCase();
   return items.filter((item) => {
     // Provider 可能只开放文生图或图生图，先排除无法提交的案例，避免用户选中后才失败。
@@ -74,16 +81,24 @@ export function promptCaseApplyResult(
   currentMode: "" | PromptCaseMode,
   supportedModes?: PromptCaseMode[]
 ): PromptCaseApplyResult {
+  return {
+    prompt: item.promptTemplate,
+    mode: promptCaseModeResult(item, currentMode, supportedModes)
+  };
+}
+
+export function promptCaseModeResult(
+  item: Pick<PromptCaseSelectable, "modes">,
+  currentMode: "" | PromptCaseMode,
+  supportedModes?: PromptCaseMode[]
+): PromptCaseMode {
   const itemSupportedModes = supportedModes
     ? item.modes.filter((mode) => supportedModes.includes(mode))
     : item.modes;
   const supportedMode =
     currentMode && itemSupportedModes.includes(currentMode) ? currentMode : null;
   const preferredMode = PROMPT_CASE_MODES.find((mode) => itemSupportedModes.includes(mode));
-  return {
-    prompt: item.promptTemplate,
-    mode: supportedMode || preferredMode || "image2image"
-  };
+  return supportedMode || preferredMode || "image2image";
 }
 
 function comparePromptCaseCategories(left: string, right: string) {

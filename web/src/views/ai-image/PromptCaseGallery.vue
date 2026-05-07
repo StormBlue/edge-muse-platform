@@ -7,16 +7,20 @@
 import { Star } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
-import type { PromptCase } from "@/types/promptCases";
+import type { PromptCaseListItem } from "@/types/promptCases";
 
 defineProps<{
-  items: PromptCase[];
-  loading: boolean;
+  items: PromptCaseListItem[];
+  loadingInitial: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
   selectedId: string | null;
 }>();
 
 const emit = defineEmits<{
-  select: [item: PromptCase];
+  loadMore: [];
+  select: [item: PromptCaseListItem];
 }>();
 
 const { t } = useI18n();
@@ -28,8 +32,9 @@ const { t } = useI18n();
       <h2 class="text-sm font-semibold">{{ t("aiImage.caseGallery") }}</h2>
     </div>
     <div
-      v-if="loading"
+      v-if="loadingInitial"
       class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+      aria-live="polite"
     >
       {{ t("common.loading") }}
     </div>
@@ -39,63 +44,74 @@ const { t } = useI18n();
     >
       {{ t("aiImage.noCases") }}
     </div>
-    <div
-      v-else
-      class="prompt-case-grid thin-scrollbar grid min-h-0 flex-1 gap-3 overflow-y-auto p-3"
-    >
-      <article
-        v-for="item in items"
-        :key="item.id"
-        class="prompt-case-card group overflow-hidden rounded-lg border border-border bg-card p-0 text-left transition hover:border-primary/60"
-        :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
-        role="button"
-        tabindex="0"
-        :aria-pressed="item.id === selectedId"
-        @click="emit('select', item)"
-        @keydown.enter.prevent="emit('select', item)"
-        @keydown.space.prevent="emit('select', item)"
-      >
-        <div class="prompt-case-poster relative aspect-[2/3] overflow-hidden bg-muted">
-          <PromptCaseThumbnail
-            :src="item.thumbnailUrl"
-            :alt="item.title"
-            icon-class="h-8 w-8"
-            fit="cover"
-          />
-          <span
-            v-if="item.featured"
-            class="absolute left-0 top-0 z-10 inline-flex items-center gap-1 rounded-br-md bg-background/90 px-2 py-1 text-xs font-medium shadow-sm"
-          >
-            <Star class="h-3 w-3 text-primary" />
-            {{ t("promptCases.featured") }}
-          </span>
-          <span
-            class="absolute right-2 top-2 z-10 rounded-full bg-background/85 px-2 py-1 text-xs font-medium shadow-sm"
-          >
-            {{ item.recommendedSize }}
-          </span>
-          <div
-            class="absolute inset-x-0 bottom-0 z-10 flex min-w-0 flex-col overflow-hidden p-3 text-white"
-          >
-            <p class="line-clamp-2 text-sm font-semibold leading-5">{{ item.title }}</p>
-            <p class="mt-1 line-clamp-2 text-xs leading-5 text-white/80">
-              {{ item.promptSummary }}
-            </p>
-            <div class="mt-2 flex max-h-6 flex-wrap gap-1 overflow-hidden">
-              <span
-                v-for="tag in item.tags.slice(0, 2)"
-                :key="tag"
-                class="rounded-full bg-background/85 px-2 py-0.5 text-xs text-foreground shadow-sm"
-              >
-                {{ tag }}
-              </span>
+    <div v-else class="thin-scrollbar min-h-0 flex-1 overflow-y-auto">
+      <div class="prompt-case-grid grid gap-3 p-3">
+        <article
+          v-for="item in items"
+          :key="item.id"
+          class="prompt-case-card group overflow-hidden rounded-lg border border-border bg-card p-0 text-left transition hover:border-primary/60"
+          :class="item.id === selectedId ? 'border-primary bg-primary/5' : ''"
+          role="button"
+          tabindex="0"
+          :aria-pressed="item.id === selectedId"
+          @click="emit('select', item)"
+          @keydown.enter.prevent="emit('select', item)"
+          @keydown.space.prevent="emit('select', item)"
+        >
+          <div class="prompt-case-poster relative aspect-[2/3] overflow-hidden bg-muted">
+            <PromptCaseThumbnail
+              :src="item.thumbnailUrl"
+              :alt="item.title"
+              icon-class="h-8 w-8"
+              fit="cover"
+            />
+            <span
+              v-if="item.featured"
+              class="absolute left-0 top-0 z-10 inline-flex items-center gap-1 rounded-br-md bg-background/90 px-2 py-1 text-xs font-medium shadow-sm"
+            >
+              <Star class="h-3 w-3 text-primary" />
+              {{ t("promptCases.featured") }}
+            </span>
+            <span
+              class="absolute right-2 top-2 z-10 rounded-full bg-background/85 px-2 py-1 text-xs font-medium shadow-sm"
+            >
+              {{ item.recommendedSize }}
+            </span>
+            <div
+              class="absolute inset-x-0 bottom-0 z-10 flex min-w-0 flex-col overflow-hidden p-3 text-white"
+            >
+              <p class="line-clamp-2 text-sm font-semibold leading-5">{{ item.title }}</p>
+              <p class="mt-1 line-clamp-2 text-xs leading-5 text-white/80">
+                {{ item.promptSummary }}
+              </p>
+              <div class="mt-2 flex max-h-6 flex-wrap gap-1 overflow-hidden">
+                <span
+                  v-for="tag in item.tags.slice(0, 2)"
+                  :key="tag"
+                  class="rounded-full bg-background/85 px-2 py-0.5 text-xs text-foreground shadow-sm"
+                >
+                  {{ tag }}
+                </span>
+              </div>
+              <p class="mt-auto truncate pt-2 text-xs text-white/70">
+                {{ item.sourceAuthor || item.sourceRepo || item.sourceLicense }}
+              </p>
             </div>
-            <p class="mt-auto truncate pt-2 text-xs text-white/70">
-              {{ item.sourceAuthor || item.sourceRepo || item.sourceLicense }}
-            </p>
           </div>
-        </div>
-      </article>
+        </article>
+      </div>
+      <div class="border-t border-border p-3" aria-live="polite">
+        <p v-if="error" class="mb-2 text-xs leading-5 text-destructive">{{ error }}</p>
+        <button
+          v-if="hasMore || error"
+          class="ui-button ui-button-secondary h-10 w-full text-sm"
+          type="button"
+          :disabled="loadingMore"
+          @click="emit('loadMore')"
+        >
+          {{ loadingMore ? t("common.loading") : t("aiImage.loadMoreCases") }}
+        </button>
+      </div>
     </div>
   </section>
 </template>

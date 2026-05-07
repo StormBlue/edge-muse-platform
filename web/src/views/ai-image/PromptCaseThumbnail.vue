@@ -34,6 +34,8 @@ watch(
       :class="['h-full w-full', fit === 'cover' ? 'object-cover' : 'object-contain']"
       :src="src"
       :alt="alt"
+      loading="lazy"
+      decoding="async"
       @error="failed = true"
     />
     <ImageOff v-else :class="iconClass" />

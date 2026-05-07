@@ -3,7 +3,7 @@
  * 案例详情：展示用户决策所需信息，并明确来源归因。
  */
 import { computed, ref, watch } from "vue";
-import { ExternalLink, Maximize2, WandSparkles } from "lucide-vue-next";
+import { ExternalLink, Loader2, Maximize2, WandSparkles } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
@@ -14,9 +14,12 @@ import type { PromptCase } from "@/types/promptCases";
 const props = withDefaults(
   defineProps<{
     item: PromptCase | null;
+    loading?: boolean;
+    error?: string | null;
+    applying?: boolean;
     variant?: "panel" | "sheet";
   }>(),
-  { variant: "panel" }
+  { applying: false, error: null, loading: false, variant: "panel" }
 );
 
 const emit = defineEmits<{
@@ -54,7 +57,22 @@ function openPreview() {
       <h2 class="text-sm font-semibold">{{ t("aiImage.caseDetail") }}</h2>
     </div>
     <div
-      v-if="!item"
+      v-if="loading && !item"
+      class="flex min-h-96 items-center justify-center gap-2 text-sm text-muted-foreground"
+      aria-live="polite"
+    >
+      <Loader2 class="h-4 w-4 animate-spin" />
+      {{ t("common.loading") }}
+    </div>
+    <div
+      v-else-if="error && !item"
+      class="flex min-h-96 flex-col items-center justify-center gap-3 px-4 text-center text-sm text-muted-foreground"
+      aria-live="polite"
+    >
+      <p>{{ error }}</p>
+    </div>
+    <div
+      v-else-if="!item"
       class="flex min-h-96 items-center justify-center text-sm text-muted-foreground"
     >
       {{ t("promptCases.selectCase") }}
@@ -81,10 +99,12 @@ function openPreview() {
         <button
           class="ui-button ui-button-primary mt-4 h-11 w-full text-sm font-semibold shadow-sm shadow-primary/20"
           type="button"
+          :disabled="applying"
           @click="emit('apply', item)"
         >
-          <WandSparkles class="h-4 w-4" />
-          {{ t("aiImage.useCasePrompt") }}
+          <Loader2 v-if="applying" class="h-4 w-4 animate-spin" />
+          <WandSparkles v-else class="h-4 w-4" />
+          {{ applying ? t("common.loading") : t("aiImage.useCasePrompt") }}
         </button>
       </div>
 

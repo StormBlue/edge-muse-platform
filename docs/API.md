@@ -15,7 +15,7 @@ All paths are under `/api`.
 | Images           | `GET /i/:imageId`, `POST /uploads`                                                                                                                  |
 | Generation entry | `POST /generation/events`                                                                                                                           |
 | Prompt assistant | `POST /prompt-assistant/turn`                                                                                                                       |
-| Prompt cases     | `GET /prompt-cases`, `/sysadmin/prompt-cases*`                                                                                                      |
+| Prompt cases     | `GET /prompt-cases`, `GET /prompt-cases/:id`, `/sysadmin/prompt-cases*`                                                                             |
 | Announcements    | `/announcements*`, `/sysadmin/announcements*`                                                                                                       |
 | Admin            | `/admin/provider-keys`, `/admin/users`, quota, usage, and manual user password reset endpoints                                                      |
 | Sysadmin         | `/sysadmin/providers`, `/sysadmin/provider-keys`, `/sysadmin/generation-entry`, admins, dashboard, users, session inspection, preferences, settings |
@@ -41,6 +41,13 @@ Authentication notes:
 - Admin endpoints require role `admin` or `sysadmin`; sysadmin endpoints require role `sysadmin`.
 - `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded` or `failed`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.
+
+Prompt cases:
+
+- `GET /prompt-cases` returns a paged lightweight response: `{ items, pageInfo, facets }`. Query params: `locale` (default `zh-CN`), `limit` (default `60`, max `100`), `cursor`, `category`, `mode`, `size`, `featured`, and `search`.
+- Public list items intentionally omit `promptTemplate`; use `GET /prompt-cases/:id?locale=...` to fetch the complete published case before applying a prompt or sending case context to the assistant.
+- Public list sorting is stable: featured first, then `sortOrder`, `updatedAt desc`, and `id`. Cursor values are opaque and tied to the current filter set; changing filters restarts from the first page.
+- `facets.categories`, `facets.sizes`, and `facets.modes` are computed server-side from published cases and should be used for the `/ai-image` filter UI instead of deriving global options from the current page only.
 
 ## Related docs
 

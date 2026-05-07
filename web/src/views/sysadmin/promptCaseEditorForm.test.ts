@@ -10,7 +10,7 @@ describe("prompt case editor form helpers", () => {
   it("deep clones array and object fields before editing", () => {
     const form = {
       ...emptyPromptCaseForm(),
-      modes: ["text2image", "image2image"] as ["text2image", "image2image"],
+      modes: ["image2image", "text2image"] as ["image2image", "text2image"],
       tags: ["海报"],
       popularity: { likes: 10 }
     };
@@ -59,10 +59,10 @@ describe("prompt case editor form helpers", () => {
   it("keeps at least one mode while toggling editor checkboxes", () => {
     expect(applyPromptCaseModeToggle(["text2image"], "text2image", false)).toEqual(["text2image"]);
     expect(applyPromptCaseModeToggle(["text2image"], "image2image", true)).toEqual([
-      "text2image",
-      "image2image"
+      "image2image",
+      "text2image"
     ]);
-    expect(applyPromptCaseModeToggle(["text2image", "image2image"], "text2image", false)).toEqual([
+    expect(applyPromptCaseModeToggle(["image2image", "text2image"], "text2image", false)).toEqual([
       "image2image"
     ]);
   });
