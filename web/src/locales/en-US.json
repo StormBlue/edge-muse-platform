@@ -58,7 +58,49 @@
     "nicknameForDisplay": "Nickname (display name)",
     "loginIdentifier": "Username or email",
     "loginFailed": "Login failed",
-    "platformSubtitle": "Cloudflare image generation platform"
+    "platformSubtitle": "Cloudflare image generation platform",
+    "turnstileWaitingAction": "Waiting for security check",
+    "turnstileRetry": "Check again",
+    "turnstileVerifyFailed": "Security check failed. Check again before logging in.",
+    "turnstileErrorCode": "Error code: {code}",
+    "turnstileStatus": {
+      "idle": {
+        "title": "Preparing security check",
+        "description": "We confirm this is a real visit before signing you in."
+      },
+      "loading": {
+        "title": "Loading security check",
+        "description": "If the check does not appear, review your network, browser extensions, or proxy settings."
+      },
+      "ready": {
+        "title": "Complete the security check below",
+        "description": "You can log in after it passes. Retry if the widget fails to load."
+      },
+      "verified": {
+        "title": "Security check passed",
+        "description": "You can continue signing in."
+      },
+      "expired": {
+        "title": "Security check expired",
+        "description": "Check again before logging in."
+      },
+      "timeout": {
+        "title": "Security check timed out",
+        "description": "Your network or browser may have blocked the widget. Try again."
+      },
+      "error": {
+        "title": "Security check failed to load",
+        "description": "Retry the check, or disable browser extensions that block scripts."
+      },
+      "unsupported": {
+        "title": "This browser cannot run the security check",
+        "description": "Update your browser or use a modern browser such as Chrome, Edge, or Safari."
+      },
+      "disabled": {
+        "title": "Security check is disabled",
+        "description": "This environment does not require an extra check. You can log in directly."
+      }
+    }
   },
   "shell": {
     "subtitle": "Image operations",
