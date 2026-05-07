@@ -81,6 +81,7 @@
     "prompt": "生成描述",
     "generationMode": "生成模式",
     "canvasSize": "画布尺寸",
+    "moreSizes": "更多尺寸",
     "imageCount": "生成数量",
     "noResult": "暂无生成结果",
     "latestResult": "最新结果",

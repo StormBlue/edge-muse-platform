@@ -39,10 +39,10 @@ export type ChatInputProps = {
 type SubmitEmit = (event: "submit", value: ChatInputSubmitValue) => void;
 
 const DEFAULT_SIZE_OPTIONS: ChatInputSizeOption[] = [
-  { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
-  { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" },
+  { value: "auto", ratio: "Auto", label: "Auto" },
   { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
-  { value: "auto", ratio: "Auto", label: "Auto" }
+  { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
+  { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" }
 ];
 
 const defaultMaxReferenceFiles = 5;
@@ -51,7 +51,7 @@ const maxCustomCount = 200;
 export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) {
   const { t } = useI18n();
   const prompt = ref("");
-  const size = ref("1024x1024");
+  const size = ref("auto");
   const n = ref(1);
   const files = ref<File[]>([]);
   const dragging = ref(false);

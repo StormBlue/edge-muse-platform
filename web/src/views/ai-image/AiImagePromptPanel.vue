@@ -23,6 +23,8 @@ import AiImageReferenceInput from "./AiImageReferenceInput.vue";
 import PromptAssistantPanel from "./PromptAssistantPanel.vue";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import { getAiImageSubmitBlockReason } from "./aiImageSubmitValidation";
+import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
@@ -164,6 +166,10 @@ function fillAssistantPrompt(value: {
 function isMobileAssistantViewport() {
   return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 }
+
+function updateMode(value: string | number) {
+  if (value === "image2image" || value === "text2image") emit("update:mode", value);
+}
 </script>
 
 <template>
@@ -223,67 +229,56 @@ function isMobileAssistantViewport() {
       </div>
     </div>
 
-    <section class="prompt-compose-panel panel flex min-h-[18rem] flex-col overflow-hidden">
-      <div class="border-b border-border px-4 py-3">
+    <section class="prompt-compose-panel panel">
+      <div class="prompt-compose-header">
         <h2 class="truncate text-sm font-semibold">{{ selectedCaseTitle }}</h2>
-        <p class="mt-1 truncate text-xs text-muted-foreground">
-          {{ caseItem ? caseItem.category : t("aiImage.creationMode") }}
-        </p>
-      </div>
-      <div class="thin-scrollbar flex flex-1 flex-col gap-4 overflow-y-auto p-4">
-        <div>
-          <p class="mb-2 text-xs font-medium text-muted-foreground">
-            {{ t("workspace.generationMode") }}
-          </p>
-          <div class="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
-            <button
+        <Tabs :model-value="mode" @update:model-value="updateMode">
+          <TabsList class="shrink-0">
+            <TabsTrigger
               v-for="item in supportedModes"
               :key="item"
-              class="h-10 rounded-lg border text-sm font-semibold"
-              :class="mode === item ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'"
-              type="button"
+              :value="item"
               :disabled="interactionLocked"
-              @click="emit('update:mode', item)"
             >
               {{ t(`workspace.${item}`) }}
-            </button>
-          </div>
-          <p
-            v-if="sizeFallbackNotice"
-            class="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-100"
-          >
-            {{ sizeFallbackNotice }}
-          </p>
-        </div>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      <div class="prompt-compose-body thin-scrollbar">
+        <p
+          v-if="sizeFallbackNotice"
+          class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900 dark:border-amber-700/70 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          {{ sizeFallbackNotice }}
+        </p>
 
         <div>
           <p class="mb-2 text-xs font-medium text-muted-foreground">
             {{ t("workspace.canvasSize") }}
           </p>
-          <div class="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2">
-            <button
-              v-for="option in sizeOptions"
-              :key="option.value"
-              class="rounded-lg border px-3 py-2 text-left"
-              :class="
-                size === option.value ? 'border-primary bg-primary/10' : 'border-border bg-muted/40'
-              "
-              type="button"
-              :disabled="interactionLocked"
-              @click="emit('update:size', option.value)"
-            >
-              <span class="block text-sm font-semibold">{{ option.ratio }}</span>
-              <span class="text-xs text-muted-foreground">{{ option.label }}</span>
-            </button>
-          </div>
+          <GenerationSizeSelector
+            :model-value="size"
+            :options="sizeOptions"
+            :disabled="interactionLocked"
+            @update:model-value="emit('update:size', $event)"
+          />
         </div>
 
-        <label class="block">
-          <span class="mb-2 block text-xs font-medium text-muted-foreground">
-            {{ t("workspace.prompt") }}
-          </span>
+        <AiImageReferenceInput
+          v-if="mode === 'image2image'"
+          v-model:description="referenceDescription"
+          class="prompt-compose-reference"
+          :can-accept-files="canAcceptReferenceFiles"
+          :previews="previews"
+          @add-files="addReferenceFiles"
+          @remove-file="(index) => emit('removeFile', index)"
+        />
+
+        <label class="prompt-compose-field">
           <textarea
-            class="ui-field min-h-32 resize-none p-3 text-sm leading-6"
+            class="ui-field prompt-compose-textarea resize-none p-3 text-sm leading-6"
+            :aria-label="t('workspace.prompt')"
             :placeholder="t('aiImage.promptPlaceholder')"
             :value="prompt"
             :disabled="interactionLocked"
@@ -301,18 +296,9 @@ function isMobileAssistantViewport() {
           <WandSparkles class="h-3.5 w-3.5" />
           {{ t("aiImage.openAssistant") }}
         </button>
-
-        <AiImageReferenceInput
-          v-if="mode === 'image2image'"
-          v-model:description="referenceDescription"
-          :can-accept-files="canAcceptReferenceFiles"
-          :previews="previews"
-          @add-files="addReferenceFiles"
-          @remove-file="(index) => emit('removeFile', index)"
-        />
       </div>
 
-      <div class="flex flex-wrap justify-between gap-2 border-t border-border p-4">
+      <div class="prompt-compose-footer">
         <div class="flex gap-2">
           <button
             v-if="canResetPrompt"
@@ -356,58 +342,28 @@ function isMobileAssistantViewport() {
     </section>
 
     <section class="ai-output-panel panel">
-      <div class="ai-case-preview">
-        <div class="flex min-w-0 items-center justify-between gap-3">
-          <div class="min-w-0">
-            <p class="text-xs font-medium text-muted-foreground">
-              {{ caseItem ? caseItem.category : t("aiImage.creationMode") }}
-            </p>
-            <h2 class="mt-1 truncate text-sm font-semibold">{{ selectedCaseTitle }}</h2>
-          </div>
-        </div>
+      <div class="ai-generated-area">
         <button
           v-if="caseItem?.thumbnailUrl"
-          class="ai-case-preview-button group"
+          class="ai-case-floating-preview group"
           type="button"
           :title="t('aiImage.openCasePreview')"
           :disabled="interactionLocked"
           @click="emit('openCasePreview')"
         >
-          <PromptCaseThumbnail
-            :src="caseItem.thumbnailUrl"
-            :alt="selectedCaseTitle"
-            fit="cover"
-            icon-class="h-7 w-7"
-          />
           <span
-            class="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-md bg-background/85 text-foreground opacity-0 transition group-hover:opacity-100"
+            class="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/85 text-foreground opacity-0 transition group-hover:opacity-100"
           >
             <Maximize2 class="h-4 w-4" />
           </span>
+          <PromptCaseThumbnail
+            class="ai-case-floating-thumbnail"
+            :src="caseItem.thumbnailUrl"
+            :alt="selectedCaseTitle"
+            fit="contain"
+            icon-class="h-7 w-7"
+          />
         </button>
-        <div v-else class="ai-case-preview-empty">
-          <WandSparkles class="h-7 w-7" />
-        </div>
-      </div>
-
-      <div class="ai-generated-area">
-        <div
-          class="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3"
-        >
-          <div class="min-w-0">
-            <h2 class="text-sm font-semibold">{{ t("workspace.result") }}</h2>
-            <p class="mt-1 truncate text-xs text-muted-foreground">
-              {{ generationPrompt || t("workspace.oneShotEmpty") }}
-            </p>
-          </div>
-          <span
-            v-if="hasRunningTask"
-            class="inline-flex shrink-0 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold"
-          >
-            <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
-            {{ t("workspace.generationProgress", { percent: generationProgress }) }}
-          </span>
-        </div>
 
         <div class="ai-generated-body">
           <div
@@ -486,7 +442,6 @@ function isMobileAssistantViewport() {
 
           <div v-else class="ai-result-empty">
             <ImageIcon class="h-10 w-10" />
-            <span>{{ t("workspace.noResult") }}</span>
           </div>
         </div>
       </div>
@@ -523,6 +478,10 @@ function isMobileAssistantViewport() {
 
 .prompt-compose-panel {
   grid-area: composer;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .assistant-dialog-card {
@@ -533,48 +492,84 @@ function isMobileAssistantViewport() {
   flex-direction: column;
 }
 
+.prompt-compose-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.75rem 1rem;
+}
+
+.prompt-compose-body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.prompt-compose-field {
+  display: flex;
+  min-height: 12rem;
+  flex: 1;
+  flex-direction: column;
+}
+
+.prompt-compose-reference {
+  flex: 0 0 auto;
+}
+
+.prompt-compose-textarea {
+  min-height: 0;
+  flex: 1;
+}
+
+.prompt-compose-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+}
+
 .ai-output-panel {
   grid-area: stage;
-  display: grid;
   min-height: clamp(26rem, 58dvh, 44rem);
-  grid-template-areas:
-    "case"
-    "generated";
-  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
 
-.ai-case-preview {
-  grid-area: case;
-  display: grid;
-  gap: 0.625rem;
-  border-bottom: 1px solid var(--border);
-  padding: 0.75rem;
-  background: color-mix(in oklch, var(--card), transparent 18%);
-}
-
-.ai-case-preview-button,
-.ai-case-preview-empty {
-  position: relative;
-  display: flex;
-  height: clamp(7rem, 16dvh, 11rem);
-  min-height: 0;
-  align-items: center;
-  justify-content: center;
+.ai-case-floating-preview {
+  position: absolute;
+  left: clamp(1rem, 2vw, 1.5rem);
+  top: clamp(1rem, 2vw, 1.5rem);
+  z-index: 2;
+  width: clamp(5.5rem, 13vw, 10rem);
+  min-width: 5.5rem;
+  max-width: 10rem;
+  aspect-ratio: 1;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklch, var(--border), transparent 8%);
   border-radius: 0.5rem;
-  background: color-mix(in oklch, var(--muted), transparent 45%);
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.42), rgb(226 232 240 / 0.18)),
+    color-mix(in oklch, var(--primary), transparent 92%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 12px 30px rgb(15 23 42 / 0.16);
 }
 
-.ai-case-preview-empty {
-  border-style: dashed;
-  color: var(--muted-foreground);
+.ai-case-floating-preview :deep(.ai-case-floating-thumbnail) {
+  background: transparent !important;
 }
 
 .ai-generated-area {
-  grid-area: generated;
+  position: relative;
   display: flex;
+  height: 100%;
   min-height: 0;
   flex-direction: column;
 }
@@ -829,20 +824,7 @@ function isMobileAssistantViewport() {
   }
 
   .ai-output-panel {
-    grid-template-areas:
-      "case"
-      "generated";
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .ai-case-preview {
-    border-bottom: 1px solid var(--border);
-  }
-
-  .ai-case-preview-button,
-  .ai-case-preview-empty {
-    height: min(12rem, 24dvh);
+    min-height: 0;
   }
 }
 

@@ -240,18 +240,22 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     return result;
   }
 
-  async function applyCasePrompt(item: PromptCaseListItem | PromptCase) {
-    applyingCaseId.value = item.id;
+  async function applyCasePrompt(
+    item: PromptCaseListItem | PromptCase | string,
+    options: { toastSuccess?: boolean } = {}
+  ) {
+    const id = typeof item === "string" ? item : item.id;
+    applyingCaseId.value = id;
     try {
       const detail = await ensureCaseDetail(item);
       const result = selectCase(detail);
-      toast.success(t("aiImage.promptFilled"));
+      if (options.toastSuccess !== false) toast.success(t("aiImage.promptFilled"));
       return result;
     } catch (error) {
       toast.error(errorMessage(error, t("aiImage.caseDetailLoadFailed")));
       throw error;
     } finally {
-      if (applyingCaseId.value === item.id) applyingCaseId.value = null;
+      if (applyingCaseId.value === id) applyingCaseId.value = null;
     }
   }
 
@@ -292,7 +296,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       return;
     }
     const contextAvailable = caseContextId.value
-      ? available.some((item) => item.id === caseContextId.value)
+      ? available.some((item) => item.id === caseContextId.value) ||
+        Boolean(detailsById.value[caseContextId.value])
       : false;
     if (!contextAvailable) {
       caseContextId.value = null;

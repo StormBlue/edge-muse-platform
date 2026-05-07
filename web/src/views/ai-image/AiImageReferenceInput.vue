@@ -42,21 +42,7 @@ function addReferenceFiles(files: File[]) {
 </script>
 
 <template>
-  <div class="space-y-3">
-    <label class="block">
-      <span class="mb-2 block text-xs font-medium text-muted-foreground">
-        {{ t("aiImage.referenceDescriptionLabel") }}
-      </span>
-      <textarea
-        v-model="description"
-        class="ui-field min-h-24 resize-none p-3 text-sm leading-6"
-        :placeholder="t('aiImage.referenceDescriptionPlaceholder')"
-      />
-      <span class="mt-1 block text-xs leading-5 text-muted-foreground">
-        {{ t("aiImage.referenceDescriptionHint") }}
-      </span>
-    </label>
-
+  <div class="ai-reference-input">
     <label
       class="flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-3 py-4 text-center text-sm font-semibold transition"
       :class="
@@ -98,5 +84,31 @@ function addReferenceFiles(files: File[]) {
         </button>
       </div>
     </div>
+
+    <label class="block">
+      <span class="mb-2 block text-xs font-medium text-muted-foreground">
+        {{ t("aiImage.referenceDescriptionLabel") }}
+      </span>
+      <textarea
+        v-model="description"
+        class="ui-field min-h-24 resize-none p-3 text-sm leading-6"
+        :placeholder="t('aiImage.referenceDescriptionPlaceholder')"
+      />
+      <span class="mt-1 block text-xs leading-5 text-muted-foreground">
+        {{ t("aiImage.referenceDescriptionHint") }}
+      </span>
+    </label>
   </div>
 </template>
+
+<style scoped>
+.ai-reference-input {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ai-reference-input textarea {
+  min-height: 4.75rem;
+  max-height: 7rem;
+}
+</style>

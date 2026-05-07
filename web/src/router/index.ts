@@ -14,6 +14,11 @@ const router = createRouter({
     // 公开：无需已登录；其余默认需鉴权
     { path: "/login", component: () => import("@/views/auth/Login.vue"), meta: { public: true } },
     { path: "/ai-image", component: () => import("@/views/ai-image/AiImageGeneration.vue") },
+    {
+      path: "/ai-image/cases/:caseId",
+      name: "ai-image-case",
+      component: () => import("@/views/ai-image/AiImageGeneration.vue")
+    },
     { path: "/workspace", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/workspace/s/:sessionId", component: () => import("@/views/workspace/Workspace.vue") },
     { path: "/history", component: () => import("@/views/history/History.vue") },

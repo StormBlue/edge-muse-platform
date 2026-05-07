@@ -81,6 +81,7 @@
     "prompt": "Prompt",
     "generationMode": "Generation mode",
     "canvasSize": "Canvas size",
+    "moreSizes": "More sizes",
     "imageCount": "Image count",
     "noResult": "No generated result yet",
     "latestResult": "Latest result",

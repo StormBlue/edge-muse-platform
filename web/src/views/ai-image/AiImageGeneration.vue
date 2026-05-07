@@ -6,6 +6,7 @@
  */
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { ArrowLeft, Search, WandSparkles } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
@@ -24,6 +25,8 @@ import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase, PromptCaseListItem } from "@/types/promptCases";
 
 const { t } = useI18n();
+const route = useRoute();
+const router = useRouter();
 const auth = useAuthStore();
 const generation = useAiImageGenerationSubmit();
 const cases = useAiImageCases({ supportedModes: generation.supportedModes });
@@ -37,10 +40,14 @@ const mobileCaseSheetOpen = ref(false);
 const caseBrowserCollapsed = ref(false);
 const selectedImage = ref<ImageAttachment | null>(null);
 const sizeFallback = ref<AiImageSizeFallback | null>(null);
+const applyingRouteCaseId = ref<string | null>(null);
 
 const activeCase = computed(() => cases.caseContext.value);
 const activeCaseDetail = computed(() => cases.caseContextDetail.value);
 const selectedCaseTitle = computed(() => activeCase.value?.title ?? t("aiImage.blankCase"));
+const routeCaseId = computed(() =>
+  typeof route.params.caseId === "string" ? route.params.caseId : null
+);
 const pageInteractionLocked = computed(
   () => generation.submitting.value || generation.hasRunningTask.value
 );
@@ -75,6 +82,9 @@ async function applyCase(item: PromptCaseListItem | PromptCase) {
   syncGenerationFromCase(detail, result.mode);
   caseBrowserCollapsed.value = true;
   mobileCaseSheetOpen.value = false;
+  if (routeCaseId.value !== detail.id) {
+    await router.push({ name: "ai-image-case", params: { caseId: detail.id } });
+  }
 }
 
 function startBlankAssistantFlow() {
@@ -90,6 +100,7 @@ function startBlankAssistantFlow() {
 function reopenCaseBrowser() {
   if (pageInteractionLocked.value) return;
   caseBrowserCollapsed.value = false;
+  void router.push("/ai-image");
 }
 
 function syncGenerationFromCase(item: PromptCase, mode: PromptCase["modes"][number]) {
@@ -205,8 +216,13 @@ function shouldOpenMobileCaseSheet() {
 }
 
 onMounted(() => {
-  void cases.load();
+  void initializePage();
 });
+
+async function initializePage() {
+  await cases.load();
+  await syncRouteCase();
+}
 
 watch(
   () => [
@@ -226,6 +242,38 @@ watch(
     if (selectedImage.value?.id.startsWith("case:")) selectedImage.value = null;
   }
 );
+
+watch(routeCaseId, () => {
+  void syncRouteCase();
+});
+
+async function syncRouteCase() {
+  const caseId = routeCaseId.value;
+  if (!caseId) {
+    if (!pageInteractionLocked.value) caseBrowserCollapsed.value = false;
+    applyingRouteCaseId.value = null;
+    return;
+  }
+  if (applyingRouteCaseId.value === caseId) return;
+  if (cases.caseContext.value?.id === caseId && caseBrowserCollapsed.value) return;
+  applyingRouteCaseId.value = caseId;
+  try {
+    const result = await cases.applyCasePrompt(caseId, { toastSuccess: false });
+    const detail = cases.caseContextDetail.value;
+    if (!detail) return;
+    generation.clearActiveResult();
+    syncGenerationFromCase(detail, result.mode);
+    caseBrowserCollapsed.value = true;
+    mobileCaseSheetOpen.value = false;
+  } catch {
+    if (!pageInteractionLocked.value) {
+      caseBrowserCollapsed.value = false;
+      void router.replace("/ai-image");
+    }
+  } finally {
+    if (applyingRouteCaseId.value === caseId) applyingRouteCaseId.value = null;
+  }
+}
 </script>
 
 <template>

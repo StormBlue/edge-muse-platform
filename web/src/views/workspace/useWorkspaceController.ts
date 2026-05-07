@@ -112,7 +112,7 @@ export function useWorkspaceController() {
     }
   });
   const currentGenerationSettings = computed(() => ({
-    size: sessions.currentSession?.settings?.size ?? "1024x1024",
+    size: sessions.currentSession?.settings?.size ?? "auto",
     n: sessions.currentSession?.settings?.n ?? 1
   }));
   const latestReferenceCount = computed(

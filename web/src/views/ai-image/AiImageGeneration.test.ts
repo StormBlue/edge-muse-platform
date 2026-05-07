@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   generation: null as unknown,
   cases: null as unknown,
   authStore: null as unknown,
+  route: { params: {} as Record<string, string | undefined> },
+  routerPush: vi.fn(),
+  routerReplace: vi.fn(),
   trackGenerationEvent: vi.fn()
 }));
 
@@ -96,6 +99,14 @@ vi.mock("vue-i18n", () => ({
   })
 }));
 
+vi.mock("vue-router", () => ({
+  useRoute: () => mocks.route,
+  useRouter: () => ({
+    push: mocks.routerPush,
+    replace: mocks.routerReplace
+  })
+}));
+
 vi.mock("vue-sonner", () => ({
   toast: {
     success: vi.fn(),
@@ -114,6 +125,9 @@ vi.mock("./useAiImageCases", () => ({
 describe("AiImageGeneration", () => {
   beforeEach(() => {
     mocks.trackGenerationEvent.mockReset();
+    mocks.route.params = {};
+    mocks.routerPush.mockReset();
+    mocks.routerReplace.mockReset();
     mocks.authStore = authStore();
     mocks.generation = generationState();
     mocks.cases = casesState();
@@ -170,6 +184,43 @@ describe("AiImageGeneration", () => {
     await nextTick();
 
     expect(generation.clearActiveResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens applied cases on a dedicated generation route", async () => {
+    const wrapper = mount(AiImageGeneration);
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase({ id: "case_route_target" });
+
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      name: "ai-image-case",
+      params: { caseId: "case_route_target" }
+    });
+  });
+
+  it("returns to the case list when the route no longer has a case id", async () => {
+    const wrapper = mount(AiImageGeneration);
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase({ id: "case_back_target" });
+
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+    expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(true);
+
+    mocks.route.params = {};
+    await wrapper.vm.$nextTick();
+    await nextTick();
+
+    expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="select-case"]').exists()).toBe(true);
   });
 
   it("does not attribute user-written prompts to the selected case", async () => {

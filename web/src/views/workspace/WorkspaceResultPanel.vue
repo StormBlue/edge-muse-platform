@@ -35,8 +35,8 @@ const { t } = useI18n();
     <div class="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
       <div class="min-w-0">
         <h2 class="text-sm font-semibold">{{ title }}</h2>
-        <p v-if="subtitle !== undefined" class="mt-1 truncate text-xs text-muted-foreground">
-          {{ subtitle || t("workspace.oneShotEmpty") }}
+        <p v-if="subtitle" class="mt-1 truncate text-xs text-muted-foreground">
+          {{ subtitle }}
         </p>
       </div>
       <div v-if="compact" class="flex shrink-0 flex-wrap items-center justify-end gap-2">

@@ -22,7 +22,7 @@ export function sizeOptionsForProvider(capabilities: ProviderCapabilities | null
 }
 
 export function defaultSizeOptions(): SizeOption[] {
-  return ["1024x1024", "1024x1536", "1536x1024", "auto"].map(sizeToOption);
+  return ["auto", "1536x1024", "1024x1024", "1024x1536"].map(sizeToOption);
 }
 
 export function sizeToOption(size: string): SizeOption {

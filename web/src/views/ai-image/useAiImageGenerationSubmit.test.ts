@@ -70,6 +70,7 @@ describe("useAiImageGenerationSubmit", () => {
     const generation = useAiImageGenerationSubmit();
 
     expect(generation.mode.value).toBe("image2image");
+    expect(generation.size.value).toBe("auto");
     expect(generation.supportedModes.value).toEqual(["image2image", "text2image"]);
   });
 

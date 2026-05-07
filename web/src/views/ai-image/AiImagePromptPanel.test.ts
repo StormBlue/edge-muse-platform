@@ -45,7 +45,7 @@ vi.mock("./AiImageFailurePanel.vue", () => ({
 }));
 
 vi.mock("./AiImageReferenceInput.vue", () => ({
-  default: { template: '<section data-testid="reference-input"></section>' }
+  default: { template: '<section data-testid="reference-input"><slot /></section>' }
 }));
 
 vi.mock("./PromptAssistantPanel.vue", () => ({
@@ -56,6 +56,14 @@ vi.mock("./PromptCaseThumbnail.vue", () => ({
   default: {
     props: ["src", "alt", "fit", "iconClass"],
     template: '<div data-testid="case-thumbnail" :data-fit="fit">{{ alt }}</div>'
+  }
+}));
+
+vi.mock("@/components/generation/GenerationSizeSelector.vue", () => ({
+  default: {
+    props: ["modelValue", "options", "disabled"],
+    emits: ["update:modelValue"],
+    template: '<section data-testid="size-selector">{{ modelValue }}|{{ options.length }}</section>'
   }
 }));
 
@@ -70,7 +78,21 @@ describe("AiImagePromptPanel", () => {
 
     expect(wrapper.text()).toContain("九宫格写真组图");
     expect(wrapper.text()).not.toContain("aiImage.selectedCase");
-    expect(wrapper.get('[data-testid="case-thumbnail"]').attributes("data-fit")).toBe("cover");
+    expect(wrapper.get('[data-testid="case-thumbnail"]').attributes("data-fit")).toBe("contain");
+    expect(wrapper.find(".ai-case-preview").exists()).toBe(false);
+    expect(wrapper.find(".ai-case-floating-preview").exists()).toBe(true);
+  });
+
+  it("keeps generation mode in header tabs and removes result descriptive copy", () => {
+    const wrapper = mount(AiImagePromptPanel, {
+      props: panelProps({ generationPrompt: "正在生成的长提示词" })
+    });
+
+    expect(wrapper.find('[data-slot="tabs-list"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("workspace.result");
+    expect(wrapper.text()).not.toContain("workspace.oneShotEmpty");
+    expect(wrapper.text()).not.toContain("workspace.generationMode");
+    expect(wrapper.get('[data-testid="size-selector"]').text()).toContain("1024x1024");
   });
 
   it("keeps long running prompts inside the progress layout", () => {

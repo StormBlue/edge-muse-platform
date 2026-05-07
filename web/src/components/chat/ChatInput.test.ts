@@ -11,6 +11,32 @@ vi.mock("vue-i18n", () => ({
 }));
 
 describe("ChatInput", () => {
+  it("defaults new generation size to Auto and exposes a compact size selector", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        sizeOptions: [
+          { value: "auto", ratio: "Auto", label: "Auto" },
+          { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
+          { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
+          { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" }
+        ]
+      }
+    });
+
+    const textarea = wrapper.get("textarea");
+    await textarea.setValue("默认 auto 尺寸");
+    await wrapper.get("form").trigger("submit");
+
+    expect(wrapper.findAll(".generation-size-choice")).toHaveLength(2);
+    expect(wrapper.find(".generation-size-more-select").exists()).toBe(true);
+    expect(wrapper.find(".task-size-grid").exists()).toBe(false);
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      prompt: "默认 auto 尺寸",
+      size: "auto"
+    });
+  });
+
   it("keeps the task prompt after submit so failed creation can be retried", async () => {
     const wrapper = mount(ChatInput, {
       props: {

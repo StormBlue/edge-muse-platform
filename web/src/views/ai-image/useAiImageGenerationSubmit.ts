@@ -34,7 +34,7 @@ export function useAiImageGenerationSubmit() {
   const auth = useAuthStore();
   const sessions = useSessionStore();
   const mode = ref<PromptCaseMode>("image2image");
-  const size = ref("1024x1024");
+  const size = ref("auto");
   const files = ref<File[]>([]);
   const previews = ref<Array<{ file: File; url: string }>>([]);
   const submitting = ref(false);
@@ -125,7 +125,7 @@ export function useAiImageGenerationSubmit() {
     () => sizeOptions.value.map((option) => option.value).join("|"),
     () => {
       if (sizeOptions.value.some((option) => option.value === size.value)) return;
-      size.value = sizeOptions.value[0]?.value ?? "1024x1024";
+      size.value = sizeOptions.value[0]?.value ?? "auto";
     },
     { immediate: true }
   );

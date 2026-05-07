@@ -4,6 +4,7 @@
  * `readOnly` 用于仅展示历史参数。
  */
 import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "lucide-vue-next";
+import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
 import type { ImageAttachment } from "@/stores/session";
 import {
   useChatInputController,
@@ -150,23 +151,11 @@ const {
           <div class="task-setting-title-row">
             <p>{{ t("workspace.canvasSize") }}</p>
           </div>
-          <div class="task-size-grid">
-            <button
-              v-for="option in visibleSizeOptions"
-              :key="option.value"
-              class="task-size-chip"
-              :class="size === option.value ? 'task-size-chip--active' : ''"
-              type="button"
-              :aria-pressed="size === option.value"
-              :aria-disabled="isReadOnly"
-              :tabindex="isReadOnly ? -1 : 0"
-              :title="option.label"
-              @click="!isReadOnly && (size = option.value)"
-            >
-              <span class="font-semibold">{{ option.ratio }}</span>
-              <span class="truncate text-muted-foreground">{{ option.label }}</span>
-            </button>
-          </div>
+          <GenerationSizeSelector
+            v-model="size"
+            :disabled="isReadOnly"
+            :options="visibleSizeOptions"
+          />
         </div>
 
         <div class="task-setting-block task-count-block">
@@ -333,41 +322,6 @@ const {
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1rem;
-}
-
-.task-size-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.25rem), 1fr));
-  gap: 0.5rem;
-}
-
-.task-size-chip {
-  display: grid;
-  min-width: 0;
-  min-height: 2.75rem;
-  align-content: center;
-  gap: 0.125rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: color-mix(in oklch, var(--muted), transparent 52%);
-  padding: 0.375rem 0.625rem;
-  text-align: left;
-  font-size: 0.75rem;
-  line-height: 1rem;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease;
-}
-
-.task-size-chip:hover {
-  background: var(--muted);
-}
-
-.task-size-chip--active {
-  border-color: color-mix(in oklch, var(--primary), transparent 35%);
-  background: color-mix(in oklch, var(--primary), transparent 88%);
-  color: var(--foreground);
 }
 
 .task-count-block {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SessionMode } from "@/stores/session";
 import type { ModeOption } from "./workspaceOptions";
 
@@ -23,6 +24,10 @@ const { t } = useI18n();
 function updateDraftTitle(event: Event) {
   emit("update:draftTitle", (event.target as HTMLInputElement).value);
 }
+
+function updateMode(value: string | number) {
+  if (value === "image2image" || value === "text2image") emit("select", value);
+}
 </script>
 
 <template>
@@ -44,26 +49,23 @@ function updateDraftTitle(event: Event) {
           {{ sessionTitle }}
         </p>
       </div>
-      <div class="grid w-full grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-2 xl:max-w-3xl">
-        <button
-          v-for="option in modeOptions"
-          :key="option.value"
-          class="flex min-h-10 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition"
-          :class="[
-            activeMode === option.value
-              ? 'border-primary bg-primary/10 text-foreground'
-              : 'border-border bg-muted/45 text-muted-foreground hover:bg-muted',
-            disabled ? 'cursor-not-allowed opacity-70' : ''
-          ]"
-          type="button"
-          :aria-pressed="activeMode === option.value"
-          :disabled="disabled"
-          @click="emit('select', option.value)"
+      <Tabs class="min-w-0" :model-value="activeMode" @update:model-value="updateMode">
+        <TabsList
+          class="grid h-10 w-full xl:w-auto"
+          :class="modeOptions.length > 1 ? 'grid-cols-2' : 'grid-cols-1'"
         >
-          <component :is="option.icon" class="h-4 w-4" />
-          <span>{{ option.label }}</span>
-        </button>
-      </div>
+          <TabsTrigger
+            v-for="option in modeOptions"
+            :key="option.value"
+            class="h-8 min-w-0 gap-2 px-3 text-sm"
+            :value="option.value"
+            :disabled="disabled"
+          >
+            <component :is="option.icon" class="h-4 w-4 shrink-0" />
+            <span class="truncate">{{ option.label }}</span>
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
     </div>
   </section>
 </template>

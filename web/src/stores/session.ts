@@ -156,7 +156,7 @@ export const useSessionStore = defineStore("sessions", {
     async createSession(mode: SessionMode = "image2image") {
       const body = await apiFetch<{ session: Session }>("/sessions", {
         method: "POST",
-        body: JSON.stringify({ mode, settings: { size: "1024x1024", n: 1 } })
+        body: JSON.stringify({ mode, settings: { size: "auto", n: 1 } })
       });
       this.sessions.unshift(body.session);
       this.currentSessionId = body.session.id;
