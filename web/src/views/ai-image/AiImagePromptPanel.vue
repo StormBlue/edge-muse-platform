@@ -360,7 +360,7 @@ function isMobileAssistantViewport() {
         <div class="flex min-w-0 items-center justify-between gap-3">
           <div class="min-w-0">
             <p class="text-xs font-medium text-muted-foreground">
-              {{ caseItem ? t("aiImage.selectedCase") : t("aiImage.creationMode") }}
+              {{ caseItem ? caseItem.category : t("aiImage.creationMode") }}
             </p>
             <h2 class="mt-1 truncate text-sm font-semibold">{{ selectedCaseTitle }}</h2>
           </div>
@@ -376,6 +376,7 @@ function isMobileAssistantViewport() {
           <PromptCaseThumbnail
             :src="caseItem.thumbnailUrl"
             :alt="selectedCaseTitle"
+            fit="cover"
             icon-class="h-7 w-7"
           />
           <span
@@ -409,21 +410,38 @@ function isMobileAssistantViewport() {
         </div>
 
         <div class="ai-generated-body">
-          <div v-if="hasRunningTask" class="ai-generation-progress">
-            <div class="flex items-center gap-3">
+          <div
+            v-if="hasRunningTask"
+            class="ai-generation-progress"
+            role="status"
+            aria-live="polite"
+          >
+            <div class="ai-generation-progress-header">
               <span
                 class="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground"
               >
                 <Loader2 class="h-5 w-5 animate-spin" />
               </span>
-              <div class="min-w-0 flex-1">
-                <p class="text-sm font-semibold">{{ generationStatusLabel }}</p>
-                <p class="mt-1 truncate text-xs text-muted-foreground">
+              <div class="ai-generation-progress-copy">
+                <div class="ai-generation-progress-title">
+                  <p class="text-sm font-semibold">{{ generationStatusLabel }}</p>
+                  <span class="ai-generation-progress-percent">
+                    {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+                  </span>
+                </div>
+                <p class="ai-generation-progress-prompt">
                   {{ generationPrompt || t("workspace.generationHint") }}
                 </p>
               </div>
             </div>
-            <div class="mt-4 h-2.5 overflow-hidden rounded-full bg-primary/15">
+            <div
+              class="ai-generation-progress-track"
+              role="progressbar"
+              :aria-label="generationStatusLabel"
+              :aria-valuenow="generationProgress"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
               <div
                 class="h-full rounded-full bg-primary transition-all duration-500"
                 :style="{ width: `${generationProgress}%` }"
@@ -609,14 +627,13 @@ function isMobileAssistantViewport() {
 .ai-result-grid--single .ai-result-tile {
   width: 100%;
   height: 100%;
+  align-self: stretch;
 }
 
 .ai-result-image {
   display: block;
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   object-position: center;
 }
@@ -624,6 +641,7 @@ function isMobileAssistantViewport() {
 .ai-generation-progress,
 .ai-result-empty {
   display: flex;
+  width: 100%;
   min-height: 100%;
   flex-direction: column;
   justify-content: center;
@@ -631,6 +649,65 @@ function isMobileAssistantViewport() {
   border-radius: 0.5rem;
   background: color-mix(in oklch, var(--muted), transparent 70%);
   padding: 1rem;
+}
+
+.ai-generation-progress {
+  min-width: 0;
+  gap: 1rem;
+}
+
+.ai-generation-progress-header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.875rem;
+}
+
+.ai-generation-progress-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.375rem;
+}
+
+.ai-generation-progress-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ai-generation-progress-percent {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--primary), transparent 70%);
+  background: color-mix(in oklch, var(--primary), transparent 88%);
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.ai-generation-progress-prompt {
+  display: -webkit-box;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+  color: var(--muted-foreground);
+}
+
+.ai-generation-progress-track {
+  height: 0.625rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--primary), transparent 86%);
 }
 
 .ai-result-empty {

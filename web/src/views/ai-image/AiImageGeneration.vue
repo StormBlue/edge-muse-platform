@@ -71,6 +71,7 @@ async function applyCase(item: PromptCaseListItem | PromptCase) {
   const result = await cases.applyCasePrompt(item);
   const detail = cases.caseContextDetail.value;
   if (!detail) return;
+  generation.clearActiveResult();
   syncGenerationFromCase(detail, result.mode);
   caseBrowserCollapsed.value = true;
   mobileCaseSheetOpen.value = false;
@@ -78,6 +79,7 @@ async function applyCase(item: PromptCaseListItem | PromptCase) {
 
 function startBlankAssistantFlow() {
   if (pageInteractionLocked.value) return;
+  generation.clearActiveResult();
   cases.startBlankCase();
   sizeFallback.value = null;
   caseBrowserCollapsed.value = true;
@@ -312,9 +314,6 @@ watch(
             {{ t("aiImage.backToCases") }}
           </button>
           <div class="min-w-0">
-            <p class="text-xs font-medium text-muted-foreground">
-              {{ activeCase ? t("aiImage.selectedCase") : t("aiImage.creationMode") }}
-            </p>
             <h1 class="truncate text-lg font-semibold leading-7">{{ selectedCaseTitle }}</h1>
           </div>
         </div>

@@ -120,4 +120,26 @@ describe("useAiImageGenerationSubmit", () => {
       status: "queued"
     });
   });
+
+  it("clears only the current AI image result scope when starting a new flow", async () => {
+    const generation = useAiImageGenerationSubmit();
+    const sessions = useSessionStore();
+    generation.mode.value = "text2image";
+
+    await generation.submit("上一张图的 prompt");
+    sessions.applyTaskEvent({
+      type: "task.done",
+      task: { id: "tsk_1", status: "succeeded" },
+      images: [{ id: "img_old", url: "/api/images/img_old", mime: "image/png", byteSize: 10 }]
+    });
+    await nextTick();
+
+    expect(generation.resultImages.value).toHaveLength(1);
+
+    generation.clearActiveResult();
+    await nextTick();
+
+    expect(generation.resultImages.value).toEqual([]);
+    expect(sessions.messages.some((message) => message.taskId === "tsk_1")).toBe(true);
+  });
 });

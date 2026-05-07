@@ -157,6 +157,21 @@ describe("AiImageGeneration", () => {
     expect(generation.mode.value).toBe("text2image");
   });
 
+  it("clears the previous active result when applying a new case", async () => {
+    const wrapper = mount(AiImageGeneration);
+    const generation = mocks.generation as ReturnType<typeof generationState>;
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase({ id: "case_new_result_scope" });
+
+    cases.items.value = [selected];
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+
+    expect(generation.clearActiveResult).toHaveBeenCalledTimes(1);
+  });
+
   it("does not attribute user-written prompts to the selected case", async () => {
     const wrapper = mount(AiImageGeneration);
     const generation = mocks.generation as ReturnType<typeof generationState>;
@@ -280,6 +295,7 @@ function generationState() {
     supportedModes,
     addFiles: vi.fn(),
     clearFiles: vi.fn(),
+    clearActiveResult: vi.fn(),
     removeFile: vi.fn(),
     retry: vi.fn(),
     submit: vi.fn()

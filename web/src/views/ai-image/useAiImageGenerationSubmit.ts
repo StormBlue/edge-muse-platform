@@ -157,6 +157,11 @@ export function useAiImageGenerationSubmit() {
     files.value = [];
   }
 
+  function clearActiveResult() {
+    activeTaskId.value = null;
+    activeSessionId.value = null;
+  }
+
   async function submit(
     prompt: string,
     title?: string,
@@ -179,8 +184,7 @@ export function useAiImageGenerationSubmit() {
     }
 
     submitting.value = true;
-    activeTaskId.value = null;
-    activeSessionId.value = null;
+    clearActiveResult();
     try {
       const uploaded = await uploadReferencesIfNeeded();
       // AI 图像生成页每次提交独立创建会话，避免误写入用户刚才在专业工作台打开的会话。
@@ -338,6 +342,7 @@ export function useAiImageGenerationSubmit() {
     supportedModes,
     addFiles,
     clearFiles,
+    clearActiveResult,
     removeFile,
     retry,
     submit
