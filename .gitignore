@@ -22,7 +22,7 @@ yarn-error.log*
 
 # Build/cache artifacts
 *.tsbuildinfo
-.eslintcache
+**/.eslintcache
 .cache/
 tmp/
 temp/
