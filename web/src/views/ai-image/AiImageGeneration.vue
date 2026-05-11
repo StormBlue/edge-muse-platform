@@ -8,12 +8,12 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, Search, WandSparkles } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import AiImageCaseBrowser from "./AiImageCaseBrowser.vue";
+import AiImageCasePickerPanel from "./AiImageCasePickerPanel.vue";
+import AiImageGenerationHeader from "./AiImageGenerationHeader.vue";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
-import PromptCaseDetail from "./PromptCaseDetail.vue";
-import PromptCaseGallery from "./PromptCaseGallery.vue";
 import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
 import { useAuthStore } from "@/stores/auth";
 import { resolveAiImageRecommendedSize, type AiImageSizeFallback } from "./aiImageSizeFallback";
@@ -279,118 +279,49 @@ async function syncRouteCase() {
 <template>
   <AppShell>
     <div class="ai-image-page" :class="{ 'ai-image-page--generating': caseBrowserCollapsed }">
-      <section v-if="!caseBrowserCollapsed" class="case-picker-panel panel p-3">
-        <div class="case-picker-toolbar">
-          <button class="direct-create-entry" type="button" @click="startBlankAssistantFlow">
-            <span class="direct-create-icon">
-              <WandSparkles class="h-5 w-5" />
-            </span>
-            <span class="min-w-0 flex-1">
-              <span class="block text-base font-semibold leading-6">
-                {{ t("aiImage.startBlankAssistant") }}
-              </span>
-              <span class="mt-1 block text-sm leading-5 text-muted-foreground">
-                {{ t("aiImage.blankCaseSummary") }}
-              </span>
-            </span>
-            <span class="direct-create-action">
-              {{ t("aiImage.startBlankAssistantAction") }}
-            </span>
-          </button>
-          <div class="thin-scrollbar flex min-w-0 gap-2 overflow-x-auto pb-1">
-            <button
-              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-              :class="
-                !cases.category.value ? 'border-primary bg-primary/10' : 'border-border bg-card'
-              "
-              type="button"
-              @click="cases.category.value = ''"
-            >
-              {{ t("aiImage.allCategories") }}
-            </button>
-            <button
-              v-for="category in cases.categories.value"
-              :key="category"
-              class="h-9 shrink-0 rounded-lg border px-3 text-sm font-medium"
-              :class="
-                cases.category.value === category
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-card'
-              "
-              type="button"
-              @click="cases.category.value = category"
-            >
-              {{ category }}
-            </button>
-          </div>
-          <div class="case-filter-row">
-            <label class="case-search-field">
-              <Search class="h-4 w-4 text-muted-foreground" />
-              <input
-                class="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                :placeholder="t('aiImage.searchCases')"
-                :value="cases.search.value"
-                type="search"
-                @input="cases.search.value = ($event.target as HTMLInputElement).value"
-              />
-            </label>
-            <select v-model="cases.filterMode.value" class="ui-field h-10 min-w-36 px-3 text-sm">
-              <option value="">{{ t("promptCases.allModes") }}</option>
-              <option v-for="mode in generation.supportedModes.value" :key="mode" :value="mode">
-                {{ t(`workspace.${mode}`) }}
-              </option>
-            </select>
-            <select v-model="cases.size.value" class="ui-field h-10 min-w-36 px-3 text-sm">
-              <option value="">{{ t("aiImage.allSizes") }}</option>
-              <option v-for="caseSize in cases.sizes.value" :key="caseSize" :value="caseSize">
-                {{ caseSize }}
-              </option>
-            </select>
-          </div>
-        </div>
-      </section>
+      <AiImageCasePickerPanel
+        v-if="!caseBrowserCollapsed"
+        :categories="cases.categories.value"
+        :category="cases.category.value"
+        :filter-mode="cases.filterMode.value"
+        :search="cases.search.value"
+        :size="cases.size.value"
+        :sizes="cases.sizes.value"
+        :supported-modes="generation.supportedModes.value"
+        @start-blank-assistant-flow="startBlankAssistantFlow"
+        @update:category="cases.category.value = $event"
+        @update:filter-mode="cases.filterMode.value = $event"
+        @update:search="cases.search.value = $event"
+        @update:size="cases.size.value = $event"
+      />
 
-      <section v-else class="generation-page-header">
-        <div class="flex min-w-0 items-center gap-3">
-          <button
-            class="ui-button ui-button-secondary h-10 shrink-0 px-4 text-sm"
-            type="button"
-            :disabled="pageInteractionLocked"
-            @click="reopenCaseBrowser"
-          >
-            <ArrowLeft class="h-4 w-4" />
-            {{ t("aiImage.backToCases") }}
-          </button>
-          <div class="min-w-0">
-            <h1 class="truncate text-lg font-semibold leading-7">{{ selectedCaseTitle }}</h1>
-          </div>
-        </div>
-      </section>
+      <AiImageGenerationHeader
+        v-else
+        :disabled="pageInteractionLocked"
+        :title="selectedCaseTitle"
+        @back="reopenCaseBrowser"
+      />
 
       <div
         class="ai-image-grid"
         :class="caseBrowserCollapsed ? 'ai-image-grid--generating' : 'ai-image-grid--selecting'"
       >
-        <PromptCaseGallery
+        <AiImageCaseBrowser
           v-if="!caseBrowserCollapsed"
-          :items="cases.filteredItems.value"
-          :error="cases.loadMoreError.value"
+          :applying="cases.applying.value"
+          :detail-error="cases.detailError.value"
+          :detail-item="cases.selectedDetail.value"
+          :detail-loading="cases.detailLoading.value"
+          :filtered-items="cases.filteredItems.value"
           :has-more="cases.hasMore.value"
+          :load-more-error="cases.loadMoreError.value"
           :loading-initial="cases.loadingInitial.value"
           :loading-more="cases.loadingMore.value"
           :selected-id="cases.selectedId.value"
+          @apply="(item) => void applyCase(item)"
           @load-more="cases.loadMore"
           @select="selectCase"
         />
-        <div v-if="!caseBrowserCollapsed" class="desktop-case-detail">
-          <PromptCaseDetail
-            :applying="cases.applying.value"
-            :error="cases.detailError.value"
-            :item="cases.selectedDetail.value"
-            :loading="cases.detailLoading.value"
-            @apply="(item) => void applyCase(item)"
-          />
-        </div>
         <AiImagePromptPanel
           v-if="caseBrowserCollapsed"
           v-model:mode="generation.mode.value"
@@ -462,104 +393,6 @@ async function syncRouteCase() {
   gap: 0.75rem;
 }
 
-.case-picker-toolbar {
-  display: grid;
-  min-width: 0;
-  gap: 0.75rem;
-}
-
-.case-filter-row {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(12rem, 1fr);
-  gap: 0.5rem;
-}
-
-.case-search-field {
-  display: flex;
-  min-width: 0;
-  height: 2.5rem;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: color-mix(in oklch, var(--card), transparent 8%);
-  padding: 0 0.75rem;
-}
-
-.direct-create-entry {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.875rem;
-  border-radius: 0.5rem;
-  border: 1px solid color-mix(in oklch, var(--primary), transparent 62%);
-  background:
-    linear-gradient(135deg, color-mix(in oklch, var(--primary), transparent 88%), transparent),
-    color-mix(in oklch, var(--card), transparent 10%);
-  padding: 0.875rem;
-  box-shadow: 0 10px 24px color-mix(in oklch, var(--primary), transparent 88%);
-  text-align: left;
-  transition:
-    background-color 160ms ease,
-    border-color 160ms ease,
-    transform 160ms ease;
-}
-
-.direct-create-entry:hover {
-  border-color: color-mix(in oklch, var(--primary), transparent 35%);
-  background: color-mix(in oklch, var(--primary), transparent 88%);
-}
-
-.direct-create-entry:active {
-  transform: translateY(1px);
-}
-
-.direct-create-icon {
-  display: inline-flex;
-  height: 2.75rem;
-  width: 2.75rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  background: linear-gradient(
-    135deg,
-    var(--primary),
-    color-mix(in oklch, var(--primary), var(--accent) 28%)
-  );
-  color: var(--primary-foreground);
-}
-
-.direct-create-action {
-  display: inline-flex;
-  min-height: 2.25rem;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  background: var(--primary);
-  padding: 0.5rem 0.875rem;
-  color: var(--primary-foreground);
-  font-size: 0.875rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.generation-page-header {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border: 1px solid color-mix(in oklch, var(--border), transparent 25%);
-  border-radius: 0.5rem;
-  background: var(--surface);
-  padding: 0.75rem;
-  box-shadow: var(--shadow-panel);
-  backdrop-filter: blur(18px);
-}
-
 .ai-image-grid {
   display: grid;
   gap: 1rem;
@@ -580,16 +413,6 @@ async function syncRouteCase() {
 @container (min-width: 50rem) {
   .ai-image-page--generating {
     grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .case-picker-toolbar {
-    grid-template-columns: minmax(21rem, 0.9fr) minmax(0, 1.1fr);
-    align-items: stretch;
-  }
-
-  .case-filter-row {
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(14rem, 1fr) minmax(9rem, 12rem) minmax(9rem, 12rem);
   }
 
   .ai-image-grid {
@@ -653,12 +476,6 @@ async function syncRouteCase() {
 @media (min-width: 1024px) {
   .ai-image-grid--selecting {
     grid-template-columns: minmax(22rem, 0.86fr) minmax(24rem, 0.74fr);
-  }
-
-  .desktop-case-detail {
-    display: block;
-    min-height: 0;
-    overflow: hidden;
   }
 }
 </style>

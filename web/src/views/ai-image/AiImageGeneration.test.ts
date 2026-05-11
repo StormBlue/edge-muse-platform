@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, reactive, ref } from "vue";
 import { mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AiImageGeneration from "./AiImageGeneration.vue";
@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   generation: null as unknown,
   cases: null as unknown,
   authStore: null as unknown,
-  route: { params: {} as Record<string, string | undefined> },
+  route: null as unknown as { params: Record<string, string | undefined> },
   routerPush: vi.fn(),
   routerReplace: vi.fn(),
   trackGenerationEvent: vi.fn()
@@ -125,7 +125,7 @@ vi.mock("./useAiImageCases", () => ({
 describe("AiImageGeneration", () => {
   beforeEach(() => {
     mocks.trackGenerationEvent.mockReset();
-    mocks.route.params = {};
+    mocks.route = reactive({ params: {} });
     mocks.routerPush.mockReset();
     mocks.routerReplace.mockReset();
     mocks.authStore = authStore();
@@ -212,6 +212,8 @@ describe("AiImageGeneration", () => {
     await nextTick();
     await wrapper.get('[data-testid="select-case"]').trigger("click");
     await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    await nextTick();
+    mocks.route.params = { caseId: "case_back_target" };
     await nextTick();
     expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(true);
 
