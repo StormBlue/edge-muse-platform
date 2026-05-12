@@ -22,7 +22,7 @@ pnpm -F web build && pnpm -F server build
 
 ## 范围
 
-- **服务端**：单元/集成测试在 [`server/test/`](../server/test/)，覆盖 provider 协议形态、任务校验、回归场景（如 Cubence 相关 `cubenceRegression.test.ts`）、生成实验分配/事件/重试/指标（`experiments*.integration.test.ts`）。
+- **服务端**：单元/集成测试在 [`server/test/`](../server/test/)，覆盖 provider 协议形态、任务校验、回归场景（如 Cubence 相关 `cubenceRegression.test.ts`）、生成实验分配/事件/重试/指标（`experiments*.integration.test.ts`）。登录验证码覆盖见 `captcha.test.ts`，包含腾讯签名、Turnstile/配置回归、ALTCHA challenge、有效 proof、篡改和重放失败。
 - **前端**：[`web/src/stores/session.test.ts`](../web/src/stores/session.test.ts) 等；组件/组合函数测试使用 Vitest，涉及 Vue 组件渲染时使用 `@vue/test-utils`，需要 DOM 的用例在文件头声明 `// @vitest-environment happy-dom`。
 
 ## 限制

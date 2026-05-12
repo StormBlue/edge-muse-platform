@@ -6,7 +6,7 @@ All paths are under `/api`.
 
 | Area             | Paths                                                                                                                                               |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| System           | `GET /health`, `GET /config`, `GET /docs`, `GET /openapi.json`                                                                                      |
+| System           | `GET /health`, `GET /config`, `GET /captcha/altcha/challenge`, `GET /docs`, `GET /openapi.json`                                                     |
 | Auth             | `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`, `POST /auth/password/change`                                                         |
 | Current user     | `GET /me`, `PATCH /me`                                                                                                                              |
 | Generate         | `POST /generate`, `GET /tasks/:id`, `POST /tasks/:id/retry`, `POST /tasks/:id/cancel`, `GET /ws/task/:id`                                           |
@@ -38,8 +38,9 @@ Authentication notes:
 
 - Most business endpoints require `em_access` Cookie or `Authorization: Bearer <access-token>`.
 - All non-GET/HEAD/OPTIONS `/api/*` endpoints require `X-CSRF-Token` matching the `em_csrf` Cookie, except `POST /auth/login` and `POST /auth/refresh`.
-- `GET /config` returns login captcha config. Shape is `{ captcha: { provider, region, ... }, turnstileSiteKey }`; `provider=tencent` includes public `appId`, `provider=turnstile` includes public `siteKey`, and `provider=disabled` means login can proceed without a captcha proof.
-- `POST /auth/login` accepts `captcha`: `{ provider: "tencent", ticket, randstr }`, `{ provider: "turnstile", token }`, or `{ provider: "disabled" }`. The legacy `turnstileToken` field is still accepted as a Turnstile proof for compatibility.
+- `GET /config` returns login captcha config. Shape is `{ captcha: { provider, region, ... }, turnstileSiteKey }`; `provider=tencent` includes public `appId`, `provider=turnstile` includes public `siteKey`, `provider=altcha` includes `challengeUrl`, and `provider=disabled` means login can proceed without a captcha proof.
+- `GET /captcha/altcha/challenge` returns an ALTCHA Widget v3 compatible `SHA-256` challenge: `{ algorithm, challenge, salt, signature, maxnumber, expires }`. `maxnumber` is the sysadmin configured difficulty; `expires` is also embedded in `salt`.
+- `POST /auth/login` accepts `captcha`: `{ provider: "tencent", ticket, randstr }`, `{ provider: "turnstile", token }`, `{ provider: "altcha", payload }`, or `{ provider: "disabled" }`. The legacy `turnstileToken` field is still accepted as a Turnstile proof for compatibility.
 - Admin endpoints require role `admin` or `sysadmin`; sysadmin endpoints require role `sysadmin`.
 - `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded` or `failed`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.

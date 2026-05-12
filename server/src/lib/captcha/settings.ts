@@ -2,10 +2,16 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { captchaSettings } from "../../db/schema";
 import { now } from "../id";
-import { captchaProviderSchema, type CaptchaProvider, type CaptchaRegion } from "./types";
+import {
+  altchaDifficultySchema,
+  captchaProviderSchema,
+  type CaptchaProvider,
+  type CaptchaRegion
+} from "./types";
 import type { AppBindings } from "../../types";
 
 const CAPTCHA_SETTINGS_KEY = "login";
+export const DEFAULT_ALTCHA_DIFFICULTY = 50_000;
 
 export const CAPTCHA_PROVIDER_OPTIONS = [
   {
@@ -17,6 +23,11 @@ export const CAPTCHA_PROVIDER_OPTIONS = [
     id: "turnstile",
     label: "Cloudflare Turnstile",
     description: "Cloudflare 官方验证码，适合海外访问路径。"
+  },
+  {
+    id: "altcha",
+    label: "ALTCHA",
+    description: "开源自托管 PoW 验证码，浏览器求解，Worker 只负责签发与校验。"
   },
   {
     id: "disabled",
@@ -34,6 +45,7 @@ export type CaptchaSettingsSource = "database" | "environment" | "default";
 export type CaptchaSettingsDto = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
+  altchaDifficulty: number;
   source: CaptchaSettingsSource;
   updatedBy: string | null;
   updatedAt: number;
@@ -42,6 +54,7 @@ export type CaptchaSettingsDto = {
 export type CaptchaSettingsPatchInput = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
+  altchaDifficulty: number;
 };
 
 export async function getCaptchaSettings(env: AppBindings): Promise<CaptchaSettingsDto> {
@@ -54,6 +67,7 @@ export async function getCaptchaSettings(env: AppBindings): Promise<CaptchaSetti
         return {
           domesticProvider: row.domesticProvider,
           overseasProvider: row.overseasProvider,
+          altchaDifficulty: row.altchaDifficulty,
           source: "database",
           updatedBy: row.updatedBy ?? null,
           updatedAt: row.updatedAt
@@ -81,6 +95,7 @@ export async function saveCaptchaSettings(
       .set({
         domesticProvider: input.domesticProvider,
         overseasProvider: input.overseasProvider,
+        altchaDifficulty: input.altchaDifficulty,
         updatedBy: actorId,
         updatedAt: timestamp
       })
@@ -90,6 +105,7 @@ export async function saveCaptchaSettings(
       key: CAPTCHA_SETTINGS_KEY,
       domesticProvider: input.domesticProvider,
       overseasProvider: input.overseasProvider,
+      altchaDifficulty: input.altchaDifficulty,
       updatedBy: actorId,
       updatedAt: timestamp
     });
@@ -112,14 +128,21 @@ export async function resolveCaptchaProvider(
 }
 
 function fallbackCaptchaSettings(
-  env: Pick<AppBindings, "CAPTCHA_DOMESTIC_PROVIDER" | "CAPTCHA_OVERSEAS_PROVIDER">
+  env: Pick<
+    AppBindings,
+    "CAPTCHA_DOMESTIC_PROVIDER" | "CAPTCHA_OVERSEAS_PROVIDER" | "ALTCHA_DEFAULT_DIFFICULTY"
+  >
 ): CaptchaSettingsDto {
   const domesticProvider = parseProvider(env.CAPTCHA_DOMESTIC_PROVIDER, "tencent");
   const overseasProvider = parseProvider(env.CAPTCHA_OVERSEAS_PROVIDER, "turnstile");
-  const hasEnvProvider = Boolean(env.CAPTCHA_DOMESTIC_PROVIDER || env.CAPTCHA_OVERSEAS_PROVIDER);
+  const altchaDifficulty = parseAltchaDifficulty(env.ALTCHA_DEFAULT_DIFFICULTY);
+  const hasEnvProvider = Boolean(
+    env.CAPTCHA_DOMESTIC_PROVIDER || env.CAPTCHA_OVERSEAS_PROVIDER || env.ALTCHA_DEFAULT_DIFFICULTY
+  );
   return {
     domesticProvider,
     overseasProvider,
+    altchaDifficulty,
     source: hasEnvProvider ? "environment" : "default",
     updatedBy: null,
     updatedAt: 0
@@ -129,6 +152,11 @@ function fallbackCaptchaSettings(
 function parseProvider(value: string | undefined, fallback: CaptchaProvider): CaptchaProvider {
   const parsed = captchaProviderSchema.safeParse(value?.trim());
   return parsed.success ? parsed.data : fallback;
+}
+
+function parseAltchaDifficulty(value: string | undefined) {
+  const parsed = altchaDifficultySchema.safeParse(value?.trim());
+  return parsed.success ? parsed.data : DEFAULT_ALTCHA_DIFFICULTY;
 }
 
 function isMissingSettingsTableError(error: unknown) {

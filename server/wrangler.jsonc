@@ -44,6 +44,7 @@
     "ASSETS_PUBLIC_BASE_URL": "https://assets.pinkteck.com",
     "CAPTCHA_DOMESTIC_PROVIDER": "tencent",
     "CAPTCHA_OVERSEAS_PROVIDER": "turnstile",
+    "ALTCHA_DEFAULT_DIFFICULTY": "50000",
     "TENCENT_CAPTCHA_APP_ID": "",
     "TENCENTCLOUD_CAPTCHA_REGION": "ap-guangzhou",
     "TURNSTILE_SITE_KEY": "0x4AAAAAADDgU0ueTVgP8AUe",

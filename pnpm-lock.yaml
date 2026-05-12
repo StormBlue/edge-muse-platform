@@ -87,6 +87,9 @@ importers:
       '@vueuse/core':
         specifier: 14.3.0
         version: 14.3.0(vue@3.5.34(typescript@6.0.3))
+      altcha:
+        specifier: 3.0.9
+        version: 3.0.9
       class-variance-authority:
         specifier: 0.7.1
         version: 0.7.1
@@ -1898,6 +1901,9 @@ packages:
   alien-signals@3.1.2:
     resolution: {integrity: sha512-d9dYqZTS90WLiU0I5c6DHj/HcKkF8ZyGN3G5x8wSbslulz70KOxaqCT0hQCo9KOyhVqzqGojvNdJXoTumZOtcw==}
 
+  altcha@3.0.9:
+    resolution: {integrity: sha512-VTBUxypBWQuhaOwgZc148t7pmTq1mQRbMM+segqdcqTUzuTNRNs/TX1BYMtip7y6YprPZ+YqlMgqXU0bzFOlJQ==}
+
   ansi-escapes@7.3.0:
     resolution: {integrity: sha512-BvU8nYgGQBxcmMuEeUEmNTvrMVjJNSH7RgW24vXexN4Ven6qCvy4TntnvlnwnMLTVlcRQQdbRY8NKnaIoeWDNg==}
     engines: {node: '>=18'}
@@ -2397,6 +2403,9 @@ packages:
   has-flag@4.0.0:
     resolution: {integrity: sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==}
     engines: {node: '>=8'}
+
+  hash-wasm@4.12.0:
+    resolution: {integrity: sha512-+/2B2rYLb48I/evdOIhP+K/DD2ca2fgBjp6O+GBEnCDk2e4rpeXIK8GvIyRPjTezgmWn9gmKwkQjjx6BtqDHVQ==}
 
   highlight.js@11.11.1:
     resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
@@ -4697,6 +4706,10 @@ snapshots:
 
   alien-signals@3.1.2: {}
 
+  altcha@3.0.9:
+    dependencies:
+      hash-wasm: 4.12.0
+
   ansi-escapes@7.3.0:
     dependencies:
       environment: 1.1.0
@@ -5194,6 +5207,8 @@ snapshots:
       - utf-8-validate
 
   has-flag@4.0.0: {}
+
+  hash-wasm@4.12.0: {}
 
   highlight.js@11.11.1: {}
 

@@ -1,4 +1,5 @@
 import { logWarn } from "../log";
+import { verifyAltchaCaptcha } from "./altcha";
 import { resolveCaptchaProvider } from "./settings";
 import { verifyTencentCaptcha } from "./tencent";
 import { getPublicTurnstileSiteKey, verifyTurnstile } from "./turnstile";
@@ -7,7 +8,8 @@ import type { CaptchaProof, CaptchaRegion, PublicCaptchaConfig } from "./types";
 
 export type { CaptchaProof, CaptchaProvider, CaptchaRegion, PublicCaptchaConfig } from "./types";
 export { CAPTCHA_PROVIDER_OPTIONS, getCaptchaSettings, saveCaptchaSettings } from "./settings";
-export { captchaProofSchema, captchaProviderSchema } from "./types";
+export { createAltchaChallenge, verifyAltchaCaptcha } from "./altcha";
+export { altchaDifficultySchema, captchaProofSchema, captchaProviderSchema } from "./types";
 
 export async function getPublicCaptchaConfig(
   env: AppBindings,
@@ -23,6 +25,13 @@ export async function getPublicCaptchaConfig(
       logWarn("captcha.tencent_public_config_missing_app_id", { region });
     }
     return { provider: "tencent", region, appId: appId ?? "" };
+  }
+  if (provider === "altcha") {
+    return {
+      provider: "altcha",
+      region,
+      challengeUrl: "/api/captcha/altcha/challenge"
+    };
   }
   const siteKey = getPublicTurnstileSiteKey(env);
   if (!siteKey) {
@@ -50,6 +59,9 @@ export async function verifyCaptcha(
       randstr: input.proof.randstr,
       ip: input.ip
     });
+  }
+  if (input.proof.provider === "altcha") {
+    return verifyAltchaCaptcha(env, input.proof.payload);
   }
   return verifyTurnstile(env, input.proof.token, input.ip);
 }

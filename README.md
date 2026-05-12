@@ -42,6 +42,8 @@ AI_GATEWAY_ID=default
 AI_GATEWAY_URL=
 CAPTCHA_DOMESTIC_PROVIDER=tencent
 CAPTCHA_OVERSEAS_PROVIDER=turnstile
+ALTCHA_DEFAULT_DIFFICULTY=50000
+ALTCHA_HMAC_KEY=replace-with-local-altcha-secret
 TENCENT_CAPTCHA_APP_ID=
 TENCENT_CAPTCHA_APP_SECRET_KEY=
 TENCENTCLOUD_SECRET_ID=
@@ -53,7 +55,7 @@ ALERT_EMAIL=
 
 Cloudflare 线上环境使用 `wrangler secret put` 写入同名密钥。
 
-登录验证码按 Cloudflare `CF-IPCountry` 分流：中国大陆访问默认腾讯云验证码，其他地区默认 Turnstile。sysadmin 可在「系统设置」里将国内/国外 provider 分别切到 `tencent`、`turnstile` 或 `disabled`；数据库设置优先生效，环境变量作为兜底默认值。腾讯云验证码需要预留并配置 `TENCENT_CAPTCHA_APP_ID`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`。
+登录验证码按 Cloudflare `CF-IPCountry` 分流：中国大陆访问默认腾讯云验证码，其他地区默认 Turnstile。sysadmin 可在「系统设置」里将国内/国外 provider 分别切到 `tencent`、`turnstile`、`altcha` 或 `disabled`，并配置 ALTCHA challenge 难度；数据库设置优先生效，环境变量作为兜底默认值。腾讯云验证码需要预留并配置 `TENCENT_CAPTCHA_APP_ID`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`；ALTCHA 需要配置 `ALTCHA_HMAC_KEY`，Worker 只做签名、hash 和 KV 防重放校验，PoW 求解在浏览器完成。
 
 初始化本地数据:
 
@@ -63,20 +65,21 @@ pnpm -F server db:migrate:local
 pnpm -F server seed:local
 ```
 
-本地 `pnpm -F server dev` 会显式注入 `ENVIRONMENT=dev`，登录页不会渲染 Turnstile；`.dev.vars` 里的 Turnstile 测试 key 仅用于保留环境结构。
+本地 `pnpm -F server dev` 会显式注入 `ENVIRONMENT=dev`，登录页不会渲染验证码；`.dev.vars` 里的 Turnstile / 腾讯 / ALTCHA 测试配置仅用于保留环境结构。
 
 本地默认账号: `sysadmin@example.com` / `password123`。
 
 ## 部署
 
 1. 在 Cloudflare 创建一套线上资源:D1、R2、KV、Turnstile、AI Gateway。
-2. 将真实 D1 / KV ID 填入 `server/wrangler.jsonc`,并配置 `TURNSTILE_SITE_KEY` / `AI_GATEWAY_ID`。
+2. 将真实 D1 / KV ID 填入 `server/wrangler.jsonc`,并配置 `TURNSTILE_SITE_KEY` / `AI_GATEWAY_ID` / `ALTCHA_DEFAULT_DIFFICULTY`。
 3. 写入线上 Worker Secrets:
 
 ```bash
 pnpm -F server wrangler secret put JWT_SECRET
 pnpm -F server wrangler secret put KEY_ENCRYPTION_KEY
 pnpm -F server wrangler secret put TURNSTILE_SECRET_KEY
+pnpm -F server wrangler secret put ALTCHA_HMAC_KEY
 pnpm -F server wrangler secret put TENCENT_CAPTCHA_APP_SECRET_KEY
 pnpm -F server wrangler secret put TENCENTCLOUD_SECRET_ID
 pnpm -F server wrangler secret put TENCENTCLOUD_SECRET_KEY

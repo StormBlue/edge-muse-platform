@@ -5,7 +5,7 @@
  * - `persist`：持久化首屏展示所需快照；敏感操作仍以服务端会话为准。
  *
  * 登录时序（符号）：
- *   login() → POST /api/auth/login（可带 Turnstile）→ 服务端 Set-Cookie
+ *   login() → POST /api/auth/login（可带 captcha proof）→ 服务端 Set-Cookie
  *   → 响应体带 user + quota → 写入本 store
  *
  * 持久化：`persist` 仅减轻白屏闪烁；**权限以服务端 Cookie + /me 为准**，勿仅信 localStorage。
@@ -50,6 +50,10 @@ export type LoginCaptchaProof =
   | {
       provider: "turnstile";
       token: string;
+    }
+  | {
+      provider: "altcha";
+      payload: string;
     }
   | {
       provider: "disabled";

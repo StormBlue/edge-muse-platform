@@ -11,6 +11,8 @@ declare namespace Cloudflare {
     TURNSTILE_SITE_KEY?: string;
     CAPTCHA_DOMESTIC_PROVIDER?: string;
     CAPTCHA_OVERSEAS_PROVIDER?: string;
+    ALTCHA_DEFAULT_DIFFICULTY?: string;
+    ALTCHA_HMAC_KEY?: string;
     TENCENT_CAPTCHA_APP_ID?: string;
     TENCENT_CAPTCHA_APP_SECRET_KEY?: string;
     TENCENTCLOUD_SECRET_ID?: string;

@@ -2,7 +2,7 @@
 /**
  * 登录页：
  * - 先 GET `/api/config` 读登录验证码 provider；disabled 时直接可登录（开发/内网场景）。
- * - 腾讯验证码由前端脚本回调 ticket/randstr，Turnstile 回调 token，均随登录请求带给后端二次校验。
+ * - 腾讯验证码、Turnstile、ALTCHA 均由前端控件产出 proof，随登录请求带给后端二次校验。
  * - 成功：尊重 redirect；无 redirect 时 sysadmin 进系统看板，其它角色进图像生成。
  * - 顶栏语言切换走 `ui.setLocale`，与全站 i18n 一致。
  */
@@ -38,6 +38,9 @@ const {
   resetCaptcha,
   retryCaptcha,
   showCaptchaPanel,
+  altchaEl,
+  handleAltchaStateChange,
+  handleAltchaVerified,
   turnstileEl,
   handleCaptchaLoginError
 } = useLoginCaptcha({ locale: toRef(ui, "locale"), loading });
@@ -217,6 +220,13 @@ onMounted(() => {
                 ref="turnstileEl"
                 class="captcha-widget mt-3"
               ></div>
+              <altcha-widget
+                v-show="activeCaptchaProvider === 'altcha'"
+                ref="altchaEl"
+                class="captcha-widget mt-3"
+                @statechange="handleAltchaStateChange"
+                @verified="handleAltchaVerified"
+              ></altcha-widget>
             </div>
             <button class="ui-button ui-button-primary w-full" :disabled="!canSubmit" type="submit">
               <Loader2 v-if="loading" class="h-4 w-4 animate-spin" />

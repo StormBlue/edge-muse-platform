@@ -20,7 +20,7 @@ Edge Muse 使用 **Cloudflare D1**（SQLite）存储平台状态；Schema 以 **
 | 会话/消息 | `sessions`, `messages`                           | 工作台上下文与附件 JSON                                                    |
 | 任务      | `tasks`                                          | 异步生图状态与 provider 原始响应等                                         |
 | 生成入口  | `generation_entry_settings`, `generation_events` | 普通用户可见工作台/AI 图像页开关、漏斗与任务归因事件（最近 30 天用量摘要） |
-| 系统设置  | `ai_model_settings`, `captcha_settings`          | Prompt Assistant 模型与国内/国外登录验证码 provider                        |
+| 系统设置  | `ai_model_settings`, `captcha_settings`          | Prompt Assistant 模型、国内/国外登录验证码 provider 与 ALTCHA 难度         |
 | 图片      | `image_objects`                                  | R2 对象元数据                                                              |
 | 审计      | `audit_logs`                                     | 管理类写操作                                                               |
 
@@ -33,6 +33,8 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 ```
 
 生成迁移后应 **人工审阅 SQL** 再提交；线上执行见 [`OPERATIONS.md`](./OPERATIONS.md)。
+
+`captcha_settings` 当前保存一行 `key=login` 的全局登录验证码设置：`domestic_provider`、`overseas_provider` 可选 `tencent` / `turnstile` / `altcha` / `disabled`，`altcha_difficulty` 控制 ALTCHA 浏览器端 PoW 难度。新增字段迁移见 `server/migrations/0009_altcha_captcha.sql`。
 
 ## 备份与清理
 

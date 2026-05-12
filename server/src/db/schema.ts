@@ -387,21 +387,22 @@ export const aiModelSettings = sqliteTable("ai_model_settings", {
 });
 
 /**
- * 登录人机校验策略：国内/国外可分别选择腾讯、Turnstile 或关闭。
+ * 登录人机校验策略：国内/国外可分别选择腾讯、Turnstile、ALTCHA 或关闭。
  * 单行 key 固定为 `login`；服务商密钥仍走 Worker secrets / vars，不入 D1。
  */
 export const captchaSettings = sqliteTable("captcha_settings", {
   key: text("key").primaryKey(),
   domesticProvider: text("domestic_provider", {
-    enum: ["tencent", "turnstile", "disabled"]
+    enum: ["tencent", "turnstile", "altcha", "disabled"]
   })
     .notNull()
     .default("tencent"),
   overseasProvider: text("overseas_provider", {
-    enum: ["tencent", "turnstile", "disabled"]
+    enum: ["tencent", "turnstile", "altcha", "disabled"]
   })
     .notNull()
     .default("turnstile"),
+  altchaDifficulty: integer("altcha_difficulty").notNull().default(50000),
   updatedBy: text("updated_by").references(() => users.id),
   updatedAt: integer("updated_at").notNull()
 });

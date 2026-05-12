@@ -27,7 +27,7 @@ import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
-import { getPublicCaptchaConfig } from "./lib/captcha";
+import { createAltchaChallenge, getPublicCaptchaConfig } from "./lib/captcha";
 import { resolveCaptchaRegion } from "./lib/captcha/region";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
@@ -66,6 +66,10 @@ app.get("/api/config", (c) =>
       turnstileSiteKey: captcha.provider === "turnstile" ? captcha.siteKey : null
     })
   )
+);
+
+app.get("/api/captcha/altcha/challenge", (c) =>
+  createAltchaChallenge(c.env).then((challenge) => c.json(challenge))
 );
 
 // ---------- API 文档：dev 公开，production 要求 sysadmin（见 routes/docs.ts）----------

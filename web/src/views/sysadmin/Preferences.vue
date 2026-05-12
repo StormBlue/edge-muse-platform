@@ -33,13 +33,14 @@ type PromptAssistantModelOption = {
   description: string;
 };
 
-type CaptchaProvider = "tencent" | "turnstile" | "disabled";
+type CaptchaProvider = "tencent" | "turnstile" | "altcha" | "disabled";
 
 type CaptchaSettingsSource = "database" | "environment" | "default";
 
 type CaptchaSettings = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
+  altchaDifficulty: number;
   source: CaptchaSettingsSource;
   updatedAt: number;
   updatedBy: string | null;
@@ -71,6 +72,7 @@ const captchaSettings = ref<CaptchaSettings | null>(null);
 const captchaProviderOptions = ref<CaptchaProviderOption[]>([]);
 const domesticCaptchaProvider = ref<CaptchaProvider>("tencent");
 const overseasCaptchaProvider = ref<CaptchaProvider>("turnstile");
+const altchaDifficulty = ref(50_000);
 const loading = ref(false);
 const saving = ref(false);
 
@@ -126,6 +128,7 @@ async function load() {
     captchaProviderOptions.value = preferencesBody.captchaProviderOptions;
     domesticCaptchaProvider.value = preferencesBody.captcha.domesticProvider;
     overseasCaptchaProvider.value = preferencesBody.captcha.overseasProvider;
+    altchaDifficulty.value = preferencesBody.captcha.altchaDifficulty;
   } finally {
     loading.value = false;
   }
@@ -146,7 +149,8 @@ async function save() {
         promptAssistantModel: promptAssistantModel.value,
         captcha: {
           domesticProvider: domesticCaptchaProvider.value,
-          overseasProvider: overseasCaptchaProvider.value
+          overseasProvider: overseasCaptchaProvider.value,
+          altchaDifficulty: altchaDifficulty.value
         }
       })
     });
@@ -156,6 +160,7 @@ async function save() {
     captchaSettings.value = body.captcha;
     domesticCaptchaProvider.value = body.captcha.domesticProvider;
     overseasCaptchaProvider.value = body.captcha.overseasProvider;
+    altchaDifficulty.value = body.captcha.altchaDifficulty;
     await auth.bootstrap();
     toast.success(t("sysadmin.preferencesSaved"));
   } finally {
@@ -303,6 +308,23 @@ onMounted(load);
               </p>
             </label>
           </div>
+          <label class="block max-w-sm">
+            <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+              {{ t("sysadmin.altchaDifficulty") }}
+            </span>
+            <input
+              v-model.number="altchaDifficulty"
+              class="ui-field h-10 px-3"
+              type="number"
+              min="10000"
+              max="200000"
+              step="1000"
+              :disabled="loading || saving"
+            />
+            <p class="mt-1 text-xs leading-5 text-muted-foreground">
+              {{ t("sysadmin.altchaDifficultyHint") }}
+            </p>
+          </label>
           <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6">
             <dl class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <div>
@@ -312,6 +334,10 @@ onMounted(load);
               <div>
                 <dt>{{ t("sysadmin.modelUpdatedAt") }}</dt>
                 <dd class="mt-1 font-medium text-foreground">{{ captchaUpdatedAt }}</dd>
+              </div>
+              <div>
+                <dt>{{ t("sysadmin.altchaDifficulty") }}</dt>
+                <dd class="mt-1 font-medium text-foreground">{{ altchaDifficulty }}</dd>
               </div>
             </dl>
           </div>

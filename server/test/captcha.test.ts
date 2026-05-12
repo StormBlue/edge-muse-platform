@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import {
+  createAltchaChallenge,
   getPublicCaptchaConfig,
   getCaptchaSettings,
-  saveCaptchaSettings
+  saveCaptchaSettings,
+  verifyAltchaCaptcha
 } from "../src/lib/captcha";
 import { signTencentCloudRequest } from "../src/lib/captcha/tencent";
 import { getDb } from "../src/db/client";
@@ -57,6 +59,19 @@ describe("captcha settings", () => {
     });
   });
 
+  it("exposes ALTCHA public config when configured", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      CAPTCHA_DOMESTIC_PROVIDER: "altcha"
+    } as AppBindings;
+
+    await expect(getPublicCaptchaConfig(env, "domestic")).resolves.toEqual({
+      provider: "altcha",
+      region: "domestic",
+      challengeUrl: "/api/captcha/altcha/challenge"
+    });
+  });
+
   it("disables captcha in local dev", async () => {
     const env = {
       ENVIRONMENT: "dev",
@@ -87,22 +102,80 @@ describe("captcha settings", () => {
       });
       const saved = await saveCaptchaSettings(ctx.env, "user_sysadmin", {
         domesticProvider: "disabled",
-        overseasProvider: "tencent"
+        overseasProvider: "altcha",
+        altchaDifficulty: 75_000
       });
       expect(saved).toMatchObject({
         domesticProvider: "disabled",
-        overseasProvider: "tencent",
+        overseasProvider: "altcha",
+        altchaDifficulty: 75_000,
         source: "database",
         updatedBy: "user_sysadmin"
       });
       await expect(getCaptchaSettings(ctx.env)).resolves.toMatchObject({
         domesticProvider: "disabled",
-        overseasProvider: "tencent",
+        overseasProvider: "altcha",
+        altchaDifficulty: 75_000,
         source: "database"
       });
     } finally {
       await ctx.dispose();
     }
+  });
+});
+
+describe("ALTCHA captcha", () => {
+  it("creates a signed challenge and verifies a solved payload once", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      ALTCHA_HMAC_KEY: "test-altcha-secret",
+      ALTCHA_DEFAULT_DIFFICULTY: "10000",
+      CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      KV: new MemoryKvNamespace() as unknown as KVNamespace
+    } as AppBindings;
+    const challenge = await createAltchaChallenge(env);
+    const number = await solveAltchaChallenge(challenge);
+    const payload = createWidgetV3LegacyPayload(challenge, number);
+
+    await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(true);
+    await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(false);
+  });
+
+  it("rejects tampered ALTCHA payloads", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      ALTCHA_HMAC_KEY: "test-altcha-secret",
+      ALTCHA_DEFAULT_DIFFICULTY: "10000",
+      CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      KV: new MemoryKvNamespace() as unknown as KVNamespace
+    } as AppBindings;
+    const challenge = await createAltchaChallenge(env);
+    const number = await solveAltchaChallenge(challenge);
+    const payload = createWidgetV3LegacyPayload(challenge, number + 1);
+
+    await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(false);
+  });
+
+  it("rejects expired ALTCHA payloads", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      ALTCHA_HMAC_KEY: "test-altcha-secret",
+      ALTCHA_DEFAULT_DIFFICULTY: "10000",
+      CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      KV: new MemoryKvNamespace() as unknown as KVNamespace
+    } as AppBindings;
+    const challenge = await createAltchaChallenge(env);
+    const expiredSalt = challenge.salt.replace(/\?expires=\d+$/, "?expires=1");
+    const number = await solveAltchaChallenge(challenge);
+    const payload = createWidgetV3LegacyPayload(
+      {
+        ...challenge,
+        salt: expiredSalt
+      },
+      number
+    );
+
+    await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(false);
   });
 });
 
@@ -189,4 +262,33 @@ class MemoryKvNamespace {
     }
     return null;
   }
+}
+
+type TestAltchaChallenge = Awaited<ReturnType<typeof createAltchaChallenge>>;
+
+async function solveAltchaChallenge(challenge: TestAltchaChallenge) {
+  for (let number = 0; number <= challenge.maxnumber; number += 1) {
+    if ((await sha256Hex(`${challenge.salt}${number}`)) === challenge.challenge) {
+      return number;
+    }
+  }
+  throw new Error("ALTCHA challenge was not solved in test");
+}
+
+function createWidgetV3LegacyPayload(challenge: TestAltchaChallenge, number: number) {
+  return btoa(
+    JSON.stringify({
+      algorithm: challenge.algorithm,
+      challenge: challenge.challenge,
+      number,
+      salt: challenge.salt,
+      signature: challenge.signature,
+      took: 0
+    })
+  );
+}
+
+async function sha256Hex(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

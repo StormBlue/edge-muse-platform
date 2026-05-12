@@ -1,12 +1,16 @@
 import { computed, nextTick, onBeforeUnmount, ref, type Ref } from "vue";
 import { apiFetch } from "@/api/client";
 import type { LoginCaptchaProof } from "@/stores/auth";
+import {
+  loadAltchaWidget,
+  loadTencentCaptchaScript,
+  loadTurnstileScript,
+  withTimeout
+} from "./captchaLoaders";
 
-const TURNSTILE_SCRIPT_ID = "cf-turnstile-script";
-const TENCENT_CAPTCHA_SCRIPT_ID = "tencent-captcha-script";
 const CAPTCHA_LOAD_TIMEOUT_MS = 10_000;
 
-type CaptchaProvider = "tencent" | "turnstile" | "disabled";
+type CaptchaProvider = "tencent" | "turnstile" | "altcha" | "disabled";
 type PublicCaptchaConfig =
   | {
       provider: "tencent";
@@ -17,6 +21,11 @@ type PublicCaptchaConfig =
       provider: "turnstile";
       region: "domestic" | "overseas";
       siteKey: string;
+    }
+  | {
+      provider: "altcha";
+      region: "domestic" | "overseas";
+      challengeUrl: string;
     }
   | {
       provider: "disabled";
@@ -43,6 +52,7 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
   const captchaConfig = ref<PublicCaptchaConfig | null>(null);
   const captchaProof = ref<LoginCaptchaProof | null>(null);
   const turnstileEl = ref<HTMLElement | null>(null);
+  const altchaEl = ref<AltchaWidgetElement | null>(null);
   const turnstileWidgetId = ref<string | null>(null);
   const tencentCaptcha = ref<InstanceType<NonNullable<typeof window.TencentCaptcha>> | null>(null);
   const captchaStatus = ref<CaptchaStatus>("idle");
@@ -108,6 +118,16 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
         renderTencentCaptcha();
         return;
       }
+      if (captchaConfig.value.provider === "altcha") {
+        await withTimeout(
+          loadAltchaWidget(),
+          CAPTCHA_LOAD_TIMEOUT_MS,
+          new Error("ALTCHA widget timed out")
+        );
+        await nextTick();
+        await renderAltcha();
+        return;
+      }
       await withTimeout(
         loadTurnstileScript(),
         CAPTCHA_LOAD_TIMEOUT_MS,
@@ -132,6 +152,9 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
     ) {
       window.turnstile.reset(turnstileWidgetId.value);
     }
+    if (activeCaptchaProvider.value === "altcha") {
+      altchaEl.value?.reset?.();
+    }
   }
 
   async function retryCaptcha() {
@@ -144,6 +167,12 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
     if (turnstileWidgetId.value && window.turnstile) {
       setCaptchaStatus("ready");
       window.turnstile.reset(turnstileWidgetId.value);
+      return;
+    }
+    if (activeCaptchaProvider.value === "altcha") {
+      setCaptchaStatus("ready");
+      altchaEl.value?.reset?.();
+      await altchaEl.value?.verify?.();
       return;
     }
     turnstileWidgetId.value = null;
@@ -169,6 +198,9 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
     ) {
       window.turnstile.reset(turnstileWidgetId.value);
     }
+    if (activeCaptchaProvider.value === "altcha") {
+      altchaEl.value?.reset?.();
+    }
     return true;
   }
 
@@ -178,6 +210,55 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
     }
     tencentCaptcha.value?.destroy?.();
   });
+
+  function handleAltchaStateChange(event: Event) {
+    const detail = (event as AltchaStateChangeEvent).detail ?? {};
+    if (detail.payload) {
+      captchaProof.value = { provider: "altcha", payload: detail.payload };
+    }
+    if (detail.state === "verified") {
+      setCaptchaStatus("verified");
+      return;
+    }
+    if (detail.state === "verifying") {
+      captchaProof.value = null;
+      setCaptchaStatus("loading");
+      return;
+    }
+    if (detail.state === "error") {
+      captchaProof.value = null;
+      setCaptchaStatus("error");
+      return;
+    }
+    if (detail.state === "expired") {
+      captchaProof.value = null;
+      setCaptchaStatus("expired");
+    }
+  }
+
+  function handleAltchaVerified(event: Event) {
+    const payload = (event as AltchaVerifiedEvent).detail?.payload;
+    if (payload) {
+      captchaProof.value = { provider: "altcha", payload };
+    }
+    setCaptchaStatus("verified");
+  }
+
+  async function renderAltcha() {
+    if (!altchaEl.value || captchaConfig.value?.provider !== "altcha") return;
+    captchaProof.value = null;
+    altchaEl.value.challenge = captchaConfig.value.challengeUrl;
+    await altchaEl.value.configure?.({
+      auto: "onload",
+      challenge: captchaConfig.value.challengeUrl,
+      display: "standard",
+      hideFooter: true,
+      language: altchaLanguage(options.locale.value),
+      name: "altcha",
+      workers: 1
+    });
+    setCaptchaStatus("ready");
+  }
 
   function renderTencentCaptcha() {
     if (!window.TencentCaptcha || captchaConfig.value?.provider !== "tencent") return;
@@ -263,66 +344,32 @@ export function useLoginCaptcha(options: UseLoginCaptchaOptions) {
     resetCaptcha,
     retryCaptcha,
     showCaptchaPanel,
+    altchaEl,
+    handleAltchaStateChange,
+    handleAltchaVerified,
     turnstileEl,
     handleCaptchaLoginError
   };
 }
 
-function loadTurnstileScript(): Promise<void> {
-  if (window.turnstile) return Promise.resolve();
-  const existing = document.getElementById(TURNSTILE_SCRIPT_ID) as HTMLScriptElement | null;
-  if (existing) {
-    return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Turnstile script failed")), {
-        once: true
-      });
-    });
-  }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.id = TURNSTILE_SCRIPT_ID;
-    script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";
-    script.async = true;
-    script.defer = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Turnstile script failed")), {
-      once: true
-    });
-    document.head.appendChild(script);
-  });
-}
+type AltchaWidgetElement = HTMLElement & {
+  challenge?: string;
+  configure?: (config: Record<string, unknown>) => Promise<void>;
+  reset?: () => void;
+  verify?: () => Promise<unknown>;
+};
 
-function loadTencentCaptchaScript(): Promise<void> {
-  if (window.TencentCaptcha) return Promise.resolve();
-  const existing = document.getElementById(TENCENT_CAPTCHA_SCRIPT_ID) as HTMLScriptElement | null;
-  if (existing) {
-    return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener("error", () => reject(new Error("Tencent captcha script failed")), {
-        once: true
-      });
-    });
-  }
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.id = TENCENT_CAPTCHA_SCRIPT_ID;
-    script.src = "https://turing.captcha.qcloud.com/TJCaptcha.js";
-    script.async = true;
-    script.defer = true;
-    script.addEventListener("load", () => resolve(), { once: true });
-    script.addEventListener("error", () => reject(new Error("Tencent captcha script failed")), {
-      once: true
-    });
-    document.head.appendChild(script);
-  });
-}
+type AltchaState = "code" | "error" | "verified" | "verifying" | "unverified" | "expired";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeoutId = window.setTimeout(() => reject(error), ms);
-    promise.then(resolve, reject).finally(() => {
-      window.clearTimeout(timeoutId);
-    });
-  });
+type AltchaStateChangeEvent = CustomEvent<{
+  state?: AltchaState;
+  payload?: string;
+}>;
+
+type AltchaVerifiedEvent = CustomEvent<{
+  payload?: string;
+}>;
+
+function altchaLanguage(locale: string) {
+  return locale.toLowerCase().startsWith("zh") ? "zh-cn" : "en";
 }

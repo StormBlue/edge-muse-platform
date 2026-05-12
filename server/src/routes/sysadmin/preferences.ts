@@ -12,6 +12,7 @@ import {
 } from "../../lib/aiModelSettings";
 import {
   CAPTCHA_PROVIDER_OPTIONS,
+  altchaDifficultySchema,
   captchaProviderSchema,
   getCaptchaSettings,
   saveCaptchaSettings
@@ -27,7 +28,8 @@ const sysadminPreferencesPatchSchema = z
     captcha: z
       .object({
         domesticProvider: captchaProviderSchema,
-        overseasProvider: captchaProviderSchema
+        overseasProvider: captchaProviderSchema,
+        altchaDifficulty: altchaDifficultySchema.optional()
       })
       .optional()
   })
@@ -85,10 +87,15 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
       }
 
       if (input.captcha) {
-        captcha = await saveCaptchaSettings(c.env, user.id, input.captcha);
+        captcha = await saveCaptchaSettings(c.env, user.id, {
+          domesticProvider: input.captcha.domesticProvider,
+          overseasProvider: input.captcha.overseasProvider,
+          altchaDifficulty: input.captcha.altchaDifficulty ?? captcha.altchaDifficulty
+        });
         auditPayload.captcha = {
           domesticProvider: captcha.domesticProvider,
-          overseasProvider: captcha.overseasProvider
+          overseasProvider: captcha.overseasProvider,
+          altchaDifficulty: captcha.altchaDifficulty
         };
       }
 

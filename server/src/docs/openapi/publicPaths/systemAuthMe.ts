@@ -45,22 +45,56 @@ export const systemAuthMePaths = {
       operationId: "getPublicConfig",
       summary: "读取前端公开配置",
       description:
-        "无需登录。当前仅返回 Turnstile site key；dev 环境通常为 `null`。不得在该接口返回任何服务端密钥或内部配置。",
+        "无需登录。返回当前地区登录验证码的公开配置；dev 环境通常返回 `provider=disabled`。不得在该接口返回任何服务端密钥或内部配置。",
       responses: {
         "200": jsonResponse("公开配置。", {
           type: "object",
-          required: ["turnstileSiteKey"],
+          required: ["captcha", "turnstileSiteKey"],
           properties: {
+            captcha: ref("PublicCaptchaConfig"),
             turnstileSiteKey: {
               type: "string",
               nullable: true,
               description:
-                "Cloudflare Turnstile site key；`null` 表示当前环境不启用前端 Turnstile。"
+                "兼容旧前端的 Cloudflare Turnstile site key；当前 provider 不是 Turnstile 时为 `null`。"
             }
           },
           additionalProperties: false
         }),
         ...commonErrors
+      }
+    }
+  },
+  "/api/captcha/altcha/challenge": {
+    get: {
+      tags: ["System"],
+      operationId: "createAltchaChallenge",
+      summary: "签发 ALTCHA challenge",
+      description:
+        "无需登录。仅在登录验证码 provider 为 `altcha` 时由 ALTCHA Widget 调用。Worker 使用 Web Crypto 生成 signed SHA-256 challenge；浏览器完成 PoW，Worker 登录时只做常数次签名/hash 校验和 KV 防重放。",
+      responses: {
+        "200": jsonResponse("ALTCHA Widget v3 可消费的 legacy challenge。", {
+          type: "object",
+          required: ["algorithm", "challenge", "salt", "signature", "maxnumber", "expires"],
+          properties: {
+            algorithm: { type: "string", const: "SHA-256" },
+            challenge: { type: "string" },
+            salt: {
+              type: "string",
+              description: "包含 `expires` query，登录校验从该字段解析过期时间。"
+            },
+            signature: { type: "string" },
+            maxnumber: {
+              type: "integer",
+              minimum: 10000,
+              maximum: 200000,
+              description: "sysadmin 配置的 PoW 难度上限。"
+            },
+            expires: { type: "integer", description: "Unix epoch seconds。" }
+          },
+          additionalProperties: false
+        }),
+        "500": commonErrors["500"]
       }
     }
   },
@@ -107,16 +141,17 @@ export const systemAuthMePaths = {
       operationId: "login",
       summary: "用户名/邮箱登录",
       description:
-        "用用户名或邮箱加密码登录。成功后设置 `em_access`、`em_refresh`、`em_csrf` 三枚 Cookie，并在响应体返回 `csrfToken`，前端后续写请求需要将其放入 `X-CSRF-Token`。该接口不要求 CSRF；Turnstile 是否必需由环境配置决定。",
+        "用用户名或邮箱加密码登录。成功后设置 `em_access`、`em_refresh`、`em_csrf` 三枚 Cookie，并在响应体返回 `csrfToken`，前端后续写请求需要将其放入 `X-CSRF-Token`。该接口不要求 CSRF；验证码 provider 是否必需由地区和 sysadmin 配置决定。",
       requestBody: requestJson("登录凭据。`email` 字段实际接受用户名或邮箱。", {
         type: "object",
         required: ["email", "password"],
         properties: {
           email: { type: "string", minLength: 1, description: "用户名或邮箱。" },
           password: { type: "string", minLength: 8 },
+          captcha: ref("LoginCaptchaProof"),
           turnstileToken: {
             type: "string",
-            description: "Turnstile 客户端 token；dev 环境通常可省略。"
+            description: "兼容旧前端的 Turnstile 客户端 token；推荐使用 `captcha`。"
           }
         },
         additionalProperties: false
@@ -128,7 +163,7 @@ export const systemAuthMePaths = {
         ),
         ...validationError,
         "401": errorResponse("用户名/邮箱不存在或密码错误。code 为 `UNAUTHORIZED`。"),
-        "403": errorResponse("Turnstile 校验失败或用户被禁用。code 为 `FORBIDDEN`。"),
+        "403": errorResponse("验证码校验失败或用户被禁用。code 为 `FORBIDDEN`。"),
         ...rateLimitError,
         "500": commonErrors["500"]
       }

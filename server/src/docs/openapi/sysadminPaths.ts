@@ -264,7 +264,7 @@ export const sysadminPaths = {
       operationId: "getSysadminPreferences",
       summary: "读取当前 sysadmin 偏好",
       description:
-        "要求 sysadmin 登录。返回当前 sysadmin 的 preferredProviderKeyId、提示词助手模型设置和可选模型列表。",
+        "要求 sysadmin 登录。返回当前 sysadmin 的 preferredProviderKeyId、提示词助手模型设置、登录验证码设置和可选项。",
       security: sysadminSecurity,
       responses: {
         "200": jsonResponse("sysadmin 偏好。", {
@@ -272,12 +272,19 @@ export const sysadminPaths = {
           required: [
             "preferredProviderKeyId",
             "promptAssistantModel",
-            "promptAssistantModelOptions"
+            "promptAssistantModelOptions",
+            "captcha",
+            "captchaProviderOptions"
           ],
           properties: {
             preferredProviderKeyId: { type: "string", nullable: true },
             promptAssistantModel: { type: "object", additionalProperties: true },
             promptAssistantModelOptions: {
+              type: "array",
+              items: { type: "object", additionalProperties: true }
+            },
+            captcha: ref("CaptchaSettings"),
+            captchaProviderOptions: {
               type: "array",
               items: { type: "object", additionalProperties: true }
             }
@@ -293,24 +300,35 @@ export const sysadminPaths = {
       operationId: "updateSysadminPreferences",
       summary: "更新当前 sysadmin 偏好",
       description:
-        "要求 sysadmin 登录和 CSRF。至少提供 `preferredProviderKeyId` 或 `promptAssistantModel` 之一；设置 provider key 时必须是可分配 key。",
+        "要求 sysadmin 登录和 CSRF。至少提供 `preferredProviderKeyId`、`promptAssistantModel` 或 `captcha` 之一；设置 provider key 时必须是可分配 key。`captcha.altchaDifficulty` 可省略，省略时保留当前难度。",
       security: csrfSecurity,
       requestBody: requestJson("sysadmin 偏好补丁。", {
         type: "object",
         properties: {
           preferredProviderKeyId: { type: "string", nullable: true },
-          promptAssistantModel: { type: "object", additionalProperties: true }
+          promptAssistantModel: { type: "object", additionalProperties: true },
+          captcha: {
+            type: "object",
+            required: ["domesticProvider", "overseasProvider"],
+            properties: {
+              domesticProvider: ref("CaptchaProvider"),
+              overseasProvider: ref("CaptchaProvider"),
+              altchaDifficulty: { type: "integer", minimum: 10000, maximum: 200000 }
+            },
+            additionalProperties: false
+          }
         },
         additionalProperties: false
       }),
       responses: {
         "200": jsonResponse("偏好已更新。", {
           type: "object",
-          required: ["ok", "preferredProviderKeyId", "promptAssistantModel"],
+          required: ["ok", "preferredProviderKeyId", "promptAssistantModel", "captcha"],
           properties: {
             ok: { type: "boolean", const: true },
             preferredProviderKeyId: { type: "string", nullable: true },
-            promptAssistantModel: { type: "object", additionalProperties: true }
+            promptAssistantModel: { type: "object", additionalProperties: true },
+            captcha: ref("CaptchaSettings")
           },
           additionalProperties: false
         }),
