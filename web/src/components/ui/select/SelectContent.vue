@@ -1,0 +1,43 @@
+<script setup lang="ts">
+import type { SelectContentEmits, SelectContentProps } from "reka-ui";
+import type { HTMLAttributes } from "vue";
+import { reactiveOmit } from "@vueuse/core";
+import { SelectContent, SelectPortal, SelectViewport, useForwardPropsEmits } from "reka-ui";
+import { cn } from "@/lib/utils";
+
+const props = withDefaults(
+  defineProps<SelectContentProps & { class?: HTMLAttributes["class"] }>(),
+  {
+    align: "start",
+    class: undefined,
+    position: "popper",
+    sideOffset: 4
+  }
+);
+const emits = defineEmits<SelectContentEmits>();
+
+const delegatedProps = reactiveOmit(props, "class");
+const forwarded = useForwardPropsEmits(delegatedProps, emits);
+</script>
+
+<template>
+  <SelectPortal>
+    <SelectContent
+      data-slot="select-content"
+      v-bind="{ ...$attrs, ...forwarded }"
+      :class="
+        cn(
+          'z-50 max-h-[min(20rem,var(--reka-select-content-available-height))] min-w-32 overflow-hidden rounded-md border border-border bg-card text-foreground shadow-md outline-none',
+          'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'data-[side=bottom]:slide-in-from-top-1 data-[side=left]:slide-in-from-right-1 data-[side=right]:slide-in-from-left-1 data-[side=top]:slide-in-from-bottom-1',
+          props.position === 'popper' && 'w-[var(--reka-select-trigger-width)]',
+          props.class
+        )
+      "
+    >
+      <SelectViewport class="p-1">
+        <slot />
+      </SelectViewport>
+    </SelectContent>
+  </SelectPortal>
+</template>

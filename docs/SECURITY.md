@@ -7,7 +7,7 @@
 - **JWT**：访问/刷新令牌通过 **httpOnly Cookie** 传递；刷新轮换策略见 [`server/src/routes/auth.ts`](../server/src/routes/auth.ts)、[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts)。
 - **登出黑名单**：刷新令牌可记入 KV 黑名单（[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts) 及相关路由）。
 - **CSRF**：非 GET 请求校验 CSRF token（[`server/src/middleware/csrf.ts`](../server/src/middleware/csrf.ts)）。
-- **登录防护**：地区化验证码 + 限流（[`server/src/lib/captcha/`](../server/src/lib/captcha)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）。默认中国大陆访问走腾讯云验证码，其他地区走 Turnstile；sysadmin 可分别切换为腾讯、Turnstile、ALTCHA 或禁用。`ENVIRONMENT=dev` 时验证码禁用，生产环境校验失败关闭。
+- **登录防护**：地区化验证码 + 限流（[`server/src/lib/captcha/`](../server/src/lib/captcha)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）。默认中国大陆访问走腾讯云验证码，其他地区走 Turnstile；sysadmin 可分别切换为腾讯、Turnstile、ALTCHA 或禁用。`ENVIRONMENT=dev` 未保存系统设置时验证码默认禁用，保存后的 D1 配置可用于本地联调；生产环境校验失败关闭。
 - **ALTCHA**：自托管 PoW provider 使用 `ALTCHA_HMAC_KEY` 签发 Widget v3 challenge；浏览器求解，Worker 登录校验只做常数次 HMAC/SHA-256 和一次 replay 消费，避免在 Cloudflare Worker 上消耗循环 CPU。生产环境 replay 消费走 Durable Object 原子写入，KV 仅作为本地/测试 fallback；payload、HMAC key 不入日志。
 
 ## 账号生命周期

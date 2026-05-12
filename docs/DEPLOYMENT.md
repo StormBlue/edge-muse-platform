@@ -2,7 +2,7 @@
 
 ## 本地开发
 
-- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`；脚本会注入 `ENVIRONMENT=dev`，本地登录不渲染验证码）。
+- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`；脚本会注入 `ENVIRONMENT=dev`，本地默认不渲染验证码）。
 - 前端：`pnpm dev:web`（Vite，默认 `5173`）。
 - 并行：`pnpm dev`（workspace 并行）。
 
@@ -14,7 +14,7 @@ pnpm -F server db:migrate:local
 pnpm -F server seed:local
 ```
 
-本地 `.dev.vars` 仍用于 JWT、加密密钥等开发密钥；即使其中保留 Turnstile / 腾讯 / ALTCHA 测试配置，`ENVIRONMENT=dev` 下 `/api/config` 也会返回 `captcha.provider=disabled`，避免 localhost 触发验证码域名或 challenge 配置错误。
+本地 `.dev.vars` 仍用于 JWT、加密密钥等开发密钥；即使其中保留 Turnstile / 腾讯 / ALTCHA 测试配置，`ENVIRONMENT=dev` 且未保存系统设置时 `/api/config` 会返回 `captcha.provider=disabled`，避免 localhost 触发验证码域名或 challenge 配置错误。需要本地联调验证码时，可由 sysadmin 在「系统设置」保存 Tencent、Turnstile、ALTCHA 或关闭模式，D1 中的设置会覆盖 dev 默认值。
 
 变量说明见根目录 [`README.md`](../README.md)。
 

@@ -29,6 +29,8 @@ const sysadminPreferencesPatchSchema = z
       .object({
         domesticProvider: captchaProviderSchema,
         overseasProvider: captchaProviderSchema,
+        domesticAltchaDifficulty: altchaDifficultySchema.optional(),
+        overseasAltchaDifficulty: altchaDifficultySchema.optional(),
         altchaDifficulty: altchaDifficultySchema.optional()
       })
       .optional()
@@ -87,15 +89,25 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
       }
 
       if (input.captcha) {
+        const domesticAltchaDifficulty =
+          input.captcha.domesticAltchaDifficulty ??
+          input.captcha.altchaDifficulty ??
+          captcha.domesticAltchaDifficulty;
+        const overseasAltchaDifficulty =
+          input.captcha.overseasAltchaDifficulty ??
+          input.captcha.altchaDifficulty ??
+          captcha.overseasAltchaDifficulty;
         captcha = await saveCaptchaSettings(c.env, user.id, {
           domesticProvider: input.captcha.domesticProvider,
           overseasProvider: input.captcha.overseasProvider,
-          altchaDifficulty: input.captcha.altchaDifficulty ?? captcha.altchaDifficulty
+          domesticAltchaDifficulty,
+          overseasAltchaDifficulty
         });
         auditPayload.captcha = {
           domesticProvider: captcha.domesticProvider,
           overseasProvider: captcha.overseasProvider,
-          altchaDifficulty: captcha.altchaDifficulty
+          domesticAltchaDifficulty: captcha.domesticAltchaDifficulty,
+          overseasAltchaDifficulty: captcha.overseasAltchaDifficulty
         };
       }
 

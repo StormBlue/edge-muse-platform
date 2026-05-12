@@ -7,6 +7,13 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Loader2, Save } from "lucide-vue-next";
 import AppShell from "@/components/layout/AppShell.vue";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
 
@@ -40,6 +47,9 @@ type CaptchaSettingsSource = "database" | "environment" | "default";
 type CaptchaSettings = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
+  domesticAltchaDifficulty: number;
+  overseasAltchaDifficulty: number;
+  /** @deprecated 兼容旧接口响应。 */
   altchaDifficulty: number;
   source: CaptchaSettingsSource;
   updatedAt: number;
@@ -62,6 +72,7 @@ type PreferencesBody = {
 
 const auth = useAuthStore();
 const { t } = useI18n();
+const NO_PROVIDER_KEY_VALUE = "__none__";
 const keys = ref<ProviderKeyRow[]>([]);
 /** 可空：空串表示不指定，走服务端其它默认 */
 const preferredProviderKeyId = ref("");
@@ -72,13 +83,20 @@ const captchaSettings = ref<CaptchaSettings | null>(null);
 const captchaProviderOptions = ref<CaptchaProviderOption[]>([]);
 const domesticCaptchaProvider = ref<CaptchaProvider>("tencent");
 const overseasCaptchaProvider = ref<CaptchaProvider>("turnstile");
-const altchaDifficulty = ref(50_000);
+const domesticAltchaDifficulty = ref(50_000);
+const overseasAltchaDifficulty = ref(50_000);
 const loading = ref(false);
 const saving = ref(false);
 
 const selectedModelOption = computed(() =>
   promptAssistantModelOptions.value.find((option) => option.id === promptAssistantModel.value)
 );
+const preferredProviderKeySelectValue = computed({
+  get: () => preferredProviderKeyId.value || NO_PROVIDER_KEY_VALUE,
+  set: (value: string) => {
+    preferredProviderKeyId.value = value === NO_PROVIDER_KEY_VALUE ? "" : value;
+  }
+});
 const selectedModelDescription = computed(() => {
   if (!selectedModelOption.value) return "";
   if (selectedModelOption.value.id === "@cf/qwen/qwen3-30b-a3b-fp8") {
@@ -109,6 +127,8 @@ const captchaUpdatedAt = computed(() => {
   const updatedAt = captchaSettings.value?.updatedAt ?? 0;
   return updatedAt ? new Date(updatedAt).toLocaleString() : "-";
 });
+const showDomesticAltchaDifficulty = computed(() => domesticCaptchaProvider.value === "altcha");
+const showOverseasAltchaDifficulty = computed(() => overseasCaptchaProvider.value === "altcha");
 
 /** 拉密钥列表并同步当前用户已保存的偏好 */
 async function load() {
@@ -128,7 +148,10 @@ async function load() {
     captchaProviderOptions.value = preferencesBody.captchaProviderOptions;
     domesticCaptchaProvider.value = preferencesBody.captcha.domesticProvider;
     overseasCaptchaProvider.value = preferencesBody.captcha.overseasProvider;
-    altchaDifficulty.value = preferencesBody.captcha.altchaDifficulty;
+    domesticAltchaDifficulty.value =
+      preferencesBody.captcha.domesticAltchaDifficulty ?? preferencesBody.captcha.altchaDifficulty;
+    overseasAltchaDifficulty.value =
+      preferencesBody.captcha.overseasAltchaDifficulty ?? preferencesBody.captcha.altchaDifficulty;
   } finally {
     loading.value = false;
   }
@@ -150,7 +173,8 @@ async function save() {
         captcha: {
           domesticProvider: domesticCaptchaProvider.value,
           overseasProvider: overseasCaptchaProvider.value,
-          altchaDifficulty: altchaDifficulty.value
+          domesticAltchaDifficulty: domesticAltchaDifficulty.value,
+          overseasAltchaDifficulty: overseasAltchaDifficulty.value
         }
       })
     });
@@ -160,7 +184,10 @@ async function save() {
     captchaSettings.value = body.captcha;
     domesticCaptchaProvider.value = body.captcha.domesticProvider;
     overseasCaptchaProvider.value = body.captcha.overseasProvider;
-    altchaDifficulty.value = body.captcha.altchaDifficulty;
+    domesticAltchaDifficulty.value =
+      body.captcha.domesticAltchaDifficulty ?? body.captcha.altchaDifficulty;
+    overseasAltchaDifficulty.value =
+      body.captcha.overseasAltchaDifficulty ?? body.captcha.altchaDifficulty;
     await auth.bootstrap();
     toast.success(t("sysadmin.preferencesSaved"));
   } finally {
@@ -200,16 +227,19 @@ onMounted(load);
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("sysadmin.providerKey") }}
             </span>
-            <select
-              v-model="preferredProviderKeyId"
-              class="ui-field h-10 px-3"
-              :disabled="loading || saving"
-            >
-              <option value="">{{ t("sysadmin.selectKey") }}</option>
-              <option v-for="key in keys" :key="key.id" :value="key.id">
-                {{ key.label }} ({{ key.keyHint }})
-              </option>
-            </select>
+            <Select v-model="preferredProviderKeySelectValue" :disabled="loading || saving">
+              <SelectTrigger class="h-10">
+                <SelectValue :placeholder="t('sysadmin.selectKey')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="NO_PROVIDER_KEY_VALUE">{{
+                  t("sysadmin.selectKey")
+                }}</SelectItem>
+                <SelectItem v-for="key in keys" :key="key.id" :value="key.id">
+                  {{ key.label }} ({{ key.keyHint }})
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
         </section>
 
@@ -224,20 +254,20 @@ onMounted(load);
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("sysadmin.promptAssistantModel") }}
             </span>
-            <select
-              v-model="promptAssistantModel"
-              class="ui-field h-10 px-3"
-              :disabled="loading || saving"
-              required
-            >
-              <option
-                v-for="option in promptAssistantModelOptions"
-                :key="option.id"
-                :value="option.id"
-              >
-                {{ option.label }}
-              </option>
-            </select>
+            <Select v-model="promptAssistantModel" :disabled="loading || saving" required>
+              <SelectTrigger class="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="option in promptAssistantModelOptions"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6">
             <p class="font-mono text-xs text-muted-foreground">{{ promptAssistantModel }}</p>
@@ -269,19 +299,20 @@ onMounted(load);
               <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
                 {{ t("sysadmin.captchaDomesticProvider") }}
               </span>
-              <select
-                v-model="domesticCaptchaProvider"
-                class="ui-field h-10 px-3"
-                :disabled="loading || saving"
-              >
-                <option
-                  v-for="option in captchaProviderOptions"
-                  :key="option.id"
-                  :value="option.id"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
+              <Select v-model="domesticCaptchaProvider" :disabled="loading || saving">
+                <SelectTrigger class="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in captchaProviderOptions"
+                    :key="option.id"
+                    :value="option.id"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <p class="mt-1 text-xs leading-5 text-muted-foreground">
                 {{ t("sysadmin.captchaDomesticHint") }}
               </p>
@@ -290,41 +321,64 @@ onMounted(load);
               <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
                 {{ t("sysadmin.captchaOverseasProvider") }}
               </span>
-              <select
-                v-model="overseasCaptchaProvider"
-                class="ui-field h-10 px-3"
-                :disabled="loading || saving"
-              >
-                <option
-                  v-for="option in captchaProviderOptions"
-                  :key="option.id"
-                  :value="option.id"
-                >
-                  {{ option.label }}
-                </option>
-              </select>
+              <Select v-model="overseasCaptchaProvider" :disabled="loading || saving">
+                <SelectTrigger class="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="option in captchaProviderOptions"
+                    :key="option.id"
+                    :value="option.id"
+                  >
+                    {{ option.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
               <p class="mt-1 text-xs leading-5 text-muted-foreground">
                 {{ t("sysadmin.captchaOverseasHint") }}
               </p>
             </label>
           </div>
-          <label class="block max-w-sm">
-            <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-              {{ t("sysadmin.altchaDifficulty") }}
-            </span>
-            <input
-              v-model.number="altchaDifficulty"
-              class="ui-field h-10 px-3"
-              type="number"
-              min="10000"
-              max="200000"
-              step="1000"
-              :disabled="loading || saving"
-            />
-            <p class="mt-1 text-xs leading-5 text-muted-foreground">
-              {{ t("sysadmin.altchaDifficultyHint") }}
-            </p>
-          </label>
+          <div
+            v-if="showDomesticAltchaDifficulty || showOverseasAltchaDifficulty"
+            class="grid gap-4 sm:grid-cols-2"
+          >
+            <label v-if="showDomesticAltchaDifficulty" class="block">
+              <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {{ t("sysadmin.domesticAltchaDifficulty") }}
+              </span>
+              <input
+                v-model.number="domesticAltchaDifficulty"
+                class="ui-field h-10 px-3"
+                type="number"
+                min="10000"
+                max="200000"
+                step="1000"
+                :disabled="loading || saving"
+              />
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t("sysadmin.altchaDifficultyHint") }}
+              </p>
+            </label>
+            <label v-if="showOverseasAltchaDifficulty" class="block">
+              <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {{ t("sysadmin.overseasAltchaDifficulty") }}
+              </span>
+              <input
+                v-model.number="overseasAltchaDifficulty"
+                class="ui-field h-10 px-3"
+                type="number"
+                min="10000"
+                max="200000"
+                step="1000"
+                :disabled="loading || saving"
+              />
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t("sysadmin.altchaDifficultyHint") }}
+              </p>
+            </label>
+          </div>
           <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6">
             <dl class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
               <div>
@@ -335,9 +389,13 @@ onMounted(load);
                 <dt>{{ t("sysadmin.modelUpdatedAt") }}</dt>
                 <dd class="mt-1 font-medium text-foreground">{{ captchaUpdatedAt }}</dd>
               </div>
-              <div>
-                <dt>{{ t("sysadmin.altchaDifficulty") }}</dt>
-                <dd class="mt-1 font-medium text-foreground">{{ altchaDifficulty }}</dd>
+              <div v-if="showDomesticAltchaDifficulty">
+                <dt>{{ t("sysadmin.domesticAltchaDifficulty") }}</dt>
+                <dd class="mt-1 font-medium text-foreground">{{ domesticAltchaDifficulty }}</dd>
+              </div>
+              <div v-if="showOverseasAltchaDifficulty">
+                <dt>{{ t("sysadmin.overseasAltchaDifficulty") }}</dt>
+                <dd class="mt-1 font-medium text-foreground">{{ overseasAltchaDifficulty }}</dd>
               </div>
             </dl>
           </div>

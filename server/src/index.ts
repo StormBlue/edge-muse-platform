@@ -71,14 +71,15 @@ app.get("/api/config", (c) =>
 
 app.get("/api/captcha/altcha/challenge", (c) =>
   consumeRateLimit(c, { prefix: "captcha:altcha", limit: 60, windowSeconds: 60 }).then(async () => {
-    const captcha = await getPublicCaptchaConfig(c.env, resolveCaptchaRegion(c));
+    const region = resolveCaptchaRegion(c);
+    const captcha = await getPublicCaptchaConfig(c.env, region);
     if (captcha.provider !== "altcha") {
       return c.json(
         { error: { code: "FORBIDDEN", message: "ALTCHA captcha is not enabled" } },
         403
       );
     }
-    return c.json(await createAltchaChallenge(c.env));
+    return c.json(await createAltchaChallenge(c.env, region));
   })
 );
 

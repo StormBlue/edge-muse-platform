@@ -115,7 +115,7 @@ export function createAltchaChallengeApp() {
             403
           );
         }
-        return c.json(await createAltchaChallenge(c.env));
+        return c.json(await createAltchaChallenge(c.env, resolveCaptchaRegion(c)));
       }
     )
   );

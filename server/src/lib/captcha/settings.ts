@@ -45,6 +45,9 @@ export type CaptchaSettingsSource = "database" | "environment" | "default";
 export type CaptchaSettingsDto = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
+  domesticAltchaDifficulty: number;
+  overseasAltchaDifficulty: number;
+  /** @deprecated 兼容旧客户端；新代码应使用分地区难度。 */
   altchaDifficulty: number;
   source: CaptchaSettingsSource;
   updatedBy: string | null;
@@ -54,7 +57,8 @@ export type CaptchaSettingsDto = {
 export type CaptchaSettingsPatchInput = {
   domesticProvider: CaptchaProvider;
   overseasProvider: CaptchaProvider;
-  altchaDifficulty: number;
+  domesticAltchaDifficulty: number;
+  overseasAltchaDifficulty: number;
 };
 
 export async function getCaptchaSettings(env: AppBindings): Promise<CaptchaSettingsDto> {
@@ -64,10 +68,20 @@ export async function getCaptchaSettings(env: AppBindings): Promise<CaptchaSetti
         where: eq(captchaSettings.key, CAPTCHA_SETTINGS_KEY)
       });
       if (row) {
+        const domesticAltchaDifficulty = normalizeAltchaDifficulty(
+          row.domesticAltchaDifficulty,
+          row.altchaDifficulty
+        );
+        const overseasAltchaDifficulty = normalizeAltchaDifficulty(
+          row.overseasAltchaDifficulty,
+          row.altchaDifficulty
+        );
         return {
           domesticProvider: row.domesticProvider,
           overseasProvider: row.overseasProvider,
-          altchaDifficulty: row.altchaDifficulty,
+          domesticAltchaDifficulty,
+          overseasAltchaDifficulty,
+          altchaDifficulty: domesticAltchaDifficulty,
           source: "database",
           updatedBy: row.updatedBy ?? null,
           updatedAt: row.updatedAt
@@ -95,7 +109,9 @@ export async function saveCaptchaSettings(
       .set({
         domesticProvider: input.domesticProvider,
         overseasProvider: input.overseasProvider,
-        altchaDifficulty: input.altchaDifficulty,
+        altchaDifficulty: input.domesticAltchaDifficulty,
+        domesticAltchaDifficulty: input.domesticAltchaDifficulty,
+        overseasAltchaDifficulty: input.overseasAltchaDifficulty,
         updatedBy: actorId,
         updatedAt: timestamp
       })
@@ -105,13 +121,16 @@ export async function saveCaptchaSettings(
       key: CAPTCHA_SETTINGS_KEY,
       domesticProvider: input.domesticProvider,
       overseasProvider: input.overseasProvider,
-      altchaDifficulty: input.altchaDifficulty,
+      altchaDifficulty: input.domesticAltchaDifficulty,
+      domesticAltchaDifficulty: input.domesticAltchaDifficulty,
+      overseasAltchaDifficulty: input.overseasAltchaDifficulty,
       updatedBy: actorId,
       updatedAt: timestamp
     });
   }
   return {
     ...input,
+    altchaDifficulty: input.domesticAltchaDifficulty,
     source: "database",
     updatedBy: actorId,
     updatedAt: timestamp
@@ -122,8 +141,8 @@ export async function resolveCaptchaProvider(
   env: AppBindings,
   region: CaptchaRegion
 ): Promise<CaptchaProvider> {
-  if (env.ENVIRONMENT === "dev") return "disabled";
   const settings = await getCaptchaSettings(env);
+  if (env.ENVIRONMENT === "dev" && settings.source !== "database") return "disabled";
   return region === "domestic" ? settings.domesticProvider : settings.overseasProvider;
 }
 
@@ -142,6 +161,8 @@ function fallbackCaptchaSettings(
   return {
     domesticProvider,
     overseasProvider,
+    domesticAltchaDifficulty: altchaDifficulty,
+    overseasAltchaDifficulty: altchaDifficulty,
     altchaDifficulty,
     source: hasEnvProvider ? "environment" : "default",
     updatedBy: null,
@@ -157,6 +178,13 @@ function parseProvider(value: string | undefined, fallback: CaptchaProvider): Ca
 function parseAltchaDifficulty(value: string | undefined) {
   const parsed = altchaDifficultySchema.safeParse(value?.trim());
   return parsed.success ? parsed.data : DEFAULT_ALTCHA_DIFFICULTY;
+}
+
+function normalizeAltchaDifficulty(value: number, fallback: number) {
+  const parsed = altchaDifficultySchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  const fallbackParsed = altchaDifficultySchema.safeParse(fallback);
+  return fallbackParsed.success ? fallbackParsed.data : DEFAULT_ALTCHA_DIFFICULTY;
 }
 
 function isMissingSettingsTableError(error: unknown) {

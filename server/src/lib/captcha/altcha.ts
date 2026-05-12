@@ -2,6 +2,7 @@ import { appError } from "../errors";
 import { logWarn } from "../log";
 import { getCaptchaSettings } from "./settings";
 import type { AppBindings } from "../../types";
+import type { CaptchaRegion } from "./types";
 
 const ALTCHA_ALGORITHM = "SHA-256";
 const ALTCHA_HMAC_ALGORITHM = "SHA-256";
@@ -49,16 +50,21 @@ type AltchaPayloadV1 = {
   took?: number;
 };
 
-export async function createAltchaChallenge(env: AppBindings): Promise<AltchaChallenge> {
+export async function createAltchaChallenge(
+  env: AppBindings,
+  region: CaptchaRegion
+): Promise<AltchaChallenge> {
   const hmacKey = getAltchaHmacKey(env);
   if (!hmacKey) {
     logWarn("captcha.altcha_missing_hmac_key");
     throw appError("INTERNAL", "ALTCHA captcha is not configured");
   }
   const settings = await getCaptchaSettings(env);
+  const difficulty =
+    region === "domestic" ? settings.domesticAltchaDifficulty : settings.overseasAltchaDifficulty;
   const expires = Math.floor(Date.now() / 1000) + CHALLENGE_TTL_SECONDS;
-  const number = randomNumber(settings.altchaDifficulty);
-  const parameters = await createChallengeParameters(settings.altchaDifficulty, number, expires);
+  const number = randomNumber(difficulty);
+  const parameters = await createChallengeParameters(difficulty, number, expires);
   return signAltchaChallenge(parameters, hmacKey);
 }
 

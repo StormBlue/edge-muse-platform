@@ -93,6 +93,53 @@ describe("captcha settings", () => {
     });
   });
 
+  it("allows saved sysadmin captcha provider overrides in local dev", async () => {
+    const ctx = await createD1TestContext();
+    try {
+      await getDb(ctx.env).insert(users).values({
+        id: "user_sysadmin",
+        email: "sysadmin-dev@example.com",
+        username: "sysadmin_dev",
+        nickname: "Sysadmin Dev",
+        passwordHash: "hash",
+        role: "sysadmin",
+        locale: "zh-CN",
+        status: "active",
+        createdAt: 1,
+        updatedAt: 1
+      });
+      await saveCaptchaSettings(
+        {
+          ...ctx.env,
+          ENVIRONMENT: "dev"
+        } as AppBindings,
+        "user_sysadmin",
+        {
+          domesticProvider: "altcha",
+          overseasProvider: "disabled",
+          domesticAltchaDifficulty: 50_000,
+          overseasAltchaDifficulty: 75_000
+        }
+      );
+
+      await expect(
+        getPublicCaptchaConfig(
+          {
+            ...ctx.env,
+            ENVIRONMENT: "dev"
+          } as AppBindings,
+          "domestic"
+        )
+      ).resolves.toEqual({
+        provider: "altcha",
+        region: "domestic",
+        challengeUrl: "/api/captcha/altcha/challenge"
+      });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
   it("persists sysadmin captcha provider overrides", async () => {
     const ctx = await createD1TestContext();
     try {
@@ -111,21 +158,62 @@ describe("captcha settings", () => {
       const saved = await saveCaptchaSettings(ctx.env, "user_sysadmin", {
         domesticProvider: "disabled",
         overseasProvider: "altcha",
-        altchaDifficulty: 75_000
+        domesticAltchaDifficulty: 50_000,
+        overseasAltchaDifficulty: 75_000
       });
       expect(saved).toMatchObject({
         domesticProvider: "disabled",
         overseasProvider: "altcha",
-        altchaDifficulty: 75_000,
+        domesticAltchaDifficulty: 50_000,
+        overseasAltchaDifficulty: 75_000,
+        altchaDifficulty: 50_000,
         source: "database",
         updatedBy: "user_sysadmin"
       });
       await expect(getCaptchaSettings(ctx.env)).resolves.toMatchObject({
         domesticProvider: "disabled",
         overseasProvider: "altcha",
-        altchaDifficulty: 75_000,
+        domesticAltchaDifficulty: 50_000,
+        overseasAltchaDifficulty: 75_000,
+        altchaDifficulty: 50_000,
         source: "database"
       });
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  it("creates regional ALTCHA challenges with independent difficulty", async () => {
+    const ctx = await createD1TestContext();
+    try {
+      await getDb(ctx.env).insert(users).values({
+        id: "user_sysadmin",
+        email: "regional-altcha@example.com",
+        username: "regional_altcha",
+        nickname: "Regional Altcha",
+        passwordHash: "hash",
+        role: "sysadmin",
+        locale: "zh-CN",
+        status: "active",
+        createdAt: 1,
+        updatedAt: 1
+      });
+      const env = {
+        ...ctx.env,
+        ALTCHA_HMAC_KEY: "test-altcha-secret"
+      } as AppBindings;
+      await saveCaptchaSettings(env, "user_sysadmin", {
+        domesticProvider: "altcha",
+        overseasProvider: "altcha",
+        domesticAltchaDifficulty: 20_000,
+        overseasAltchaDifficulty: 80_000
+      });
+
+      const domestic = await createAltchaChallenge(env, "domestic");
+      const overseas = await createAltchaChallenge(env, "overseas");
+
+      expect(domestic.parameters.data.difficulty).toBe(20_000);
+      expect(overseas.parameters.data.difficulty).toBe(80_000);
     } finally {
       await ctx.dispose();
     }
@@ -139,9 +227,10 @@ describe("ALTCHA captcha", () => {
       ALTCHA_HMAC_KEY: "test-altcha-secret",
       ALTCHA_DEFAULT_DIFFICULTY: "10000",
       CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      CAPTCHA_OVERSEAS_PROVIDER: "altcha",
       KV: new MemoryKvNamespace() as unknown as KVNamespace
     } as AppBindings;
-    const challenge = await createAltchaChallenge(env);
+    const challenge = await createAltchaChallenge(env, "domestic");
     const payload = createWidgetV3Payload(challenge, await solveAltchaChallenge(challenge));
 
     await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(true);
@@ -155,10 +244,11 @@ describe("ALTCHA captcha", () => {
       ALTCHA_HMAC_KEY: "test-altcha-secret",
       ALTCHA_DEFAULT_DIFFICULTY: "10000",
       CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      CAPTCHA_OVERSEAS_PROVIDER: "altcha",
       KV: kv as unknown as KVNamespace,
       TASK_ROOM: new MemoryDurableReplayNamespace() as unknown as DurableObjectNamespace
     } as AppBindings;
-    const challenge = await createAltchaChallenge(env);
+    const challenge = await createAltchaChallenge(env, "domestic");
     const payload = createWidgetV3Payload(challenge, await solveAltchaChallenge(challenge));
 
     await expect(verifyAltchaCaptcha(env, payload)).resolves.toBe(true);
@@ -172,9 +262,10 @@ describe("ALTCHA captcha", () => {
       ALTCHA_HMAC_KEY: "test-altcha-secret",
       ALTCHA_DEFAULT_DIFFICULTY: "10000",
       CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      CAPTCHA_OVERSEAS_PROVIDER: "altcha",
       KV: new MemoryKvNamespace() as unknown as KVNamespace
     } as AppBindings;
-    const challenge = await createAltchaChallenge(env);
+    const challenge = await createAltchaChallenge(env, "domestic");
     const payload = createWidgetV3Payload(challenge, {
       counter: 0,
       derivedKey: "0".repeat(64)
@@ -189,9 +280,10 @@ describe("ALTCHA captcha", () => {
       ALTCHA_HMAC_KEY: "test-altcha-secret",
       ALTCHA_DEFAULT_DIFFICULTY: "10000",
       CAPTCHA_DOMESTIC_PROVIDER: "altcha",
+      CAPTCHA_OVERSEAS_PROVIDER: "altcha",
       KV: new MemoryKvNamespace() as unknown as KVNamespace
     } as AppBindings;
-    const challenge = await createAltchaChallenge(env);
+    const challenge = await createAltchaChallenge(env, "domestic");
     const payload = createWidgetV3Payload({
       ...challenge,
       parameters: { ...challenge.parameters, expiresAt: 1 }

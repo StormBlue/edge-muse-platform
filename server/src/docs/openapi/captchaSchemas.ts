@@ -98,6 +98,8 @@ export const captchaSchemas = {
     required: [
       "domesticProvider",
       "overseasProvider",
+      "domesticAltchaDifficulty",
+      "overseasAltchaDifficulty",
       "altchaDifficulty",
       "source",
       "updatedBy",
@@ -106,11 +108,24 @@ export const captchaSchemas = {
     properties: {
       domesticProvider: ref("CaptchaProvider"),
       overseasProvider: ref("CaptchaProvider"),
+      domesticAltchaDifficulty: {
+        type: "integer",
+        minimum: 10000,
+        maximum: 200000,
+        description: "国内访问选择 ALTCHA 时使用的 PoW 难度。"
+      },
+      overseasAltchaDifficulty: {
+        type: "integer",
+        minimum: 10000,
+        maximum: 200000,
+        description: "国外访问选择 ALTCHA 时使用的 PoW 难度。"
+      },
       altchaDifficulty: {
         type: "integer",
         minimum: 10000,
         maximum: 200000,
-        description: "ALTCHA PoW 难度；越高浏览器求解越慢，Worker 校验成本基本不变。"
+        deprecated: true,
+        description: "兼容旧客户端的 ALTCHA PoW 难度；新客户端应使用分地区字段。"
       },
       source: { type: "string", enum: ["database", "environment", "default"] },
       updatedBy: { type: "string", nullable: true },

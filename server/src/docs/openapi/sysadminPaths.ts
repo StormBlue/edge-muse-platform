@@ -300,7 +300,7 @@ export const sysadminPaths = {
       operationId: "updateSysadminPreferences",
       summary: "更新当前 sysadmin 偏好",
       description:
-        "要求 sysadmin 登录和 CSRF。至少提供 `preferredProviderKeyId`、`promptAssistantModel` 或 `captcha` 之一；设置 provider key 时必须是可分配 key。`captcha.altchaDifficulty` 可省略，省略时保留当前难度。",
+        "要求 sysadmin 登录和 CSRF。至少提供 `preferredProviderKeyId`、`promptAssistantModel` 或 `captcha` 之一；设置 provider key 时必须是可分配 key。ALTCHA 难度可按国内/国外分别配置；旧字段 `captcha.altchaDifficulty` 仍兼容并会同时作用于两个地区。",
       security: csrfSecurity,
       requestBody: requestJson("sysadmin 偏好补丁。", {
         type: "object",
@@ -313,7 +313,14 @@ export const sysadminPaths = {
             properties: {
               domesticProvider: ref("CaptchaProvider"),
               overseasProvider: ref("CaptchaProvider"),
-              altchaDifficulty: { type: "integer", minimum: 10000, maximum: 200000 }
+              domesticAltchaDifficulty: { type: "integer", minimum: 10000, maximum: 200000 },
+              overseasAltchaDifficulty: { type: "integer", minimum: 10000, maximum: 200000 },
+              altchaDifficulty: {
+                type: "integer",
+                minimum: 10000,
+                maximum: 200000,
+                deprecated: true
+              }
             },
             additionalProperties: false
           }

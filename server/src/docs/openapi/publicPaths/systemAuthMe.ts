@@ -45,7 +45,7 @@ export const systemAuthMePaths = {
       operationId: "getPublicConfig",
       summary: "读取前端公开配置",
       description:
-        "无需登录。返回当前地区登录验证码的公开配置；dev 环境通常返回 `provider=disabled`。不得在该接口返回任何服务端密钥或内部配置。",
+        "无需登录。返回当前地区登录验证码的公开配置；dev 环境默认返回 `provider=disabled`，但 sysadmin 在系统设置保存的验证码配置会生效。不得在该接口返回任何服务端密钥或内部配置。",
       responses: {
         "200": jsonResponse("公开配置。", {
           type: "object",

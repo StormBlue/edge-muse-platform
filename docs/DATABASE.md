@@ -34,7 +34,7 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 
 生成迁移后应 **人工审阅 SQL** 再提交；线上执行见 [`OPERATIONS.md`](./OPERATIONS.md)。
 
-`captcha_settings` 当前保存一行 `key=login` 的全局登录验证码设置：`domestic_provider`、`overseas_provider` 可选 `tencent` / `turnstile` / `altcha` / `disabled`，`altcha_difficulty` 控制 ALTCHA 浏览器端 PoW 难度。新增字段迁移见 `server/migrations/0009_altcha_captcha.sql`。
+`captcha_settings` 当前保存一行 `key=login` 的全局登录验证码设置：`domestic_provider`、`overseas_provider` 可选 `tencent` / `turnstile` / `altcha` / `disabled`；`domestic_altcha_difficulty`、`overseas_altcha_difficulty` 分别控制国内/国外 ALTCHA 浏览器端 PoW 难度。`altcha_difficulty` 保留为旧字段兼容来源。新增字段迁移见 `server/migrations/0009_altcha_captcha.sql` 与 `0010_regional_altcha_difficulty.sql`。
 
 ## 备份与清理
 

@@ -403,6 +403,8 @@ export const captchaSettings = sqliteTable("captcha_settings", {
     .notNull()
     .default("turnstile"),
   altchaDifficulty: integer("altcha_difficulty").notNull().default(50000),
+  domesticAltchaDifficulty: integer("domestic_altcha_difficulty").notNull().default(50000),
+  overseasAltchaDifficulty: integer("overseas_altcha_difficulty").notNull().default(50000),
   updatedBy: text("updated_by").references(() => users.id),
   updatedAt: integer("updated_at").notNull()
 });
