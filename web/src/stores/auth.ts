@@ -41,6 +41,19 @@ export type Quota = {
   usedQuota: number;
   remainingQuota: number | null;
 };
+export type LoginCaptchaProof =
+  | {
+      provider: "tencent";
+      ticket: string;
+      randstr: string;
+    }
+  | {
+      provider: "turnstile";
+      token: string;
+    }
+  | {
+      provider: "disabled";
+    };
 export const useAuthStore = defineStore("auth", {
   state: () => ({
     /** 当前用户；未登录为 null */
@@ -90,9 +103,9 @@ export const useAuthStore = defineStore("auth", {
     },
     /**
      * 账密登录；成功后服务端下发 Cookie，本 store 写入 user/quota
-     * @param turnstileToken 登录页 Turnstile 控件产出，可为空时由后端策略拒绝
+     * @param captcha 登录页验证码控件产出，可为空时由后端策略拒绝
      */
-    async login(email: string, password: string, turnstileToken?: string) {
+    async login(email: string, password: string, captcha?: LoginCaptchaProof) {
       const body = await apiFetch<{
         user: User;
         quota: Quota;
@@ -101,7 +114,7 @@ export const useAuthStore = defineStore("auth", {
         promptAssistantEnabled: boolean;
       }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password, turnstileToken })
+        body: JSON.stringify({ email, password, captcha })
       });
       this.user = body.user;
       this.quota = body.quota;

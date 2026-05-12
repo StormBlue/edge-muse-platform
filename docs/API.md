@@ -38,6 +38,8 @@ Authentication notes:
 
 - Most business endpoints require `em_access` Cookie or `Authorization: Bearer <access-token>`.
 - All non-GET/HEAD/OPTIONS `/api/*` endpoints require `X-CSRF-Token` matching the `em_csrf` Cookie, except `POST /auth/login` and `POST /auth/refresh`.
+- `GET /config` returns login captcha config. Shape is `{ captcha: { provider, region, ... }, turnstileSiteKey }`; `provider=tencent` includes public `appId`, `provider=turnstile` includes public `siteKey`, and `provider=disabled` means login can proceed without a captcha proof.
+- `POST /auth/login` accepts `captcha`: `{ provider: "tencent", ticket, randstr }`, `{ provider: "turnstile", token }`, or `{ provider: "disabled" }`. The legacy `turnstileToken` field is still accepted as a Turnstile proof for compatibility.
 - Admin endpoints require role `admin` or `sysadmin`; sysadmin endpoints require role `sysadmin`.
 - `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded` or `failed`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.

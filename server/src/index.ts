@@ -27,7 +27,8 @@ import { installErrorHandling } from "./middleware/error";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
-import { getPublicTurnstileSiteKey } from "./lib/turnstile";
+import { getPublicCaptchaConfig } from "./lib/captcha";
+import { resolveCaptchaRegion } from "./lib/captcha/region";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
@@ -48,7 +49,7 @@ app.use(
 );
 app.use("/api/*", csrf);
 
-// ---------- 无鉴权元数据：健康检查、Turnstile site key（前端登录框；dev 环境返回 null）----------
+// ---------- 无鉴权元数据：健康检查、登录验证码配置（dev 环境返回 disabled）----------
 app.get("/api/health", (c) =>
   c.json({
     ok: true,
@@ -59,9 +60,12 @@ app.get("/api/health", (c) =>
 );
 
 app.get("/api/config", (c) =>
-  c.json({
-    turnstileSiteKey: getPublicTurnstileSiteKey(c.env)
-  })
+  getPublicCaptchaConfig(c.env, resolveCaptchaRegion(c)).then((captcha) =>
+    c.json({
+      captcha,
+      turnstileSiteKey: captcha.provider === "turnstile" ? captcha.siteKey : null
+    })
+  )
 );
 
 // ---------- API 文档：dev 公开，production 要求 sysadmin（见 routes/docs.ts）----------

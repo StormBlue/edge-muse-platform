@@ -33,10 +33,30 @@ type PromptAssistantModelOption = {
   description: string;
 };
 
+type CaptchaProvider = "tencent" | "turnstile" | "disabled";
+
+type CaptchaSettingsSource = "database" | "environment" | "default";
+
+type CaptchaSettings = {
+  domesticProvider: CaptchaProvider;
+  overseasProvider: CaptchaProvider;
+  source: CaptchaSettingsSource;
+  updatedAt: number;
+  updatedBy: string | null;
+};
+
+type CaptchaProviderOption = {
+  id: CaptchaProvider;
+  label: string;
+  description: string;
+};
+
 type PreferencesBody = {
   preferredProviderKeyId: string | null;
   promptAssistantModel: PromptAssistantModelSettings;
   promptAssistantModelOptions: PromptAssistantModelOption[];
+  captcha: CaptchaSettings;
+  captchaProviderOptions: CaptchaProviderOption[];
 };
 
 const auth = useAuthStore();
@@ -47,6 +67,10 @@ const preferredProviderKeyId = ref("");
 const promptAssistantModel = ref("");
 const promptAssistantModelSettings = ref<PromptAssistantModelSettings | null>(null);
 const promptAssistantModelOptions = ref<PromptAssistantModelOption[]>([]);
+const captchaSettings = ref<CaptchaSettings | null>(null);
+const captchaProviderOptions = ref<CaptchaProviderOption[]>([]);
+const domesticCaptchaProvider = ref<CaptchaProvider>("tencent");
+const overseasCaptchaProvider = ref<CaptchaProvider>("turnstile");
 const loading = ref(false);
 const saving = ref(false);
 
@@ -75,6 +99,14 @@ const modelUpdatedAt = computed(() => {
   const updatedAt = promptAssistantModelSettings.value?.updatedAt ?? 0;
   return updatedAt ? new Date(updatedAt).toLocaleString() : "-";
 });
+const captchaSourceLabel = computed(() => {
+  const source = captchaSettings.value?.source ?? "default";
+  return t(`sysadmin.modelSource.${source}`);
+});
+const captchaUpdatedAt = computed(() => {
+  const updatedAt = captchaSettings.value?.updatedAt ?? 0;
+  return updatedAt ? new Date(updatedAt).toLocaleString() : "-";
+});
 
 /** 拉密钥列表并同步当前用户已保存的偏好 */
 async function load() {
@@ -90,6 +122,10 @@ async function load() {
     promptAssistantModelSettings.value = preferencesBody.promptAssistantModel;
     promptAssistantModel.value = preferencesBody.promptAssistantModel.model;
     promptAssistantModelOptions.value = preferencesBody.promptAssistantModelOptions;
+    captchaSettings.value = preferencesBody.captcha;
+    captchaProviderOptions.value = preferencesBody.captchaProviderOptions;
+    domesticCaptchaProvider.value = preferencesBody.captcha.domesticProvider;
+    overseasCaptchaProvider.value = preferencesBody.captcha.overseasProvider;
   } finally {
     loading.value = false;
   }
@@ -102,16 +138,24 @@ async function save() {
     const body = await apiFetch<{
       preferredProviderKeyId: string | null;
       promptAssistantModel: PromptAssistantModelSettings;
+      captcha: CaptchaSettings;
     }>("/sysadmin/preferences", {
       method: "PATCH",
       body: JSON.stringify({
         preferredProviderKeyId: preferredProviderKeyId.value,
-        promptAssistantModel: promptAssistantModel.value
+        promptAssistantModel: promptAssistantModel.value,
+        captcha: {
+          domesticProvider: domesticCaptchaProvider.value,
+          overseasProvider: overseasCaptchaProvider.value
+        }
       })
     });
     preferredProviderKeyId.value = body.preferredProviderKeyId ?? "";
     promptAssistantModelSettings.value = body.promptAssistantModel;
     promptAssistantModel.value = body.promptAssistantModel.model;
+    captchaSettings.value = body.captcha;
+    domesticCaptchaProvider.value = body.captcha.domesticProvider;
+    overseasCaptchaProvider.value = body.captcha.overseasProvider;
     await auth.bootstrap();
     toast.success(t("sysadmin.preferencesSaved"));
   } finally {
@@ -203,6 +247,71 @@ onMounted(load);
               <div>
                 <dt>{{ t("sysadmin.modelUpdatedAt") }}</dt>
                 <dd class="mt-1 font-medium text-foreground">{{ modelUpdatedAt }}</dd>
+              </div>
+            </dl>
+          </div>
+        </section>
+
+        <section class="panel space-y-4 p-5 lg:col-span-2">
+          <div>
+            <h2 class="font-semibold">{{ t("sysadmin.captchaSettingsTitle") }}</h2>
+            <p class="mt-1 text-sm leading-6 text-muted-foreground">
+              {{ t("sysadmin.captchaSettingsDescription") }}
+            </p>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block">
+              <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {{ t("sysadmin.captchaDomesticProvider") }}
+              </span>
+              <select
+                v-model="domesticCaptchaProvider"
+                class="ui-field h-10 px-3"
+                :disabled="loading || saving"
+              >
+                <option
+                  v-for="option in captchaProviderOptions"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t("sysadmin.captchaDomesticHint") }}
+              </p>
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+                {{ t("sysadmin.captchaOverseasProvider") }}
+              </span>
+              <select
+                v-model="overseasCaptchaProvider"
+                class="ui-field h-10 px-3"
+                :disabled="loading || saving"
+              >
+                <option
+                  v-for="option in captchaProviderOptions"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+              <p class="mt-1 text-xs leading-5 text-muted-foreground">
+                {{ t("sysadmin.captchaOverseasHint") }}
+              </p>
+            </label>
+          </div>
+          <div class="rounded-lg border border-border bg-muted/30 p-3 text-sm leading-6">
+            <dl class="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+              <div>
+                <dt>{{ t("sysadmin.modelSettingSource") }}</dt>
+                <dd class="mt-1 font-medium text-foreground">{{ captchaSourceLabel }}</dd>
+              </div>
+              <div>
+                <dt>{{ t("sysadmin.modelUpdatedAt") }}</dt>
+                <dd class="mt-1 font-medium text-foreground">{{ captchaUpdatedAt }}</dd>
               </div>
             </dl>
           </div>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * 登录页：
- * - 先 GET `/api/config` 读 `turnstileSiteKey`；无 key 则不调起人机，直接可登录（开发/内网场景）。
- * - 有 key 时异步加载 Turnstile 脚本、`render` 到占位 div，token 经 `auth.login` 带给后端 `verifyTurnstile`。
+ * - 先 GET `/api/config` 读登录验证码 provider；disabled 时直接可登录（开发/内网场景）。
+ * - 腾讯验证码由前端脚本回调 ticket/randstr，Turnstile 回调 token，均随登录请求带给后端二次校验。
  * - 成功：尊重 redirect；无 redirect 时 sysadmin 进系统看板，其它角色进图像生成。
  * - 顶栏语言切换走 `ui.setLocale`，与全站 i18n 一致。
  */
@@ -14,14 +14,32 @@ import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "lu
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { apiFetch } from "@/api/client";
-import { useAuthStore } from "@/stores/auth";
+import { useAuthStore, type LoginCaptchaProof } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 
 /** 防重复插入官方 challenge 脚本 */
 const TURNSTILE_SCRIPT_ID = "cf-turnstile-script";
-const TURNSTILE_LOAD_TIMEOUT_MS = 10_000;
+const TENCENT_CAPTCHA_SCRIPT_ID = "tencent-captcha-script";
+const CAPTCHA_LOAD_TIMEOUT_MS = 10_000;
 
-type TurnstileStatus =
+type CaptchaProvider = "tencent" | "turnstile" | "disabled";
+type PublicCaptchaConfig =
+  | {
+      provider: "tencent";
+      region: "domestic" | "overseas";
+      appId: string;
+    }
+  | {
+      provider: "turnstile";
+      region: "domestic" | "overseas";
+      siteKey: string;
+    }
+  | {
+      provider: "disabled";
+      region: "domestic" | "overseas";
+    };
+
+type CaptchaStatus =
   | "idle"
   | "loading"
   | "ready"
@@ -40,57 +58,63 @@ const { t } = useI18n();
 const email = ref("");
 const password = ref("");
 const loading = ref(false);
-const turnstileSiteKey = ref<string | null>(null);
-/** 由 Turnstile callback 写入，随登录请求提交 */
-const turnstileToken = ref("");
+const captchaConfig = ref<PublicCaptchaConfig | null>(null);
+/** 由验证码 callback 写入，随登录请求提交 */
+const captchaProof = ref<LoginCaptchaProof | null>(null);
 const turnstileEl = ref<HTMLElement | null>(null);
 /** `render` 返回值，供 reset/remove */
 const turnstileWidgetId = ref<string | null>(null);
-const turnstileStatus = ref<TurnstileStatus>("idle");
-const turnstileErrorCode = ref<string | null>(null);
+const tencentCaptcha = ref<InstanceType<NonNullable<typeof window.TencentCaptcha>> | null>(null);
+const captchaStatus = ref<CaptchaStatus>("idle");
+const captchaErrorCode = ref<string | null>(null);
 
-const hasTurnstileProblem = computed(() =>
-  ["expired", "timeout", "error", "unsupported"].includes(turnstileStatus.value)
+const activeCaptchaProvider = computed<CaptchaProvider>(
+  () => captchaConfig.value?.provider ?? "disabled"
 );
-const showTurnstilePanel = computed(
+const hasCaptchaProblem = computed(() =>
+  ["expired", "timeout", "error", "unsupported"].includes(captchaStatus.value)
+);
+const showCaptchaPanel = computed(
   () =>
-    Boolean(turnstileSiteKey.value) ||
-    turnstileStatus.value === "loading" ||
-    hasTurnstileProblem.value
+    activeCaptchaProvider.value !== "disabled" ||
+    captchaStatus.value === "loading" ||
+    hasCaptchaProblem.value
 );
-const canRetryTurnstile = computed(
-  () => Boolean(turnstileSiteKey.value) && !loading.value && hasTurnstileProblem.value
+const canRetryCaptcha = computed(
+  () => activeCaptchaProvider.value !== "disabled" && !loading.value && hasCaptchaProblem.value
 );
 const canSubmit = computed(
-  () => !loading.value && (!turnstileSiteKey.value || Boolean(turnstileToken.value))
+  () => !loading.value && (activeCaptchaProvider.value === "disabled" || Boolean(captchaProof.value))
 );
 const submitLabel = computed(() => {
   if (loading.value) return t("common.loginLoading");
-  if (turnstileSiteKey.value && !turnstileToken.value) return t("auth.turnstileWaitingAction");
+  if (activeCaptchaProvider.value !== "disabled" && !captchaProof.value) {
+    return t("auth.captchaWaitingAction");
+  }
   return t("common.login");
 });
-const turnstileTitle = computed(() => t(`auth.turnstileStatus.${turnstileStatus.value}.title`));
-const turnstileDescription = computed(() =>
-  t(`auth.turnstileStatus.${turnstileStatus.value}.description`)
+const captchaTitle = computed(() => t(`auth.captchaStatus.${captchaStatus.value}.title`));
+const captchaDescription = computed(() =>
+  t(`auth.captchaStatus.${captchaStatus.value}.description`)
 );
 
 async function submit() {
   if (!canSubmit.value) return;
   loading.value = true;
-  let shouldResetTurnstile = true;
+  let shouldResetCaptcha = true;
   try {
-    await auth.login(email.value, password.value, turnstileToken.value || undefined);
+    await auth.login(email.value, password.value, captchaProof.value || undefined);
     await router.push(typeof route.query.redirect === "string" ? route.query.redirect : homePath());
   } catch (error) {
-    shouldResetTurnstile = !handleLoginError(error);
+    shouldResetCaptcha = !handleLoginError(error);
     const message =
       error && typeof error === "object" && "error" in error
         ? (error as { error: { message: string } }).error.message
         : t("auth.loginFailed");
-    toast.error(message.includes("Turnstile") ? t("auth.turnstileVerifyFailed") : message);
+    toast.error(message.includes("Captcha") ? t("auth.captchaVerifyFailed") : message);
   } finally {
     loading.value = false;
-    if (shouldResetTurnstile) resetTurnstile();
+    if (shouldResetCaptcha) resetCaptcha();
   }
 }
 
@@ -98,25 +122,43 @@ function homePath() {
   return auth.isSysadmin ? "/sysadmin/dashboard" : "/workspace";
 }
 
-/** 拉配置 → 按需插脚本 → nextTick 后 render 一次，防重复用 turnstileWidgetId 判断 */
-async function initTurnstile() {
-  setTurnstileStatus("loading");
+/** 拉配置 → 按需插脚本 → nextTick 后 render 一次，防重复用 widget id 判断 */
+async function initCaptcha() {
+  setCaptchaStatus("loading");
   try {
-    const config = await apiFetch<{ turnstileSiteKey: string | null }>("/config");
-    turnstileSiteKey.value = config.turnstileSiteKey;
-    if (!turnstileSiteKey.value) {
-      setTurnstileStatus("disabled");
+    const config = await apiFetch<{
+      captcha?: PublicCaptchaConfig;
+      turnstileSiteKey?: string | null;
+    }>("/config");
+    captchaConfig.value =
+      config.captcha ??
+      (config.turnstileSiteKey
+        ? { provider: "turnstile", region: "overseas", siteKey: config.turnstileSiteKey }
+        : { provider: "disabled", region: "overseas" });
+    if (captchaConfig.value.provider === "disabled") {
+      captchaProof.value = { provider: "disabled" };
+      setCaptchaStatus("disabled");
+      return;
+    }
+    if (captchaConfig.value.provider === "tencent") {
+      await withTimeout(
+        loadTencentCaptchaScript(),
+        CAPTCHA_LOAD_TIMEOUT_MS,
+        new Error("Tencent captcha script timed out")
+      );
+      await nextTick();
+      renderTencentCaptcha();
       return;
     }
     await withTimeout(
       loadTurnstileScript(),
-      TURNSTILE_LOAD_TIMEOUT_MS,
+      CAPTCHA_LOAD_TIMEOUT_MS,
       new Error("Turnstile script timed out")
     );
     await nextTick();
     renderTurnstile();
   } catch {
-    setTurnstileStatus("error");
+    setCaptchaStatus("error");
   }
 }
 
@@ -146,17 +188,66 @@ function loadTurnstileScript(): Promise<void> {
   });
 }
 
+/** 腾讯云官方前端脚本；回调返回 ticket/randstr，服务端再调 DescribeCaptchaResult。 */
+function loadTencentCaptchaScript(): Promise<void> {
+  if (window.TencentCaptcha) return Promise.resolve();
+  const existing = document.getElementById(TENCENT_CAPTCHA_SCRIPT_ID) as HTMLScriptElement | null;
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Tencent captcha script failed")), {
+        once: true
+      });
+    });
+  }
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = TENCENT_CAPTCHA_SCRIPT_ID;
+    script.src = "https://turing.captcha.qcloud.com/TJCaptcha.js";
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", () => resolve(), { once: true });
+    script.addEventListener("error", () => reject(new Error("Tencent captcha script failed")), {
+      once: true
+    });
+    document.head.appendChild(script);
+  });
+}
+
+function renderTencentCaptcha() {
+  if (!window.TencentCaptcha || captchaConfig.value?.provider !== "tencent") return;
+  tencentCaptcha.value?.destroy?.();
+  tencentCaptcha.value = new window.TencentCaptcha(
+    captchaConfig.value.appId,
+    (response) => {
+      if (response.ret === 0 && response.ticket && response.randstr) {
+        captchaProof.value = {
+          provider: "tencent",
+          ticket: response.ticket,
+          randstr: response.randstr
+        };
+        setCaptchaStatus("verified");
+        return;
+      }
+      captchaProof.value = null;
+      setCaptchaStatus(response.ret === 2 ? "ready" : "error", response.errorCode);
+    },
+    { needFeedBack: false }
+  );
+  setCaptchaStatus("ready");
+}
+
 function renderTurnstile() {
   if (
     !turnstileEl.value ||
     !window.turnstile ||
-    !turnstileSiteKey.value ||
+    captchaConfig.value?.provider !== "turnstile" ||
     turnstileWidgetId.value
   ) {
     return;
   }
   turnstileWidgetId.value = window.turnstile.render(turnstileEl.value, {
-    sitekey: turnstileSiteKey.value,
+    sitekey: captchaConfig.value.siteKey,
     action: "login",
     language: ui.locale,
     size: "flexible",
@@ -166,52 +257,66 @@ function renderTurnstile() {
     "refresh-timeout": "auto",
     "response-field": false,
     callback: (token) => {
-      turnstileToken.value = token;
-      setTurnstileStatus("verified");
+      captchaProof.value = { provider: "turnstile", token };
+      setCaptchaStatus("verified");
     },
     "expired-callback": () => {
-      turnstileToken.value = "";
-      setTurnstileStatus("expired");
+      captchaProof.value = null;
+      setCaptchaStatus("expired");
     },
     "error-callback": (errorCode) => {
-      turnstileToken.value = "";
-      setTurnstileStatus("error", errorCode);
+      captchaProof.value = null;
+      setCaptchaStatus("error", errorCode);
     },
     "timeout-callback": () => {
-      turnstileToken.value = "";
-      setTurnstileStatus("timeout");
+      captchaProof.value = null;
+      setCaptchaStatus("timeout");
     },
     "unsupported-callback": () => {
-      turnstileToken.value = "";
-      setTurnstileStatus("unsupported");
+      captchaProof.value = null;
+      setCaptchaStatus("unsupported");
     }
   });
-  setTurnstileStatus("ready");
+  setCaptchaStatus("ready");
 }
 
 /** 登录失败或过期时清空 token 并 reset 组件，促使用户重新点选 */
-function resetTurnstile() {
-  if (!turnstileWidgetId.value || !window.turnstile) return;
-  turnstileToken.value = "";
-  setTurnstileStatus("ready");
-  window.turnstile.reset(turnstileWidgetId.value);
+function resetCaptcha() {
+  if (activeCaptchaProvider.value === "disabled") return;
+  captchaProof.value = null;
+  setCaptchaStatus("ready");
+  if (activeCaptchaProvider.value === "turnstile" && turnstileWidgetId.value && window.turnstile) {
+    window.turnstile.reset(turnstileWidgetId.value);
+  }
 }
 
-async function retryTurnstile() {
-  turnstileToken.value = "";
-  turnstileErrorCode.value = null;
+async function retryCaptcha() {
+  captchaProof.value = null;
+  captchaErrorCode.value = null;
+  if (activeCaptchaProvider.value === "tencent") {
+    renderTencentCaptcha();
+    return;
+  }
   if (turnstileWidgetId.value && window.turnstile) {
-    setTurnstileStatus("ready");
+    setCaptchaStatus("ready");
     window.turnstile.reset(turnstileWidgetId.value);
     return;
   }
   turnstileWidgetId.value = null;
-  await initTurnstile();
+  await initCaptcha();
 }
 
-function setTurnstileStatus(status: TurnstileStatus, errorCode?: string) {
-  turnstileStatus.value = status;
-  turnstileErrorCode.value = errorCode ?? null;
+function openTencentCaptcha() {
+  if (loading.value) return;
+  if (!tencentCaptcha.value) {
+    renderTencentCaptcha();
+  }
+  tencentCaptcha.value?.show();
+}
+
+function setCaptchaStatus(status: CaptchaStatus, errorCode?: string) {
+  captchaStatus.value = status;
+  captchaErrorCode.value = errorCode ?? null;
 }
 
 function handleLoginError(error: unknown) {
@@ -219,8 +324,8 @@ function handleLoginError(error: unknown) {
     error && typeof error === "object" && "error" in error
       ? (error as { error: { message?: string } }).error.message
       : undefined;
-  if (message?.includes("Turnstile")) {
-    setTurnstileStatus("error");
+  if (message?.includes("Captcha")) {
+    setCaptchaStatus("error");
     return true;
   }
   return false;
@@ -236,13 +341,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, error: Error): Promise<
 }
 
 onMounted(() => {
-  initTurnstile();
+  initCaptcha();
 });
 
 onBeforeUnmount(() => {
   if (turnstileWidgetId.value && window.turnstile) {
     window.turnstile.remove(turnstileWidgetId.value);
   }
+  tencentCaptcha.value?.destroy?.();
 });
 </script>
 
@@ -313,52 +419,62 @@ onBeforeUnmount(() => {
               />
             </div>
             <div
-              v-if="showTurnstilePanel"
-              class="turnstile-panel"
+              v-if="showCaptchaPanel"
+              class="captcha-panel"
               :class="{
-                'turnstile-panel--verified': turnstileStatus === 'verified',
-                'turnstile-panel--problem': hasTurnstileProblem
+                'captcha-panel--verified': captchaStatus === 'verified',
+                'captcha-panel--problem': hasCaptchaProblem
               }"
               aria-live="polite"
             >
               <div class="flex items-start gap-3">
                 <div
-                  class="turnstile-state-icon"
+                  class="captcha-state-icon"
                   :class="{
-                    'turnstile-state-icon--verified': turnstileStatus === 'verified',
-                    'turnstile-state-icon--problem': hasTurnstileProblem
+                    'captcha-state-icon--verified': captchaStatus === 'verified',
+                    'captcha-state-icon--problem': hasCaptchaProblem
                   }"
                 >
-                  <Loader2 v-if="turnstileStatus === 'loading'" class="h-4 w-4 animate-spin" />
-                  <CheckCircle2 v-else-if="turnstileStatus === 'verified'" class="h-4 w-4" />
-                  <AlertTriangle v-else-if="hasTurnstileProblem" class="h-4 w-4" />
+                  <Loader2 v-if="captchaStatus === 'loading'" class="h-4 w-4 animate-spin" />
+                  <CheckCircle2 v-else-if="captchaStatus === 'verified'" class="h-4 w-4" />
+                  <AlertTriangle v-else-if="hasCaptchaProblem" class="h-4 w-4" />
                   <ShieldCheck v-else class="h-4 w-4" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="flex min-w-0 items-center justify-between gap-3">
-                    <p class="min-w-0 text-sm font-semibold">{{ turnstileTitle }}</p>
+                    <p class="min-w-0 text-sm font-semibold">{{ captchaTitle }}</p>
                     <button
-                      v-if="canRetryTurnstile"
+                      v-if="canRetryCaptcha"
                       class="ui-button ui-button-secondary h-8 shrink-0 px-2 text-xs"
                       type="button"
-                      @click="retryTurnstile"
+                      @click="retryCaptcha"
                     >
                       <RefreshCw class="h-3.5 w-3.5" />
-                      {{ t("auth.turnstileRetry") }}
+                      {{ t("auth.captchaRetry") }}
                     </button>
                   </div>
                   <p class="mt-1 text-xs leading-5 text-muted-foreground">
-                    {{ turnstileDescription }}
+                    {{ captchaDescription }}
                   </p>
-                  <p v-if="turnstileErrorCode" class="mt-1 text-[11px] text-muted-foreground">
-                    {{ t("auth.turnstileErrorCode", { code: turnstileErrorCode }) }}
+                  <p v-if="captchaErrorCode" class="mt-1 text-[11px] text-muted-foreground">
+                    {{ t("auth.captchaErrorCode", { code: captchaErrorCode }) }}
                   </p>
                 </div>
               </div>
+              <button
+                v-if="activeCaptchaProvider === 'tencent' && captchaStatus !== 'verified'"
+                class="ui-button ui-button-secondary mt-3 w-full"
+                type="button"
+                :disabled="loading || captchaStatus === 'loading'"
+                @click="openTencentCaptcha"
+              >
+                <ShieldCheck class="h-4 w-4" />
+                {{ t("auth.tencentCaptchaAction") }}
+              </button>
               <div
-                v-show="turnstileSiteKey && turnstileStatus !== 'unsupported'"
+                v-show="activeCaptchaProvider === 'turnstile' && captchaStatus !== 'unsupported'"
                 ref="turnstileEl"
-                class="turnstile-widget mt-3"
+                class="captcha-widget mt-3"
               ></div>
             </div>
             <button class="ui-button ui-button-primary w-full" :disabled="!canSubmit" type="submit">
@@ -410,7 +526,7 @@ onBeforeUnmount(() => {
   background: var(--surface-strong);
 }
 
-.turnstile-panel {
+.captcha-panel {
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--border), transparent 10%);
   border-radius: 0.5rem;
@@ -421,17 +537,17 @@ onBeforeUnmount(() => {
     background-color 160ms ease;
 }
 
-.turnstile-panel--verified {
+.captcha-panel--verified {
   border-color: color-mix(in oklch, var(--accent), transparent 42%);
   background: color-mix(in oklch, var(--accent), transparent 90%);
 }
 
-.turnstile-panel--problem {
+.captcha-panel--problem {
   border-color: color-mix(in oklch, var(--destructive), transparent 48%);
   background: color-mix(in oklch, var(--destructive), transparent 92%);
 }
 
-.turnstile-state-icon {
+.captcha-state-icon {
   display: inline-flex;
   width: 2rem;
   height: 2rem;
@@ -443,21 +559,21 @@ onBeforeUnmount(() => {
   color: var(--primary);
 }
 
-.turnstile-state-icon--verified {
+.captcha-state-icon--verified {
   background: color-mix(in oklch, var(--accent), transparent 82%);
   color: color-mix(in oklch, var(--accent), var(--foreground) 30%);
 }
 
-.turnstile-state-icon--problem {
+.captcha-state-icon--problem {
   background: color-mix(in oklch, var(--destructive), transparent 84%);
   color: var(--destructive);
 }
 
-.turnstile-widget {
+.captcha-widget {
   min-height: 65px;
 }
 
-.turnstile-widget :deep(iframe) {
+.captcha-widget :deep(iframe) {
   max-width: 100%;
 }
 

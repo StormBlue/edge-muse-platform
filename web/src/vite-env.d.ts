@@ -34,4 +34,21 @@ interface Window {
     reset: (widgetId?: string) => void;
     remove: (widgetId: string) => void;
   };
+  TencentCaptcha?: new (
+    appId: string,
+    callback: (response: {
+      ret: number;
+      ticket?: string;
+      randstr?: string;
+      errorCode?: string;
+      errorMessage?: string;
+    }) => void,
+    options?: {
+      bizState?: string;
+      needFeedBack?: boolean;
+    }
+  ) => {
+    show: () => void;
+    destroy?: () => void;
+  };
 }

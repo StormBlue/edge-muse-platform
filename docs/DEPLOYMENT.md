@@ -2,7 +2,7 @@
 
 ## 本地开发
 
-- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`；脚本会注入 `ENVIRONMENT=dev`，本地登录不渲染 Turnstile）。
+- Worker：`pnpm dev:server` 或 `pnpm -F server dev`（Wrangler dev，默认 `8787`；脚本会注入 `ENVIRONMENT=dev`，本地登录不渲染验证码）。
 - 前端：`pnpm dev:web`（Vite，默认 `5173`）。
 - 并行：`pnpm dev`（workspace 并行）。
 
@@ -14,7 +14,7 @@ pnpm -F server db:migrate:local
 pnpm -F server seed:local
 ```
 
-本地 `.dev.vars` 仍用于 JWT、加密密钥等开发密钥；即使其中保留 Turnstile 测试 key，`ENVIRONMENT=dev` 下 `/api/config` 也会返回 `turnstileSiteKey: null`，避免 localhost 触发 Cloudflare Turnstile 域名校验错误。
+本地 `.dev.vars` 仍用于 JWT、加密密钥等开发密钥；即使其中保留 Turnstile / 腾讯验证码测试配置，`ENVIRONMENT=dev` 下 `/api/config` 也会返回 `captcha.provider=disabled`，避免 localhost 触发第三方验证码域名校验错误。
 
 变量说明见根目录 [`README.md`](../README.md)。
 
@@ -28,9 +28,9 @@ pnpm build
 
 ## 线上（Cloudflare）
 
-1. 在 Cloudflare 创建 D1、R2、KV、Turnstile、AI Gateway 等资源。
-2. 将 D1 / KV 等 ID 填入 `server/wrangler.jsonc`；站点密钥进 Worker 环境变量 / Secrets。
-3. 写入 Secrets：`JWT_SECRET`、`KEY_ENCRYPTION_KEY`、`TURNSTILE_SECRET_KEY` 等（见 README）。
+1. 在 Cloudflare 创建 D1、R2、KV、Turnstile、AI Gateway 等资源；在腾讯云验证码控制台创建验证码应用。
+2. 将 D1 / KV 等 ID 填入 `server/wrangler.jsonc`；Turnstile site key、腾讯 `TENCENT_CAPTCHA_APP_ID` 等非敏感配置进 Worker vars。
+3. 写入 Secrets：`JWT_SECRET`、`KEY_ENCRYPTION_KEY`、`TURNSTILE_SECRET_KEY`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY` 等（见 README）。
 4. 执行远程迁移：`pnpm -F server db:migrate:remote`。
 5. 部署：`pnpm -F server deploy`。
 

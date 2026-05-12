@@ -7,7 +7,7 @@
 - **JWT**：访问/刷新令牌通过 **httpOnly Cookie** 传递；刷新轮换策略见 [`server/src/routes/auth.ts`](../server/src/routes/auth.ts)、[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts)。
 - **登出黑名单**：刷新令牌可记入 KV 黑名单（[`server/src/lib/jwt.ts`](../server/src/lib/jwt.ts) 及相关路由）。
 - **CSRF**：非 GET 请求校验 CSRF token（[`server/src/middleware/csrf.ts`](../server/src/middleware/csrf.ts)）。
-- **登录防护**：Turnstile + 限流（[`server/src/lib/turnstile.ts`](../server/src/lib/turnstile.ts)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）；`ENVIRONMENT=dev` 时服务端跳过 Turnstile，且 `/api/config` 不下发 site key，生产环境失败关闭。
+- **登录防护**：地区化验证码 + 限流（[`server/src/lib/captcha/`](../server/src/lib/captcha)、[`server/src/middleware/rateLimit.ts`](../server/src/middleware/rateLimit.ts)）。默认中国大陆访问走腾讯云验证码，其他地区走 Turnstile；sysadmin 可分别切换为腾讯、Turnstile 或禁用。`ENVIRONMENT=dev` 时验证码禁用，生产环境校验失败关闭。
 
 ## 账号生命周期
 
@@ -34,7 +34,7 @@
 
 ## 残留风险与 TODO
 
-<!-- TODO: 生产环境需确认 Turnstile、DNS、Wrangler secrets 与最小权限 API Token 已按环境落地。 -->
+<!-- TODO: 生产环境需确认腾讯云验证码、Turnstile、DNS、Wrangler secrets 与最小权限 API Token 已按环境落地。 -->
 <!-- TODO: E2E 覆盖可随 Playwright 在 CI 稳定后扩展（当前以 Vitest 为主）。 -->
 
 ## 相关文档

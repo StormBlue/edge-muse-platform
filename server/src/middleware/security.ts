@@ -2,7 +2,7 @@
  * 在 `await next()` 之后追加响应头，避免影响上游状态码/Content-Type 判定。
  * - **nosniff**：减 MIME 嗅探攻击面；
  * - **DENY / frame-ancestors**：禁嵌 iframe；
- * - **CSP**：允许 Turnstile 脚本与 iframe、同域 API 与 `ws/wss` 生图长连；
+ * - **CSP**：允许登录验证码脚本与 iframe、同域 API 与 `ws/wss` 生图长连；
  * - **HSTS**：仅 production，强跳 HTTPS。
  */
 import { createMiddleware } from "hono/factory";
@@ -25,22 +25,22 @@ function contentSecurityPolicy(path: string) {
   if (path === "/api/docs") {
     return [
       "default-src 'self'",
-      "img-src 'self' data: blob: https://cdn.jsdelivr.net",
+      "img-src 'self' data: blob: https://cdn.jsdelivr.net https://*.gtimg.com",
       "style-src 'self' 'unsafe-inline'",
-      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
-      "frame-src https://challenges.cloudflare.com",
-      "connect-src 'self' https://challenges.cloudflare.com ws: wss:",
+      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com https://turing.captcha.qcloud.com",
+      "frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com",
+      "connect-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com ws: wss:",
       "frame-ancestors 'none'"
     ].join("; ");
   }
 
   return [
     "default-src 'self'",
-    "img-src 'self' data: blob:",
+    "img-src 'self' data: blob: https://*.gtimg.com",
     "style-src 'self' 'unsafe-inline'",
-    "script-src 'self' https://challenges.cloudflare.com",
-    "frame-src https://challenges.cloudflare.com",
-    "connect-src 'self' https://challenges.cloudflare.com ws: wss:",
+    "script-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com",
+    "frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com",
+    "connect-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com ws: wss:",
     "frame-ancestors 'none'"
   ].join("; ");
 }

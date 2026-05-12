@@ -1,0 +1,142 @@
+import { eq } from "drizzle-orm";
+import { getDb } from "../../db/client";
+import { captchaSettings } from "../../db/schema";
+import { now } from "../id";
+import {
+  captchaProviderSchema,
+  type CaptchaProvider,
+  type CaptchaRegion
+} from "./types";
+import type { AppBindings } from "../../types";
+
+const CAPTCHA_SETTINGS_KEY = "login";
+
+export const CAPTCHA_PROVIDER_OPTIONS = [
+  {
+    id: "tencent",
+    label: "Tencent Cloud Captcha",
+    description: "国内链路优先，浏览器加载腾讯云验证码并由 Worker 调腾讯云 API 二次校验。"
+  },
+  {
+    id: "turnstile",
+    label: "Cloudflare Turnstile",
+    description: "Cloudflare 官方验证码，适合海外访问路径。"
+  },
+  {
+    id: "disabled",
+    label: "Disabled",
+    description: "关闭登录人机校验，仅保留登录限流和账号密码校验。"
+  }
+] as const satisfies readonly {
+  id: CaptchaProvider;
+  label: string;
+  description: string;
+}[];
+
+export type CaptchaSettingsSource = "database" | "environment" | "default";
+
+export type CaptchaSettingsDto = {
+  domesticProvider: CaptchaProvider;
+  overseasProvider: CaptchaProvider;
+  source: CaptchaSettingsSource;
+  updatedBy: string | null;
+  updatedAt: number;
+};
+
+export type CaptchaSettingsPatchInput = {
+  domesticProvider: CaptchaProvider;
+  overseasProvider: CaptchaProvider;
+};
+
+export async function getCaptchaSettings(env: AppBindings): Promise<CaptchaSettingsDto> {
+  if (env.DB) {
+    try {
+      const row = await getDb(env).query.captchaSettings.findFirst({
+        where: eq(captchaSettings.key, CAPTCHA_SETTINGS_KEY)
+      });
+      if (row) {
+        return {
+          domesticProvider: row.domesticProvider,
+          overseasProvider: row.overseasProvider,
+          source: "database",
+          updatedBy: row.updatedBy ?? null,
+          updatedAt: row.updatedAt
+        };
+      }
+    } catch (error) {
+      if (!isMissingSettingsTableError(error)) throw error;
+    }
+  }
+  return fallbackCaptchaSettings(env);
+}
+
+export async function saveCaptchaSettings(
+  env: AppBindings,
+  actorId: string,
+  input: CaptchaSettingsPatchInput
+): Promise<CaptchaSettingsDto> {
+  const timestamp = now();
+  const existing = await getDb(env).query.captchaSettings.findFirst({
+    where: eq(captchaSettings.key, CAPTCHA_SETTINGS_KEY)
+  });
+  if (existing) {
+    await getDb(env)
+      .update(captchaSettings)
+      .set({
+        domesticProvider: input.domesticProvider,
+        overseasProvider: input.overseasProvider,
+        updatedBy: actorId,
+        updatedAt: timestamp
+      })
+      .where(eq(captchaSettings.key, CAPTCHA_SETTINGS_KEY));
+  } else {
+    await getDb(env).insert(captchaSettings).values({
+      key: CAPTCHA_SETTINGS_KEY,
+      domesticProvider: input.domesticProvider,
+      overseasProvider: input.overseasProvider,
+      updatedBy: actorId,
+      updatedAt: timestamp
+    });
+  }
+  return {
+    ...input,
+    source: "database",
+    updatedBy: actorId,
+    updatedAt: timestamp
+  };
+}
+
+export async function resolveCaptchaProvider(
+  env: AppBindings,
+  region: CaptchaRegion
+): Promise<CaptchaProvider> {
+  if (env.ENVIRONMENT === "dev") return "disabled";
+  const settings = await getCaptchaSettings(env);
+  return region === "domestic" ? settings.domesticProvider : settings.overseasProvider;
+}
+
+function fallbackCaptchaSettings(
+  env: Pick<AppBindings, "CAPTCHA_DOMESTIC_PROVIDER" | "CAPTCHA_OVERSEAS_PROVIDER">
+): CaptchaSettingsDto {
+  const domesticProvider = parseProvider(env.CAPTCHA_DOMESTIC_PROVIDER, "tencent");
+  const overseasProvider = parseProvider(env.CAPTCHA_OVERSEAS_PROVIDER, "turnstile");
+  const hasEnvProvider = Boolean(env.CAPTCHA_DOMESTIC_PROVIDER || env.CAPTCHA_OVERSEAS_PROVIDER);
+  return {
+    domesticProvider,
+    overseasProvider,
+    source: hasEnvProvider ? "environment" : "default",
+    updatedBy: null,
+    updatedAt: 0
+  };
+}
+
+function parseProvider(value: string | undefined, fallback: CaptchaProvider): CaptchaProvider {
+  const parsed = captchaProviderSchema.safeParse(value?.trim());
+  return parsed.success ? parsed.data : fallback;
+}
+
+function isMissingSettingsTableError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  return /no such table.*captcha_settings|captcha_settings.*no such table/i.test(message);
+}
+

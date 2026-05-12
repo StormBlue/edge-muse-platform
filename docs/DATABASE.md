@@ -20,6 +20,7 @@ Edge Muse 使用 **Cloudflare D1**（SQLite）存储平台状态；Schema 以 **
 | 会话/消息 | `sessions`, `messages`                           | 工作台上下文与附件 JSON                                                    |
 | 任务      | `tasks`                                          | 异步生图状态与 provider 原始响应等                                         |
 | 生成入口  | `generation_entry_settings`, `generation_events` | 普通用户可见工作台/AI 图像页开关、漏斗与任务归因事件（最近 30 天用量摘要） |
+| 系统设置  | `ai_model_settings`, `captcha_settings`          | Prompt Assistant 模型与国内/国外登录验证码 provider                       |
 | 图片      | `image_objects`                                  | R2 对象元数据                                                              |
 | 审计      | `audit_logs`                                     | 管理类写操作                                                               |
 

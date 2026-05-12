@@ -40,11 +40,20 @@ TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA
 RESEND_API_KEY=
 AI_GATEWAY_ID=default
 AI_GATEWAY_URL=
+CAPTCHA_DOMESTIC_PROVIDER=tencent
+CAPTCHA_OVERSEAS_PROVIDER=turnstile
+TENCENT_CAPTCHA_APP_ID=
+TENCENT_CAPTCHA_APP_SECRET_KEY=
+TENCENTCLOUD_SECRET_ID=
+TENCENTCLOUD_SECRET_KEY=
+TENCENTCLOUD_CAPTCHA_REGION=ap-guangzhou
 TURNSTILE_SITE_KEY=1x00000000000000000000AA
 ALERT_EMAIL=
 ```
 
 Cloudflare 线上环境使用 `wrangler secret put` 写入同名密钥。
+
+登录验证码按 Cloudflare `CF-IPCountry` 分流：中国大陆访问默认腾讯云验证码，其他地区默认 Turnstile。sysadmin 可在「系统设置」里将国内/国外 provider 分别切到 `tencent`、`turnstile` 或 `disabled`；数据库设置优先生效，环境变量作为兜底默认值。腾讯云验证码需要预留并配置 `TENCENT_CAPTCHA_APP_ID`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`。
 
 初始化本地数据:
 
@@ -68,6 +77,9 @@ pnpm -F server seed:local
 pnpm -F server wrangler secret put JWT_SECRET
 pnpm -F server wrangler secret put KEY_ENCRYPTION_KEY
 pnpm -F server wrangler secret put TURNSTILE_SECRET_KEY
+pnpm -F server wrangler secret put TENCENT_CAPTCHA_APP_SECRET_KEY
+pnpm -F server wrangler secret put TENCENTCLOUD_SECRET_ID
+pnpm -F server wrangler secret put TENCENTCLOUD_SECRET_KEY
 ```
 
 `RESEND_API_KEY` 仅用于可选运维告警邮件;账号创建和密码重置由管理员手动完成,不依赖邮件服务。

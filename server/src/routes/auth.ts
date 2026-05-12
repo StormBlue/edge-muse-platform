@@ -31,7 +31,8 @@ import { hashPassword, verifyPassword } from "../lib/password";
 import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
 import { getQuota } from "../lib/quota";
-import { verifyTurnstile } from "../lib/turnstile";
+import { captchaProofSchema, verifyCaptcha } from "../lib/captcha";
+import { resolveCaptchaRegion } from "../lib/captcha/region";
 import { requireAuth } from "../middleware/auth";
 import { consumeRateLimit } from "../middleware/rateLimit";
 import type { AppEnv, AuthUser } from "../types";
@@ -40,6 +41,7 @@ import type { AppEnv, AuthUser } from "../types";
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(8),
+  captcha: captchaProofSchema.optional(),
   turnstileToken: z.string().optional()
 });
 
@@ -53,14 +55,29 @@ export const authRoutes = new Hono<AppEnv>();
 authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
   const body = c.req.valid("json");
   const ip = c.req.header("CF-Connecting-IP") ?? undefined;
-  if (!(await verifyTurnstile(c.env, body.turnstileToken, ip))) {
+  const captchaProof =
+    body.captcha ??
+    (body.turnstileToken
+      ? {
+          provider: "turnstile" as const,
+          token: body.turnstileToken
+        }
+      : undefined);
+  if (
+    !(await verifyCaptcha(c.env, {
+      expectedRegion: resolveCaptchaRegion(c),
+      proof: captchaProof,
+      ip
+    }))
+  ) {
     logWarn("auth.login_turnstile_failed", {
       traceId: c.get("traceId"),
       identifierLength: body.email.trim().length,
       ip,
-      hasTurnstileToken: Boolean(body.turnstileToken)
+      captchaProvider: captchaProof?.provider,
+      hasCaptchaProof: Boolean(captchaProof)
     });
-    throw appError("FORBIDDEN", "Turnstile verification failed");
+    throw appError("FORBIDDEN", "Captcha verification failed");
   }
   const db = getDb(c.env);
   const identifier = body.email.trim();

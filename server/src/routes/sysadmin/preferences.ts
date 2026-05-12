@@ -10,6 +10,12 @@ import {
   promptAssistantModelSchema,
   savePromptAssistantModelSettings
 } from "../../lib/aiModelSettings";
+import {
+  CAPTCHA_PROVIDER_OPTIONS,
+  captchaProviderSchema,
+  getCaptchaSettings,
+  saveCaptchaSettings
+} from "../../lib/captcha";
 import { now } from "../../lib/id";
 import { getAssignableProviderKey } from "../../lib/providerKeys";
 import { optionalPreferredProviderKeySchema, type SysadminRouter } from "./common";
@@ -17,11 +23,21 @@ import { optionalPreferredProviderKeySchema, type SysadminRouter } from "./commo
 const sysadminPreferencesPatchSchema = z
   .object({
     preferredProviderKeyId: optionalPreferredProviderKeySchema.optional(),
-    promptAssistantModel: promptAssistantModelSchema.optional()
+    promptAssistantModel: promptAssistantModelSchema.optional(),
+    captcha: z
+      .object({
+        domesticProvider: captchaProviderSchema,
+        overseasProvider: captchaProviderSchema
+      })
+      .optional()
   })
-  .refine((value) => "preferredProviderKeyId" in value || "promptAssistantModel" in value, {
-    message: "At least one preference must be provided"
-  });
+  .refine(
+    (value) =>
+      "preferredProviderKeyId" in value || "promptAssistantModel" in value || "captcha" in value,
+    {
+      message: "At least one preference must be provided"
+    }
+  );
 
 export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter) {
   sysadminRoutes.get("/preferences", async (c) => {
@@ -29,7 +45,9 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
     return c.json({
       preferredProviderKeyId: user.preferredProviderKeyId ?? null,
       promptAssistantModel: await getPromptAssistantModelSettings(c.env),
-      promptAssistantModelOptions: PROMPT_ASSISTANT_MODEL_OPTIONS
+      promptAssistantModelOptions: PROMPT_ASSISTANT_MODEL_OPTIONS,
+      captcha: await getCaptchaSettings(c.env),
+      captchaProviderOptions: CAPTCHA_PROVIDER_OPTIONS
     });
   });
 
@@ -42,6 +60,7 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
       const input = c.req.valid("json");
       let preferredProviderKeyId = user.preferredProviderKeyId ?? null;
       let promptAssistantModel = await getPromptAssistantModelSettings(c.env);
+      let captcha = await getCaptchaSettings(c.env);
       const auditPayload: Record<string, unknown> = {};
 
       if ("preferredProviderKeyId" in input) {
@@ -65,6 +84,14 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
         auditPayload.promptAssistantModel = promptAssistantModel.model;
       }
 
+      if (input.captcha) {
+        captcha = await saveCaptchaSettings(c.env, user.id, input.captcha);
+        auditPayload.captcha = {
+          domesticProvider: captcha.domesticProvider,
+          overseasProvider: captcha.overseasProvider
+        };
+      }
+
       await audit(c.env, {
         actorId: user.id,
         action: "sys.preferences_update",
@@ -76,7 +103,8 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
       return c.json({
         ok: true,
         preferredProviderKeyId,
-        promptAssistantModel
+        promptAssistantModel,
+        captcha
       });
     }
   );

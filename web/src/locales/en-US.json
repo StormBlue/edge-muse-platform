@@ -59,10 +59,53 @@
     "loginIdentifier": "Username or email",
     "loginFailed": "Login failed",
     "platformSubtitle": "Cloudflare image generation platform",
+    "captchaWaitingAction": "Waiting for security check",
+    "captchaRetry": "Check again",
+    "captchaVerifyFailed": "Security check failed. Check again before logging in.",
+    "captchaErrorCode": "Error code: {code}",
+    "tencentCaptchaAction": "Start security check",
     "turnstileWaitingAction": "Waiting for security check",
     "turnstileRetry": "Check again",
     "turnstileVerifyFailed": "Security check failed. Check again before logging in.",
     "turnstileErrorCode": "Error code: {code}",
+    "captchaStatus": {
+      "idle": {
+        "title": "Preparing security check",
+        "description": "We confirm this is a real visit before signing you in."
+      },
+      "loading": {
+        "title": "Loading security check",
+        "description": "If the check does not appear, review your network, browser extensions, or proxy settings."
+      },
+      "ready": {
+        "title": "Complete the security check below",
+        "description": "You can log in after it passes. Retry if the widget fails to load."
+      },
+      "verified": {
+        "title": "Security check passed",
+        "description": "You can continue signing in."
+      },
+      "expired": {
+        "title": "Security check expired",
+        "description": "Check again before logging in."
+      },
+      "timeout": {
+        "title": "Security check timed out",
+        "description": "Your network or browser may have blocked the widget. Try again."
+      },
+      "error": {
+        "title": "Security check failed to load",
+        "description": "Retry the check, or disable browser extensions that block scripts."
+      },
+      "unsupported": {
+        "title": "This browser cannot run the security check",
+        "description": "Update your browser or use a modern browser such as Chrome, Edge, or Safari."
+      },
+      "disabled": {
+        "title": "Security check is disabled",
+        "description": "This environment does not require an extra check. You can log in directly."
+      }
+    },
     "turnstileStatus": {
       "idle": {
         "title": "Preparing security check",
@@ -521,6 +564,12 @@
     "promptAssistantModelQwenDescription": "Default model for Chinese, multilingual prompts, complex instructions, and prompt rewriting.",
     "promptAssistantModelLlamaFp8Description": "Lightweight and stable, suitable as a cost-friendly fallback.",
     "promptAssistantModelLlamaDescription": "Standard version with higher cost, useful when preserving a compatibility baseline.",
+    "captchaSettingsTitle": "Login captcha",
+    "captchaSettingsDescription": "Choose the login challenge provider by visitor region. Domestic traffic defaults to Tencent Cloud Captcha, overseas traffic defaults to Cloudflare Turnstile.",
+    "captchaDomesticProvider": "Domestic traffic",
+    "captchaOverseasProvider": "Overseas traffic",
+    "captchaDomesticHint": "Uses Cloudflare CF-IPCountry; mainland China traffic follows this setting.",
+    "captchaOverseasHint": "Non-mainland China or unknown-region traffic follows this setting.",
     "modelSettingSource": "Source",
     "modelUpdatedAt": "Updated",
     "modelSource": {
