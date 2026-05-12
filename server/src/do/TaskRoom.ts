@@ -21,6 +21,17 @@ import { failTimedOutGenerateTaskIfNeeded, type TaskEvent } from "../lib/tasks";
 import { logError, logInfo, logWarn } from "../lib/log";
 
 export class TaskRoom extends DurableObject<AppBindings> {
+  async consumeCaptchaReplayKey(expiresAt: number): Promise<boolean> {
+    const existing = await this.ctx.storage.get<number>("captchaReplayExpiresAt");
+    if (existing) {
+      logWarn("captcha.altcha_replay_detected");
+      return false;
+    }
+    await this.ctx.storage.put("captchaReplayExpiresAt", expiresAt);
+    await this.ctx.storage.setAlarm(expiresAt * 1000 + 60 * 1000);
+    return true;
+  }
+
   /**
    * 仅处理 WebSocket 升级；`WebSocketPair` 一端给浏览器、一端由 DO 持有并 `acceptWebSocket` 以支持休眠计费。
    * 新连接**同步**发 `latest`：避免用户晚连时只收到空档之后的增量。
@@ -91,6 +102,15 @@ export class TaskRoom extends DurableObject<AppBindings> {
    * 已 done/failed 的 `latest` 在 `runningTaskId` 处短路，不重复扫库。
    */
   async alarm(): Promise<void> {
+    const captchaReplayExpiresAt = await this.ctx.storage.get<number>("captchaReplayExpiresAt");
+    if (captchaReplayExpiresAt) {
+      if (Date.now() >= captchaReplayExpiresAt * 1000 + 60 * 1000) {
+        await this.ctx.storage.delete("captchaReplayExpiresAt");
+        return;
+      }
+      await this.ctx.storage.setAlarm(captchaReplayExpiresAt * 1000 + 60 * 1000);
+      return;
+    }
     const latest = await this.ctx.storage.get<TaskEvent>("latest");
     const taskId = runningTaskId(latest);
     if (!taskId) {

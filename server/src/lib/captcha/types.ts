@@ -3,6 +3,7 @@ import { z } from "zod";
 export const captchaProviderSchema = z.enum(["tencent", "turnstile", "altcha", "disabled"]);
 export const captchaRegionSchema = z.enum(["domestic", "overseas"]);
 export const altchaDifficultySchema = z.coerce.number().int().min(10_000).max(200_000);
+export const altchaPayloadSchema = z.string().trim().min(1).max(4096);
 
 export type CaptchaProvider = z.infer<typeof captchaProviderSchema>;
 export type CaptchaRegion = z.infer<typeof captchaRegionSchema>;
@@ -19,7 +20,7 @@ export const captchaProofSchema = z.discriminatedUnion("provider", [
   }),
   z.object({
     provider: z.literal("altcha"),
-    payload: z.string().trim().min(1)
+    payload: altchaPayloadSchema
   }),
   z.object({
     provider: z.literal("disabled")

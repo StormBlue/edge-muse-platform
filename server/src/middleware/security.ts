@@ -28,6 +28,7 @@ function contentSecurityPolicy(path: string) {
       "img-src 'self' data: blob: https://cdn.jsdelivr.net https://*.gtimg.com",
       "style-src 'self' 'unsafe-inline'",
       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://challenges.cloudflare.com https://turing.captcha.qcloud.com",
+      "worker-src 'self'",
       "frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com",
       "connect-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com ws: wss:",
       "frame-ancestors 'none'"
@@ -39,6 +40,7 @@ function contentSecurityPolicy(path: string) {
     "img-src 'self' data: blob: https://*.gtimg.com",
     "style-src 'self' 'unsafe-inline'",
     "script-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com",
+    "worker-src 'self'",
     "frame-src https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com",
     "connect-src 'self' https://challenges.cloudflare.com https://turing.captcha.qcloud.com https://*.captcha.qcloud.com ws: wss:",
     "frame-ancestors 'none'"

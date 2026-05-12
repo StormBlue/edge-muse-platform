@@ -4,23 +4,48 @@ import { getCaptchaSettings } from "./settings";
 import type { AppBindings } from "../../types";
 
 const ALTCHA_ALGORITHM = "SHA-256";
+const ALTCHA_HMAC_ALGORITHM = "SHA-256";
 const CHALLENGE_TTL_SECONDS = 10 * 60;
 const REPLAY_TTL_SECONDS = CHALLENGE_TTL_SECONDS + 60;
 const ALTCHA_MAX_NUMBER = 200_000;
+const ALTCHA_KEY_LENGTH = 32;
+const HEX_32_RE = /^[a-f0-9]{32}$/i;
+const HEX_64_RE = /^[a-f0-9]{64}$/i;
 const UTF8 = new TextEncoder();
-const SIGNED_SALT_SEPARATOR = "?expires=";
 
 type AltchaChallenge = {
-  algorithm: typeof ALTCHA_ALGORITHM;
-  challenge: string;
-  salt: string;
+  parameters: AltchaChallengeParameters;
   signature: string;
-  maxnumber: number;
-  expires: number;
 };
 
-type AltchaPayload = Pick<AltchaChallenge, "algorithm" | "challenge" | "salt" | "signature"> & {
+type AltchaChallengeParameters = {
+  algorithm: typeof ALTCHA_ALGORITHM;
+  cost: 1;
+  data: {
+    difficulty: number;
+  };
+  expiresAt: number;
+  keyLength: typeof ALTCHA_KEY_LENGTH;
+  keyPrefix: string;
+  nonce: string;
+  salt: string;
+};
+
+type AltchaPayload = {
+  challenge: AltchaChallenge;
+  solution: {
+    counter: number;
+    derivedKey: string;
+    time?: number;
+  };
+};
+
+type AltchaPayloadV1 = {
+  algorithm: typeof ALTCHA_ALGORITHM;
+  challenge: string;
   number: number;
+  salt: string;
+  signature: string;
   took?: number;
 };
 
@@ -32,18 +57,29 @@ export async function createAltchaChallenge(env: AppBindings): Promise<AltchaCha
   }
   const settings = await getCaptchaSettings(env);
   const expires = Math.floor(Date.now() / 1000) + CHALLENGE_TTL_SECONDS;
-  const salt = `${base64Url(randomBytes(16))}${SIGNED_SALT_SEPARATOR}${expires}`;
-  const maxnumber = settings.altchaDifficulty;
-  const number = randomNumber(maxnumber);
-  const challenge = await sha256Hex(`${salt}${number}`);
-  return {
+  const number = randomNumber(settings.altchaDifficulty);
+  const parameters = await createChallengeParameters(settings.altchaDifficulty, number, expires);
+  return signAltchaChallenge(parameters, hmacKey);
+}
+
+async function createChallengeParameters(
+  difficulty: number,
+  counter: number,
+  expiresAt: number
+): Promise<AltchaChallengeParameters> {
+  const parameters: AltchaChallengeParameters = {
     algorithm: ALTCHA_ALGORITHM,
-    challenge,
-    salt,
-    signature: await hmacHex(hmacKey, challenge),
-    maxnumber,
-    expires
+    cost: 1,
+    data: { difficulty },
+    expiresAt,
+    keyLength: ALTCHA_KEY_LENGTH,
+    keyPrefix: "",
+    nonce: toHex(randomBytes(16)),
+    salt: toHex(randomBytes(16))
   };
+  const derivedKey = await deriveShaKey(parameters, counter);
+  parameters.keyPrefix = toHex(derivedKey);
+  return sortKeys(parameters) as AltchaChallengeParameters;
 }
 
 export async function verifyAltchaCaptcha(env: AppBindings, payload: string): Promise<boolean> {
@@ -54,58 +90,77 @@ export async function verifyAltchaCaptcha(env: AppBindings, payload: string): Pr
   }
   const parsed = parsePayload(payload);
   if (!parsed) return false;
-  if (parsed.algorithm !== ALTCHA_ALGORITHM) return false;
+  if (isPayloadV1(parsed)) {
+    return verifyAltchaCaptchaV1(env, hmacKey, parsed);
+  }
+  if (!isPayload(parsed)) return false;
+  if (!isChallengeParameters(parsed.challenge.parameters)) return false;
+  if (!isSolution(parsed.solution)) return false;
+  if (parsed.challenge.parameters.expiresAt < Math.floor(Date.now() / 1000)) return false;
+
+  const expectedSignature = await hmacHex(hmacKey, canonicalJson(parsed.challenge.parameters));
+  if (!timingSafeEqualHex(expectedSignature, parsed.challenge.signature)) return false;
+
+  const derivedKey = await deriveShaKey(parsed.challenge.parameters, parsed.solution.counter);
+  if (!timingSafeEqualHex(toHex(derivedKey), parsed.solution.derivedKey)) return false;
+  if (!timingSafeEqualHex(parsed.solution.derivedKey, parsed.challenge.parameters.keyPrefix)) {
+    return false;
+  }
+  if (parsed.solution.counter > parsed.challenge.parameters.data.difficulty) return false;
+
+  return consumeAltchaReplayKey(
+    env,
+    parsed.challenge.signature,
+    parsed.challenge.parameters.expiresAt
+  );
+}
+
+async function verifyAltchaCaptchaV1(env: AppBindings, hmacKey: string, payload: AltchaPayloadV1) {
   if (
-    !Number.isSafeInteger(parsed.number) ||
-    parsed.number < 0 ||
-    parsed.number > ALTCHA_MAX_NUMBER
+    !Number.isSafeInteger(payload.number) ||
+    payload.number < 0 ||
+    payload.number > ALTCHA_MAX_NUMBER
   ) {
     return false;
   }
-  const expires = parseExpires(parsed.salt);
-  if (!expires || expires < Math.floor(Date.now() / 1000)) {
-    return false;
-  }
+  const expires = parseExpires(payload.salt);
+  if (!expires || expires < Math.floor(Date.now() / 1000)) return false;
 
-  const expectedSignature = await hmacHex(hmacKey, parsed.challenge);
-  if (!timingSafeEqualHex(expectedSignature, parsed.signature)) return false;
+  const expectedSignature = await hmacHex(hmacKey, payload.challenge);
+  if (!timingSafeEqualHex(expectedSignature, payload.signature)) return false;
 
-  const expectedChallenge = await sha256Hex(`${parsed.salt}${parsed.number}`);
-  if (!timingSafeEqualHex(expectedChallenge, parsed.challenge)) return false;
+  const expectedChallenge = await sha256Hex(`${payload.salt}${payload.number}`);
+  if (!timingSafeEqualHex(expectedChallenge, payload.challenge)) return false;
 
-  return consumeAltchaReplayKey(env, parsed);
+  return consumeAltchaReplayKey(env, payload.signature, expires);
 }
 
-function parsePayload(payload: string): AltchaPayload | null {
+function parsePayload(payload: string): unknown {
   try {
-    const decoded = JSON.parse(atob(payload)) as Partial<AltchaPayload>;
-    if (
-      decoded.algorithm !== ALTCHA_ALGORITHM ||
-      typeof decoded.challenge !== "string" ||
-      typeof decoded.salt !== "string" ||
-      typeof decoded.signature !== "string" ||
-      typeof decoded.number !== "number"
-    ) {
-      return null;
-    }
-    return decoded as AltchaPayload;
+    return JSON.parse(atob(payload));
   } catch {
     return null;
   }
 }
 
-async function consumeAltchaReplayKey(env: AppBindings, payload: AltchaPayload) {
+async function consumeAltchaReplayKey(env: AppBindings, signature: string, expiresAt: number) {
+  const replayHash = await sha256Hex(signature);
+  if (env.TASK_ROOM) {
+    const replayId = env.TASK_ROOM.idFromName(`captcha:altcha:${replayHash}`);
+    return env.TASK_ROOM.get(replayId).consumeCaptchaReplayKey(expiresAt);
+  }
   if (!env.KV) {
     logWarn("captcha.altcha_missing_kv");
     return false;
   }
-  const replayKey = `captcha:altcha:${await sha256Hex(`${payload.challenge}:${payload.signature}`)}`;
+  const replayKey = `captcha:altcha:${replayHash}`;
   const existing = await env.KV.get(replayKey);
   if (existing) {
     logWarn("captcha.altcha_replay_detected");
     return false;
   }
-  await env.KV.put(replayKey, "1", { expirationTtl: REPLAY_TTL_SECONDS });
+  const ttl = Math.max(60, expiresAt - Math.floor(Date.now() / 1000) + 60);
+  await env.KV.put(replayKey, "1", { expirationTtl: Math.min(REPLAY_TTL_SECONDS, ttl) });
   return true;
 }
 
@@ -118,6 +173,64 @@ function randomNumber(max: number) {
   const bytes = randomBytes(4);
   const value = new DataView(bytes.buffer).getUint32(0, false);
   return value % (upper + 1);
+}
+
+function isPayload(value: unknown): value is AltchaPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<AltchaPayload>;
+  return Boolean(
+    payload.challenge &&
+    typeof payload.challenge === "object" &&
+    typeof payload.challenge.signature === "string" &&
+    payload.solution &&
+    typeof payload.solution === "object"
+  );
+}
+
+function isPayloadV1(value: unknown): value is AltchaPayloadV1 {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<AltchaPayloadV1>;
+  return (
+    payload.algorithm === ALTCHA_ALGORITHM &&
+    typeof payload.challenge === "string" &&
+    typeof payload.salt === "string" &&
+    typeof payload.signature === "string" &&
+    typeof payload.number === "number"
+  );
+}
+
+function isChallengeParameters(value: unknown): value is AltchaChallengeParameters {
+  if (!value || typeof value !== "object") return false;
+  const parameters = value as Partial<AltchaChallengeParameters>;
+  const difficulty = parameters.data?.difficulty;
+  if (typeof difficulty !== "number" || !Number.isSafeInteger(difficulty)) return false;
+  return (
+    parameters.algorithm === ALTCHA_ALGORITHM &&
+    parameters.cost === 1 &&
+    difficulty >= 10_000 &&
+    difficulty <= ALTCHA_MAX_NUMBER &&
+    Number.isSafeInteger(parameters.expiresAt) &&
+    parameters.keyLength === ALTCHA_KEY_LENGTH &&
+    typeof parameters.keyPrefix === "string" &&
+    HEX_64_RE.test(parameters.keyPrefix) &&
+    typeof parameters.nonce === "string" &&
+    HEX_32_RE.test(parameters.nonce) &&
+    typeof parameters.salt === "string" &&
+    HEX_32_RE.test(parameters.salt)
+  );
+}
+
+function isSolution(value: unknown): value is AltchaPayload["solution"] {
+  if (!value || typeof value !== "object") return false;
+  const solution = value as Partial<AltchaPayload["solution"]>;
+  const counter = solution.counter;
+  if (typeof counter !== "number" || !Number.isSafeInteger(counter)) return false;
+  return (
+    counter >= 0 &&
+    counter <= ALTCHA_MAX_NUMBER &&
+    typeof solution.derivedKey === "string" &&
+    HEX_64_RE.test(solution.derivedKey)
+  );
 }
 
 function parseExpires(salt: string) {
@@ -138,16 +251,37 @@ async function sha256Hex(value: string) {
   return toHex(new Uint8Array(digest));
 }
 
+async function deriveShaKey(parameters: AltchaChallengeParameters, counter: number) {
+  const digest = await crypto.subtle.digest(
+    ALTCHA_ALGORITHM,
+    concatBytes(
+      hexToBytesStrict(parameters.salt),
+      concatBytes(hexToBytesStrict(parameters.nonce), uint32Bytes(counter))
+    )
+  );
+  return new Uint8Array(digest).slice(0, parameters.keyLength);
+}
+
 async function hmacHex(secret: string, value: string) {
   const key = await crypto.subtle.importKey(
     "raw",
     UTF8.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    { name: "HMAC", hash: ALTCHA_HMAC_ALGORITHM },
     false,
     ["sign"]
   );
   const signature = await crypto.subtle.sign("HMAC", key, UTF8.encode(value));
   return toHex(new Uint8Array(signature));
+}
+
+async function signAltchaChallenge(
+  parameters: AltchaChallengeParameters,
+  hmacKey: string
+): Promise<AltchaChallenge> {
+  return {
+    parameters,
+    signature: await hmacHex(hmacKey, canonicalJson(parameters))
+  };
 }
 
 function timingSafeEqualHex(a: string, b: string) {
@@ -171,11 +305,40 @@ function hexToBytes(value: string) {
   return bytes;
 }
 
+function hexToBytesStrict(value: string) {
+  const bytes = hexToBytes(value);
+  if (!bytes) throw new Error("Invalid hex value");
+  return bytes;
+}
+
+function concatBytes(left: Uint8Array, right: Uint8Array) {
+  const output = new Uint8Array(left.length + right.length);
+  output.set(left, 0);
+  output.set(right, left.length);
+  return output;
+}
+
+function uint32Bytes(value: number) {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, value, false);
+  return bytes;
+}
+
 function toHex(bytes: Uint8Array) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function base64Url(bytes: Uint8Array) {
-  const base64 = btoa(String.fromCharCode(...bytes));
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+function canonicalJson(value: unknown) {
+  return JSON.stringify(sortKeys(value));
+}
+
+function sortKeys(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return Object.keys(value)
+    .sort()
+    .reduce<Record<string, unknown>>((acc, key) => {
+      const child = (value as Record<string, unknown>)[key];
+      if (child !== undefined) acc[key] = sortKeys(child);
+      return acc;
+    }, {});
 }

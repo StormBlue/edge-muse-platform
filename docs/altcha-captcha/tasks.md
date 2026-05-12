@@ -126,8 +126,8 @@ graph TD
 #### 备注
 
 - 🐛 **遇到的问题**: Cloudflare Workers CPU 有限，不能选择服务端高成本 KDF 校验。
-- 🔧 **最终实现逻辑**: 新增 `server/src/lib/captcha/altcha.ts`，生成 legacy `SHA-256` challenge，校验 HMAC、solution、expires，并通过 KV replay key 防重放。
-- 🎯 **关键决策**: 采用 ALTCHA Widget v3 兼容的 legacy challenge；salt 以 `?expires` 结尾，降低 payload 拼接类重放风险。
+- 🔧 **最终实现逻辑**: 新增 `server/src/lib/captcha/altcha.ts`，生成 Widget v3 原生 `SHA-256` challenge，校验 HMAC、solution、expiresAt、难度上限，并通过 Durable Object replay key 防重放；KV 仅作为 fallback。
+- 🎯 **关键决策**: 采用 ALTCHA Widget v3 原生 challenge，前端使用 `altcha/external` 和同源 SHA worker，避免生产 CSP 放开 `blob:` / `data:` worker。
 
 ---
 
@@ -250,8 +250,8 @@ graph TD
 #### 备注
 
 - 🐛 **遇到的问题**: 无。
-- 🔧 **最终实现逻辑**: ALTCHA 使用打包依赖，不需要修改 CSP；登录状态复用现有验证码文案。
-- 🎯 **关键决策**: CSP 保持现状，减少攻击面。
+- 🔧 **最终实现逻辑**: ALTCHA 使用打包依赖并注册同源 worker，CSP 增加 `worker-src 'self'`，不额外放开远程脚本域。
+- 🎯 **关键决策**: 使用 `altcha/external` 避免默认包创建 `blob:` / `data:` worker，减少 CSP 攻击面。
 
 ---
 
@@ -350,7 +350,7 @@ graph TD
 
 - 🐛 **遇到的问题**: OpenAPI 仍停留在旧 Turnstile-only 描述，需要同步公共配置、登录 payload 和 sysadmin preferences。
 - 🔧 **最终实现逻辑**: 更新 README、API、DATABASE、SECURITY、DEPLOYMENT、TESTING 和 OpenAPI 文档，补充 ALTCHA provider、challenge URL、payload、secret 和 migration 说明。
-- 🎯 **关键决策**: 文档明确 Cloudflare Worker 只做常数次 HMAC/SHA-256 与 KV 防重放，PoW 求解不放在 Worker。
+- 🎯 **关键决策**: 文档明确 Cloudflare Worker 只做常数次 HMAC/SHA-256 与 replay 消费，PoW 求解不放在 Worker。
 
 ---
 

@@ -77,6 +77,7 @@ export const captchaSchemas = {
           payload: {
             type: "string",
             minLength: 1,
+            maxLength: 4096,
             description: "ALTCHA Widget v3 返回的 base64 payload。"
           }
         },

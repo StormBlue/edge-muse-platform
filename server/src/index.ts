@@ -24,6 +24,7 @@ import { requestLogger } from "./middleware/logger";
 import { securityHeaders } from "./middleware/security";
 import { csrf } from "./middleware/csrf";
 import { installErrorHandling } from "./middleware/error";
+import { consumeRateLimit } from "./middleware/rateLimit";
 import { cleanupDeletedImages } from "./lib/cleanup";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
@@ -69,7 +70,16 @@ app.get("/api/config", (c) =>
 );
 
 app.get("/api/captcha/altcha/challenge", (c) =>
-  createAltchaChallenge(c.env).then((challenge) => c.json(challenge))
+  consumeRateLimit(c, { prefix: "captcha:altcha", limit: 60, windowSeconds: 60 }).then(async () => {
+    const captcha = await getPublicCaptchaConfig(c.env, resolveCaptchaRegion(c));
+    if (captcha.provider !== "altcha") {
+      return c.json(
+        { error: { code: "FORBIDDEN", message: "ALTCHA captcha is not enabled" } },
+        403
+      );
+    }
+    return c.json(await createAltchaChallenge(c.env));
+  })
 );
 
 // ---------- API 文档：dev 公开，production 要求 sysadmin（见 routes/docs.ts）----------

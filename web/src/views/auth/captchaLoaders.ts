@@ -2,7 +2,10 @@ const TURNSTILE_SCRIPT_ID = "cf-turnstile-script";
 const TENCENT_CAPTCHA_SCRIPT_ID = "tencent-captcha-script";
 
 export async function loadAltchaWidget() {
-  await import("altcha");
+  await import("altcha/altcha.css");
+  await import("altcha/external");
+  const { default: ShaWorker } = await import("altcha/workers/sha?worker");
+  globalThis.$altcha.algorithms.set("SHA-256", () => new ShaWorker());
   await import("altcha/i18n/zh-cn");
 }
 

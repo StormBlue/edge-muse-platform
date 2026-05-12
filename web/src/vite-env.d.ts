@@ -1,12 +1,15 @@
 /// <reference types="vite/client" />
 
 import type { DefineComponent } from "vue";
+import type { AltchaGlobal } from "altcha/types";
 
 /**
  * 全局 Window 上挂载的 Cloudflare Turnstile 人机验证脚本（登录页通过脚本标签加载）。
  * 非 HTTP-only 的 sitekey 在页内配置；`render` 返回的 widgetId 供 `reset`/`remove` 使用。
  */
 declare global {
+  var $altcha: AltchaGlobal;
+
   interface Window {
     turnstile?: {
       /** 在指定容器内渲染挑战控件，返回供后续复位的 widget 标识 */

@@ -6,7 +6,7 @@
 
 ## 检查点
 
-- ALTCHA widget 使用本地 npm 包和中文翻译，不额外放开远程 script CSP。
+- ALTCHA widget 使用本地 npm 包、中文翻译和同源 SHA worker，不额外放开远程 script CSP。
 - 登录页支持 loading、verified、expired、error 状态复用现有文案。
 - sysadmin 难度输入带 min/max/step 和性能提示。
 - README、API、SECURITY、DEPLOYMENT、DATABASE、TESTING、FRONTEND、OpenAPI 已更新。

@@ -71,29 +71,49 @@ export const systemAuthMePaths = {
       operationId: "createAltchaChallenge",
       summary: "签发 ALTCHA challenge",
       description:
-        "无需登录。仅在登录验证码 provider 为 `altcha` 时由 ALTCHA Widget 调用。Worker 使用 Web Crypto 生成 signed SHA-256 challenge；浏览器完成 PoW，Worker 登录时只做常数次签名/hash 校验和 KV 防重放。",
+        "无需登录。仅在登录验证码 provider 为 `altcha` 时由 ALTCHA Widget 调用。接口带匿名限流；Worker 使用 Web Crypto 生成 signed SHA-256 challenge；浏览器完成 PoW，Worker 登录时只做常数次签名/hash 校验和 replay 消费。",
       responses: {
-        "200": jsonResponse("ALTCHA Widget v3 可消费的 legacy challenge。", {
+        "200": jsonResponse("ALTCHA Widget v3 原生 challenge。", {
           type: "object",
-          required: ["algorithm", "challenge", "salt", "signature", "maxnumber", "expires"],
+          required: ["parameters", "signature"],
           properties: {
-            algorithm: { type: "string", const: "SHA-256" },
-            challenge: { type: "string" },
-            salt: {
-              type: "string",
-              description: "包含 `expires` query，登录校验从该字段解析过期时间。"
+            parameters: {
+              type: "object",
+              required: [
+                "algorithm",
+                "cost",
+                "data",
+                "expiresAt",
+                "keyLength",
+                "keyPrefix",
+                "nonce",
+                "salt"
+              ],
+              properties: {
+                algorithm: { type: "string", const: "SHA-256" },
+                cost: { type: "integer", const: 1 },
+                data: {
+                  type: "object",
+                  required: ["difficulty"],
+                  properties: {
+                    difficulty: { type: "integer", minimum: 10000, maximum: 200000 }
+                  },
+                  additionalProperties: false
+                },
+                expiresAt: { type: "integer", description: "Unix epoch seconds。" },
+                keyLength: { type: "integer", const: 32 },
+                keyPrefix: { type: "string" },
+                nonce: { type: "string" },
+                salt: { type: "string" }
+              },
+              additionalProperties: false
             },
-            signature: { type: "string" },
-            maxnumber: {
-              type: "integer",
-              minimum: 10000,
-              maximum: 200000,
-              description: "sysadmin 配置的 PoW 难度上限。"
-            },
-            expires: { type: "integer", description: "Unix epoch seconds。" }
+            signature: { type: "string" }
           },
           additionalProperties: false
         }),
+        ...forbiddenError,
+        ...rateLimitError,
         "500": commonErrors["500"]
       }
     }

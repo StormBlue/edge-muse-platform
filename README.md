@@ -55,7 +55,7 @@ ALERT_EMAIL=
 
 Cloudflare 线上环境使用 `wrangler secret put` 写入同名密钥。
 
-登录验证码按 Cloudflare `CF-IPCountry` 分流：中国大陆访问默认腾讯云验证码，其他地区默认 Turnstile。sysadmin 可在「系统设置」里将国内/国外 provider 分别切到 `tencent`、`turnstile`、`altcha` 或 `disabled`，并配置 ALTCHA challenge 难度；数据库设置优先生效，环境变量作为兜底默认值。腾讯云验证码需要预留并配置 `TENCENT_CAPTCHA_APP_ID`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`；ALTCHA 需要配置 `ALTCHA_HMAC_KEY`，Worker 只做签名、hash 和 KV 防重放校验，PoW 求解在浏览器完成。
+登录验证码按 Cloudflare `CF-IPCountry` 分流：中国大陆访问默认腾讯云验证码，其他地区默认 Turnstile。sysadmin 可在「系统设置」里将国内/国外 provider 分别切到 `tencent`、`turnstile`、`altcha` 或 `disabled`，并配置 ALTCHA challenge 难度；数据库设置优先生效，环境变量作为兜底默认值。腾讯云验证码需要预留并配置 `TENCENT_CAPTCHA_APP_ID`、`TENCENT_CAPTCHA_APP_SECRET_KEY`、`TENCENTCLOUD_SECRET_ID`、`TENCENTCLOUD_SECRET_KEY`；ALTCHA 需要配置 `ALTCHA_HMAC_KEY`，Worker 只做签名、hash 和 replay 消费校验，PoW 求解在浏览器完成。
 
 初始化本地数据:
 
