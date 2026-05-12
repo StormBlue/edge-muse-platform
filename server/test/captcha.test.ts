@@ -35,6 +35,38 @@ describe("captcha settings", () => {
     });
   });
 
+  it("keeps the configured provider visible when public keys are missing", async () => {
+    const env = {
+      ENVIRONMENT: "production",
+      CAPTCHA_DOMESTIC_PROVIDER: "tencent",
+      CAPTCHA_OVERSEAS_PROVIDER: "turnstile"
+    } as AppBindings;
+
+    await expect(getPublicCaptchaConfig(env, "domestic")).resolves.toEqual({
+      provider: "tencent",
+      region: "domestic",
+      appId: ""
+    });
+    await expect(getPublicCaptchaConfig(env, "overseas")).resolves.toEqual({
+      provider: "turnstile",
+      region: "overseas",
+      siteKey: ""
+    });
+  });
+
+  it("disables captcha in local dev", async () => {
+    const env = {
+      ENVIRONMENT: "dev",
+      TENCENT_CAPTCHA_APP_ID: "190000000",
+      TURNSTILE_SITE_KEY: "0x4AAAA-production-site-key"
+    } as AppBindings;
+
+    await expect(getPublicCaptchaConfig(env, "domestic")).resolves.toEqual({
+      provider: "disabled",
+      region: "domestic"
+    });
+  });
+
   it("persists sysadmin captcha provider overrides", async () => {
     const ctx = await createD1TestContext();
     try {
