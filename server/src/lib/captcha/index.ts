@@ -1,4 +1,3 @@
-import { appError } from "../errors";
 import { logWarn } from "../log";
 import { resolveCaptchaProvider } from "./settings";
 import { verifyTencentCaptcha } from "./tencent";
@@ -43,7 +42,7 @@ export async function verifyCaptcha(
   const expectedProvider = await resolveCaptchaProvider(env, input.expectedRegion);
   if (expectedProvider === "disabled") return true;
   if (!input.proof || input.proof.provider !== expectedProvider) {
-    throw appError("FORBIDDEN", "Captcha verification failed");
+    return false;
   }
   if (input.proof.provider === "tencent") {
     return verifyTencentCaptcha(env, {

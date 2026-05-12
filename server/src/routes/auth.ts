@@ -6,7 +6,7 @@
  * - 登出：把当前 access 的 `jti` 写入 KV `jwt:blacklist:*`，TTL 与 access 寿命一致（约 15min），
  *   `requireAuth` 会拒掉已登出 token。
  *
- * 登录：Turnstile 可选/视环境；失败与错误密码均 **`consumeRateLimit`** 防爆破；成功写 `lastLoginAt`。
+ * 登录：验证码按地区/配置启用；验证码失败与错误密码均 **`consumeRateLimit`** 防爆破；成功写 `lastLoginAt`。
  */
 import { eq, or } from "drizzle-orm";
 import { Hono } from "hono";
@@ -37,7 +37,7 @@ import { requireAuth } from "../middleware/auth";
 import { consumeRateLimit } from "../middleware/rateLimit";
 import type { AppEnv, AuthUser } from "../types";
 
-/** 登录体：邮箱或用户名 + 密码；Turnstile 由环境决定是否强制 */
+/** 登录体：邮箱或用户名 + 密码；验证码由环境/数据库配置决定是否强制 */
 const loginSchema = z.object({
   email: z.string().min(1),
   password: z.string().min(8),
@@ -50,7 +50,7 @@ const loginRateLimit = { prefix: "login", limit: 20, windowSeconds: 15 * 60 };
 
 export const authRoutes = new Hono<AppEnv>();
 
-// ===================== 登录：Turnstile → 用户解析（邮箱小写或用户名）→ 验密 → Cookie + 响应体 =====================
+// ===================== 登录：Captcha → 用户解析（邮箱小写或用户名）→ 验密 → Cookie + 响应体 =====================
 // POST /api/auth/login：identifier 可用邮箱或用户名；成功返回 `csrfToken` 供首次 apiFetch 写头
 authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
   const body = c.req.valid("json");
@@ -63,14 +63,14 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
           token: body.turnstileToken
         }
       : undefined);
-  if (
-    !(await verifyCaptcha(c.env, {
-      expectedRegion: resolveCaptchaRegion(c),
-      proof: captchaProof,
-      ip
-    }))
-  ) {
-    logWarn("auth.login_turnstile_failed", {
+  const captchaVerified = await verifyCaptcha(c.env, {
+    expectedRegion: resolveCaptchaRegion(c),
+    proof: captchaProof,
+    ip
+  });
+  if (!captchaVerified) {
+    await consumeRateLimit(c, loginRateLimit);
+    logWarn("auth.login_captcha_failed", {
       traceId: c.get("traceId"),
       identifierLength: body.email.trim().length,
       ip,

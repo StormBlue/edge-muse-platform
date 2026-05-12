@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Hono } from "hono";
 import {
   getPublicCaptchaConfig,
   getCaptchaSettings,
@@ -7,8 +8,10 @@ import {
 import { signTencentCloudRequest } from "../src/lib/captcha/tencent";
 import { getDb } from "../src/db/client";
 import { users } from "../src/db/schema";
+import { installErrorHandling } from "../src/middleware/error";
+import { authRoutes } from "../src/routes/auth";
 import { createD1TestContext } from "./d1TestUtils";
-import type { AppBindings } from "../src/types";
+import type { AppBindings, AppEnv } from "../src/types";
 
 describe("captcha settings", () => {
   it("defaults domestic traffic to Tencent and overseas traffic to Turnstile", async () => {
@@ -124,3 +127,66 @@ describe("Tencent Cloud TC3 signing", () => {
     );
   });
 });
+
+describe("login captcha enforcement", () => {
+  it("consumes the login rate-limit bucket when required captcha proof is missing", async () => {
+    const ctx = await createD1TestContext();
+    try {
+      const kv = new MemoryKvNamespace();
+      const app = new Hono<AppEnv>();
+      installErrorHandling(app);
+      app.route("/api/auth", authRoutes);
+
+      const response = await app.request(
+        "http://localhost/api/auth/login",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "CF-IPCountry": "CN",
+            "CF-Connecting-IP": "203.0.113.20",
+            "User-Agent": "vitest"
+          },
+          body: JSON.stringify({
+            email: "missing-captcha@example.com",
+            password: "password123"
+          })
+        },
+        {
+          ...ctx.env,
+          KV: kv as unknown as KVNamespace,
+          ENVIRONMENT: "production",
+          CAPTCHA_DOMESTIC_PROVIDER: "tencent"
+        } as AppBindings
+      );
+
+      await expect(response.json()).resolves.toMatchObject({
+        error: { code: "FORBIDDEN", message: "Captcha verification failed" }
+      });
+      expect(response.status).toBe(403);
+      expect(kv.findValueByPrefix("rl:login:203.0.113.20:vitest:")).toBe("1");
+    } finally {
+      await ctx.dispose();
+    }
+  });
+});
+
+class MemoryKvNamespace {
+  private readonly values = new Map<string, string>();
+
+  get(key: string) {
+    return Promise.resolve(this.values.get(key) ?? null);
+  }
+
+  put(key: string, value: string) {
+    this.values.set(key, value);
+    return Promise.resolve();
+  }
+
+  findValueByPrefix(prefix: string) {
+    for (const [key, value] of this.values.entries()) {
+      if (key.startsWith(prefix)) return value;
+    }
+    return null;
+  }
+}

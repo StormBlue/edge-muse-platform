@@ -67,34 +67,41 @@ export async function verifyTencentCaptcha(
     secretId,
     secretKey
   });
-  const response = await fetch(TENCENT_CAPTCHA_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: authorization,
-      "Content-Type": "application/json; charset=utf-8",
-      Host: TENCENT_CAPTCHA_HOST,
-      "X-TC-Action": TENCENT_CAPTCHA_ACTION,
-      "X-TC-Timestamp": String(timestamp),
-      "X-TC-Version": TENCENT_CAPTCHA_VERSION,
-      "X-TC-Region": env.TENCENTCLOUD_CAPTCHA_REGION?.trim() || "ap-guangzhou"
-    },
-    body: payload
-  });
-
-  const body = (await response.json().catch(() => ({}))) as TencentCaptchaResponse;
-  const result = body.Response;
-  const success = response.ok && result?.CaptchaCode === 1;
-  if (!success) {
-    logWarn("captcha.tencent_verify_failed", {
-      status: response.status,
-      captchaCode: result?.CaptchaCode,
-      captchaMsg: result?.CaptchaMsg,
-      requestId: result?.RequestId,
-      errorCode: result?.Error?.Code,
-      errorMessage: result?.Error?.Message
+  try {
+    const response = await fetch(TENCENT_CAPTCHA_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: authorization,
+        "Content-Type": "application/json; charset=utf-8",
+        Host: TENCENT_CAPTCHA_HOST,
+        "X-TC-Action": TENCENT_CAPTCHA_ACTION,
+        "X-TC-Timestamp": String(timestamp),
+        "X-TC-Version": TENCENT_CAPTCHA_VERSION,
+        "X-TC-Region": env.TENCENTCLOUD_CAPTCHA_REGION?.trim() || "ap-guangzhou"
+      },
+      body: payload
     });
+
+    const body = (await response.json().catch(() => ({}))) as TencentCaptchaResponse;
+    const result = body.Response;
+    const success = response.ok && result?.CaptchaCode === 1;
+    if (!success) {
+      logWarn("captcha.tencent_verify_failed", {
+        status: response.status,
+        captchaCode: result?.CaptchaCode,
+        captchaMsg: result?.CaptchaMsg,
+        requestId: result?.RequestId,
+        errorCode: result?.Error?.Code,
+        errorMessage: result?.Error?.Message
+      });
+    }
+    return success;
+  } catch (error) {
+    logWarn("captcha.tencent_verify_error", {
+      message: error instanceof Error ? error.message : String(error)
+    });
+    return false;
   }
-  return success;
 }
 
 type SignTencentCloudRequestInput = {
