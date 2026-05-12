@@ -38,4 +38,3 @@ export type PublicCaptchaConfig =
       provider: "disabled";
       region: CaptchaRegion;
     };
-

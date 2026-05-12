@@ -22,4 +22,3 @@ export async function verifyTurnstile(
   const body = (await response.json()) as { success?: boolean };
   return body.success === true;
 }
-

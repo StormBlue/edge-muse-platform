@@ -7,11 +7,7 @@ import type { AppBindings } from "../../types";
 import type { CaptchaProof, CaptchaRegion, PublicCaptchaConfig } from "./types";
 
 export type { CaptchaProof, CaptchaProvider, CaptchaRegion, PublicCaptchaConfig } from "./types";
-export {
-  CAPTCHA_PROVIDER_OPTIONS,
-  getCaptchaSettings,
-  saveCaptchaSettings
-} from "./settings";
+export { CAPTCHA_PROVIDER_OPTIONS, getCaptchaSettings, saveCaptchaSettings } from "./settings";
 export { captchaProofSchema, captchaProviderSchema } from "./types";
 
 export async function getPublicCaptchaConfig(
@@ -26,16 +22,14 @@ export async function getPublicCaptchaConfig(
     const appId = env.TENCENT_CAPTCHA_APP_ID?.trim();
     if (!appId) {
       logWarn("captcha.tencent_public_config_missing_app_id", { region });
-      return { provider: "disabled", region };
     }
-    return { provider: "tencent", region, appId };
+    return { provider: "tencent", region, appId: appId ?? "" };
   }
   const siteKey = getPublicTurnstileSiteKey(env);
   if (!siteKey) {
     logWarn("captcha.turnstile_public_config_missing_site_key", { region });
-    return { provider: "disabled", region };
   }
-  return { provider: "turnstile", region, siteKey };
+  return { provider: "turnstile", region, siteKey: siteKey ?? "" };
 }
 
 export async function verifyCaptcha(

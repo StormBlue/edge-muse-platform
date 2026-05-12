@@ -2,11 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { captchaSettings } from "../../db/schema";
 import { now } from "../id";
-import {
-  captchaProviderSchema,
-  type CaptchaProvider,
-  type CaptchaRegion
-} from "./types";
+import { captchaProviderSchema, type CaptchaProvider, type CaptchaRegion } from "./types";
 import type { AppBindings } from "../../types";
 
 const CAPTCHA_SETTINGS_KEY = "login";
@@ -139,4 +135,3 @@ function isMissingSettingsTableError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /no such table.*captcha_settings|captcha_settings.*no such table/i.test(message);
 }
-

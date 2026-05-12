@@ -8,4 +8,3 @@ export function resolveCaptchaRegion(c: AppContext): CaptchaRegion {
   if (country && DOMESTIC_COUNTRY_CODES.has(country)) return "domestic";
   return "overseas";
 }
-

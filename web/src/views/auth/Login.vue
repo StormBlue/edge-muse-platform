@@ -84,7 +84,8 @@ const canRetryCaptcha = computed(
   () => activeCaptchaProvider.value !== "disabled" && !loading.value && hasCaptchaProblem.value
 );
 const canSubmit = computed(
-  () => !loading.value && (activeCaptchaProvider.value === "disabled" || Boolean(captchaProof.value))
+  () =>
+    !loading.value && (activeCaptchaProvider.value === "disabled" || Boolean(captchaProof.value))
 );
 const submitLabel = computed(() => {
   if (loading.value) return t("common.loginLoading");

@@ -87,6 +87,8 @@ describe("Tencent Cloud TC3 signing", () => {
       secretKey: "SECRETEXAMPLE"
     });
 
-    expect(authorization).toMatch(/^TC3-HMAC-SHA256 Credential=AKIDEXAMPLE\/2023-11-14\/captcha\/tc3_request, SignedHeaders=content-type;host, Signature=[a-f0-9]{64}$/);
+    expect(authorization).toMatch(
+      /^TC3-HMAC-SHA256 Credential=AKIDEXAMPLE\/2023-11-14\/captcha\/tc3_request, SignedHeaders=content-type;host, Signature=[a-f0-9]{64}$/
+    );
   });
 });
