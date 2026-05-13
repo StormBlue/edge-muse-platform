@@ -24,8 +24,12 @@ export type AuthUser = {
   nickname: string;
   role: UserRole;
   status: UserStatus;
-  /** 系统管理员可切换默认可用的 provider_key；普通用户用 user_provider_keys 绑定的 key */
+  /** 旧单 key 偏好，仅兼容历史数据；新生成分配以 providerKeyGroupId 为准。 */
   preferredProviderKeyId?: string | null;
+  /** 当前账号使用的 provider key group；sysadmin 可为空，admin/user 通常必填。 */
+  providerKeyGroupId?: string | null;
+  /** 允许同时处于 queued/running 的生成任务数；sysadmin 不受此字段限制。 */
+  maxConcurrentTasks?: number | null;
 };
 
 /** 等价于 `wrangler` 里声明的 `Env`，含 D1、R2、KV、Secrets 等 */

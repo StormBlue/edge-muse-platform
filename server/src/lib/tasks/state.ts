@@ -109,7 +109,7 @@ export async function markGenerateTaskFailed(
   return (result.meta.changes ?? 0) > 0;
 }
 
-/** 仅当 status=queued 时改为 running 并写 started_at/heartbeat，返回是否抢到 */
+/** 仅当 status=queued 且已占用 provider slot 时改为 running 并写 started_at/heartbeat，返回是否抢到 */
 export async function claimGenerateTask(
   env: AppBindings,
   taskId: string,
@@ -124,7 +124,9 @@ export async function claimGenerateTask(
          error_code = NULL,
          error_msg = NULL
      WHERE id = ?2
-       AND status = 'queued'`
+       AND status = 'queued'
+       AND provider_key_id IS NOT NULL
+       AND assigned_at IS NOT NULL`
   )
     .bind(startedAt, taskId)
     .run();

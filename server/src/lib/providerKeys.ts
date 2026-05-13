@@ -6,27 +6,12 @@
  */
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { providerKeys, providers, userProviderKeys, users, type ProviderKey } from "../db/schema";
+import { providerKeys, userProviderKeys, users, type ProviderKey } from "../db/schema";
 import { isProviderKeyAssignable } from "../providers/catalog";
-import { getProvider } from "../providers/registry";
-import type { ImageProvider } from "../providers/types";
-import { appError, isAppError } from "./errors";
-import { parseJson } from "./json";
-import type { AppBindings, SessionMode } from "../types";
+import { appError } from "./errors";
+import type { AppBindings } from "../types";
 
-export type ProviderCapabilities = {
-  providerId: string;
-  providerName: string;
-  providerKeyId: string;
-  requestFormat: string;
-  model: string;
-  supportedModes: SessionMode[];
-  supportedSizes: string[];
-  maxReferenceImages: number | null;
-};
-
-const PLATFORM_REFERENCE_IMAGE_LIMIT = 5;
-const ALL_SESSION_MODES: SessionMode[] = ["image2image", "text2image"];
+export { getProviderCapabilitiesForUser, type ProviderCapabilities } from "./providerKeyGroups";
 
 /**
  * 为任务解析实际使用的 `provider_keys` 行：优先用户偏好的 key →
@@ -99,50 +84,4 @@ export async function getAssignableProviderKey(env: AppBindings, providerKeyId: 
   });
   assertAssignableProviderKey(key);
   return key;
-}
-
-/**
- * 返回当前用户 provider 能力；没有可用 key/provider 时返回 null，让前端保留通用 UI，
- * 真正提交时仍由任务层给出明确错误。
- */
-export async function getProviderCapabilitiesForUser(
-  env: AppBindings,
-  userId: string
-): Promise<ProviderCapabilities | null> {
-  let key: Awaited<ReturnType<typeof resolveProviderKey>>;
-  try {
-    key = await resolveProviderKey(env, userId);
-  } catch (error) {
-    if (!isAppError(error) || error.code !== "PROVIDER_ERROR") throw error;
-    return null;
-  }
-
-  const provider = await getDb(env).query.providers.findFirst({
-    where: and(
-      eq(providers.id, key.providerId),
-      eq(providers.enabled, true),
-      isNull(providers.deletedAt)
-    )
-  });
-  if (!provider) return null;
-
-  const providerImpl = getProvider(provider.requestFormat);
-  return {
-    providerId: provider.id,
-    providerName: provider.name,
-    providerKeyId: key.id,
-    requestFormat: provider.requestFormat,
-    model: key.model ?? provider.defaultModel,
-    supportedModes: providerImpl.supportedModes ?? [...ALL_SESSION_MODES],
-    supportedSizes: parseProviderSupportedSizes(provider.supportedSizes, providerImpl),
-    maxReferenceImages: providerImpl.maxReferenceImages ?? PLATFORM_REFERENCE_IMAGE_LIMIT
-  };
-}
-
-function parseProviderSupportedSizes(
-  supportedSizes: string,
-  providerImpl: ImageProvider
-): string[] {
-  const sizes = parseJson<string[]>(supportedSizes, providerImpl.supportedSizes);
-  return sizes.length ? sizes : providerImpl.supportedSizes;
 }

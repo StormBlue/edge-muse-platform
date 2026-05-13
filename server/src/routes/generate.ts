@@ -30,7 +30,12 @@ import {
 } from "../lib/generationEntry";
 import { MAX_SYSADMIN_IMAGE_COUNT, resolveImageCountForRole } from "../lib/generationPolicy";
 import { logInfo, logWarn, promptSummary } from "../lib/log";
-import { broadcastTaskEvent, createGenerateTask, startGenerateTask } from "../lib/tasks";
+import {
+  broadcastTaskEvent,
+  createGenerateTask,
+  enqueueGenerateTask,
+  releaseGenerateTaskSlot
+} from "../lib/tasks";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import type { AppContext, AppEnv } from "../types";
@@ -203,8 +208,8 @@ generateRoutes.post(
         });
       }
     }
-    // `startGenerateTask` 仅 `waitUntil` 子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
-    startGenerateTask(c.env, c.executionCtx, result.taskId);
+    // `enqueueGenerateTask` 仅调度后台子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
+    enqueueGenerateTask(c.env, c.executionCtx, result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
     // 与 `index` 中注册的 `GET /ws/task/:id` 同 host，**无** `/api` 前缀
     const wsUrl = `${wsProtocol}//${new URL(c.req.url).host}/ws/task/${result.taskId}`;
@@ -234,6 +239,10 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
     .update(tasks)
     .set({ status: "cancelled", finishedAt: Date.now() })
     .where(eq(tasks.id, task.id));
+  releaseGenerateTaskSlot(c.env, c.executionCtx, {
+    taskId: task.id,
+    providerKeyGroupId: task.providerKeyGroupId
+  });
   await broadcastTaskEvent(c.env, task.id, {
     type: "task.update",
     task: { id: task.id, status: "cancelled" }
@@ -305,7 +314,7 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
       message: error instanceof Error ? error.message : "unknown"
     });
   }
-  startGenerateTask(c.env, c.executionCtx, result.taskId);
+  enqueueGenerateTask(c.env, c.executionCtx, result.taskId);
   logInfo("task.retry.created", {
     traceId: c.get("traceId"),
     userId: user.id,

@@ -32,6 +32,10 @@ export const users = sqliteTable(
     createdBy: text("created_by"),
     /** 与 `resolveProviderKey` 的「偏好密钥」一致 */
     preferredProviderKeyId: text("preferred_provider_key_id"),
+    /** 新调度模型：管理员及其下属用户使用的 provider key group。 */
+    providerKeyGroupId: text("provider_key_group_id"),
+    /** 用户级最大 queued/running 任务数；null 表示使用角色默认值或 sysadmin 不限。 */
+    maxConcurrentTasks: integer("max_concurrent_tasks"),
     locale: text("locale").notNull().default("zh-CN"),
     status: text("status", { enum: ["active", "disabled"] })
       .notNull()
@@ -95,6 +99,8 @@ export const providerKeys = sqliteTable(
     keyHint: text("key_hint").notNull(),
     allocatedQuota: integer("allocated_quota"),
     usedQuota: integer("used_quota").notNull().default(0),
+    /** 调度器允许这把 key 同时承载的 running/已分配生成任务数。 */
+    maxConcurrency: integer("max_concurrency").notNull().default(1),
     ownerAdminId: text("owner_admin_id").references(() => users.id),
     enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
     createdAt: integer("created_at").notNull(),
@@ -107,8 +113,61 @@ export const providerKeys = sqliteTable(
 );
 
 /**
+ * Provider key group：sysadmin 将同一 provider 下的多把 key 组成可排序分组，并把分组分配给 admin。
+ * 生图时不再按用户绑定单 key，而是先解析 group，再由队列调度器按 group 成员顺序和 key 并发选择最终 key。
+ */
+export const providerKeyGroups = sqliteTable(
+  "provider_key_groups",
+  {
+    id: text("id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => providers.id),
+    name: text("name").notNull(),
+    description: text("description"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdBy: text("created_by").references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    deletedAt: integer("deleted_at")
+  },
+  (table) => ({
+    providerIdx: index("idx_provider_key_groups_provider").on(table.providerId),
+    enabledIdx: index("idx_provider_key_groups_enabled").on(table.enabled, table.deletedAt)
+  })
+);
+
+/**
+ * Provider key group 成员：`sort_order` 越小优先级越高；同一 group 内只能保存同 provider 的 key，
+ * 约束由路由/领域层校验，避免 SQLite 无法表达跨表 provider 一致性。
+ */
+export const providerKeyGroupMembers = sqliteTable(
+  "provider_key_group_members",
+  {
+    groupId: text("group_id")
+      .notNull()
+      .references(() => providerKeyGroups.id),
+    providerKeyId: text("provider_key_id")
+      .notNull()
+      .references(() => providerKeys.id),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.groupId, table.providerKeyId] }),
+    groupSortIdx: index("idx_provider_key_group_members_group_sort").on(
+      table.groupId,
+      table.sortOrder
+    ),
+    providerKeyIdx: index("idx_provider_key_group_members_key").on(table.providerKeyId)
+  })
+);
+
+/**
  * 用户与 provider key 的绑定表：主键为 `user_id`，每用户最多一行（改绑走 UPSERT/替换）。
- * 生图时 `resolveProviderKey` 只在 preference / 本行之间选择；未绑定用户不使用全局兜底 key。
+ * 新调度模型以 `users.provider_key_group_id` 为准；本表保留用于迁移兼容和旧数据回填。
  */
 export const userProviderKeys = sqliteTable("user_provider_keys", {
   userId: text("user_id")
@@ -165,6 +224,7 @@ export const sessions = sqliteTable("sessions", {
   title: text("title").notNull(),
   mode: text("mode", { enum: ["image2image", "text2image"] }).notNull(),
   providerKeyId: text("provider_key_id").references(() => providerKeys.id),
+  providerKeyGroupId: text("provider_key_group_id").references(() => providerKeyGroups.id),
   settings: text("settings").notNull(),
   createdAt: integer("created_at").notNull(),
   updatedAt: integer("updated_at").notNull(),
@@ -216,9 +276,12 @@ export const tasks = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
+    /** queued 未 assigned 时为兼容旧表约束的占位 key；调度器占用 slot 后写入最终 provider key。 */
     providerKeyId: text("provider_key_id")
       .notNull()
       .references(() => providerKeys.id),
+    /** 任务所属 key group；queued 恢复和 DO 调度依赖该字段。 */
+    providerKeyGroupId: text("provider_key_group_id").references(() => providerKeyGroups.id),
     status: text("status", {
       enum: ["queued", "running", "succeeded", "failed", "cancelled"]
     }).notNull(),
@@ -229,6 +292,8 @@ export const tasks = sqliteTable(
     providerRequestId: text("provider_request_id"),
     providerRawResponse: text("provider_raw_response"),
     queuedAt: integer("queued_at").notNull(),
+    /** 调度器为任务占用 provider key slot 的时间。 */
+    assignedAt: integer("assigned_at"),
     startedAt: integer("started_at"),
     heartbeatAt: integer("heartbeat_at"),
     finishedAt: integer("finished_at"),
@@ -237,7 +302,16 @@ export const tasks = sqliteTable(
   (table) => ({
     userQueuedIdx: index("idx_tasks_user_queued").on(table.userId, table.queuedAt),
     statusIdx: index("idx_tasks_status").on(table.status),
-    statusHeartbeatIdx: index("idx_tasks_status_heartbeat").on(table.status, table.heartbeatAt)
+    statusHeartbeatIdx: index("idx_tasks_status_heartbeat").on(table.status, table.heartbeatAt),
+    groupQueuedIdx: index("idx_tasks_group_queued").on(
+      table.providerKeyGroupId,
+      table.status,
+      table.queuedAt
+    ),
+    providerKeyStatusIdx: index("idx_tasks_provider_key_status").on(
+      table.providerKeyId,
+      table.status
+    )
   })
 );
 
@@ -501,9 +575,32 @@ export const usersRelations = relations(users, ({ one, many }) => ({
     references: [users.id],
     relationName: "createdUsers"
   }),
+  providerKeyGroup: one(providerKeyGroups, {
+    fields: [users.providerKeyGroupId],
+    references: [providerKeyGroups.id]
+  }),
   createdUsers: many(users, { relationName: "createdUsers" }),
   quota: one(quotas),
   sessions: many(sessions)
+}));
+
+export const providerKeyGroupsRelations = relations(providerKeyGroups, ({ one, many }) => ({
+  provider: one(providers, {
+    fields: [providerKeyGroups.providerId],
+    references: [providers.id]
+  }),
+  members: many(providerKeyGroupMembers)
+}));
+
+export const providerKeyGroupMembersRelations = relations(providerKeyGroupMembers, ({ one }) => ({
+  group: one(providerKeyGroups, {
+    fields: [providerKeyGroupMembers.groupId],
+    references: [providerKeyGroups.id]
+  }),
+  providerKey: one(providerKeys, {
+    fields: [providerKeyGroupMembers.providerKeyId],
+    references: [providerKeys.id]
+  })
 }));
 
 export const sessionsRelations = relations(sessions, ({ one, many }) => ({
@@ -521,6 +618,8 @@ export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type Provider = InferSelectModel<typeof providers>;
 export type ProviderKey = InferSelectModel<typeof providerKeys>;
+export type ProviderKeyGroup = InferSelectModel<typeof providerKeyGroups>;
+export type ProviderKeyGroupMember = InferSelectModel<typeof providerKeyGroupMembers>;
 export type Session = InferSelectModel<typeof sessions>;
 export type Message = InferSelectModel<typeof messages>;
 export type Task = InferSelectModel<typeof tasks>;

@@ -1,4 +1,4 @@
-import type { ProviderKeyRow, UsageResponse } from "./adminUserTypes";
+import type { ProviderKeyGroupRow, UsageResponse } from "./adminUserTypes";
 
 export type AdminCreateUserForm = {
   role: "admin" | "user";
@@ -6,14 +6,16 @@ export type AdminCreateUserForm = {
   nickname: string;
   password: string;
   email: string;
-  providerKeyId: string;
+  providerKeyGroupId: string;
+  maxConcurrentTasks: number;
   quota: number;
 };
 
 export type AdminEditUserForm = {
   nickname: string;
   status: "active" | "disabled";
-  providerKeyId: string;
+  providerKeyGroupId: string;
+  maxConcurrentTasks: number;
   quota: number | null;
   password: string;
 };
@@ -24,14 +26,18 @@ export type AdminPasswordForm = {
 };
 
 /** 用户管理页的表单默认值集中在这里，避免弹窗重置逻辑散落在控制器里。 */
-export function createDefaultAdminUserForm(keys: ProviderKeyRow[] = []): AdminCreateUserForm {
+export function createDefaultAdminUserForm(
+  groups: ProviderKeyGroupRow[] = [],
+  isSysadmin = false
+): AdminCreateUserForm {
   return {
     role: "user",
     username: "",
     nickname: "",
     password: "",
     email: "",
-    providerKeyId: keys[0]?.id ?? "",
+    providerKeyGroupId: isSysadmin ? (groups[0]?.id ?? "") : "",
+    maxConcurrentTasks: 5,
     quota: 10
   };
 }
@@ -40,7 +46,8 @@ export function createDefaultAdminEditForm(): AdminEditUserForm {
   return {
     nickname: "",
     status: "active",
-    providerKeyId: "",
+    providerKeyGroupId: "",
+    maxConcurrentTasks: 5,
     quota: 0,
     password: ""
   };
@@ -61,15 +68,15 @@ export function formatAdminUserDateTime(locale: string, value?: number | null) {
   }).format(value);
 }
 
-/** Provider Key 只展示脱敏 hint；真实 key 不进入前端页面。 */
-export function providerKeyDisplayLabel(
-  keys: ProviderKeyRow[],
-  unassignedLabel: string,
-  id?: string | null
+export function providerKeyGroupDisplayLabel(
+  groups: ProviderKeyGroupRow[],
+  fallbackLabel: string,
+  id?: string | null,
+  name?: string | null
 ) {
-  if (!id) return unassignedLabel;
-  const key = keys.find((item) => item.id === id);
-  return key ? `${key.label} (${key.keyHint})` : id;
+  if (name) return name;
+  if (!id) return fallbackLabel;
+  return groups.find((item) => item.id === id)?.name ?? id;
 }
 
 /** 把后端按状态/模式返回的统计行聚合成图表组件统一消费的 `{ label, value }`。 */

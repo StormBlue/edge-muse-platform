@@ -1,91 +1,107 @@
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { apiFetch } from "@/api/client";
-
-type ProviderRow = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  defaultModel: string;
-  requestFormat: string;
-  supportedSizes: string[];
-  enabled: boolean;
-  builtIn: boolean;
-};
-
-type KeyRow = {
-  id: string;
-  providerId: string;
-  label: string;
-  model?: string | null;
-  keyHint: string;
-  enabled: boolean;
-  allocatedQuota: number | null;
-  usedQuota: number;
-};
+import {
+  createProviderKey,
+  createProviderKeyGroup,
+  deleteProviderKey,
+  deleteProviderKeyGroup,
+  loadSysadminKeysData,
+  setProviderKeyEnabled,
+  testProviderKey,
+  updateProviderKey,
+  updateProviderKeyGroup,
+  updateProviderKeyGroupMembers
+} from "./sysadminKeysApi";
+import {
+  defaultGroupForm,
+  defaultKeyForm,
+  editGroupForm,
+  editKeyForm,
+  reorderProviderKeyIds
+} from "./sysadminKeysForms";
+export type {
+  GroupForm,
+  GroupMember,
+  KeyForm,
+  KeyGroupRow,
+  KeyRow,
+  ProviderRow
+} from "./sysadminKeysTypes";
+import type { GroupMember, KeyGroupRow, KeyRow, ProviderRow } from "./sysadminKeysTypes";
 
 export function useSysadminKeysController() {
   const keys = ref<KeyRow[]>([]);
+  const groups = ref<KeyGroupRow[]>([]);
   const providers = ref<ProviderRow[]>([]);
   const { t } = useI18n();
   const createOpen = ref(false);
   const editOpen = ref(false);
+  const groupCreateOpen = ref(false);
+  const groupEditOpen = ref(false);
   const editing = ref<KeyRow | null>(null);
+  const editingGroup = ref<KeyGroupRow | null>(null);
+  const selectedGroupId = ref<string>("");
   const testingKeyId = ref<string | null>(null);
   const createSaving = ref(false);
   const editSaving = ref(false);
-  const form = ref({
-    providerId: "",
-    label: "",
-    model: "",
-    apiKey: "",
-    allocatedQuota: null as number | null,
-    enabled: true
-  });
-  const editForm = ref({
-    providerId: "",
-    label: "",
-    model: "",
-    apiKey: "",
-    allocatedQuota: null as number | null,
-    enabled: true
-  });
+  const groupSaving = ref(false);
+  const memberSaving = ref(false);
+  const form = ref(defaultKeyForm());
+  const editForm = ref(defaultKeyForm());
+  const groupForm = ref(defaultGroupForm());
+  const groupEditForm = ref(defaultGroupForm());
 
   const supportedProviders = computed(() =>
     providers.value.filter((provider) => provider.enabled && provider.builtIn)
   );
   const keyListOffset = computed(() => 0);
+  const selectedGroup = computed(
+    () =>
+      groups.value.find((group) => group.id === selectedGroupId.value) ?? groups.value[0] ?? null
+  );
+  const groupMembers = computed(() => selectedGroup.value?.members ?? []);
+  const availableKeysForGroup = computed(() => {
+    const group = selectedGroup.value;
+    if (!group) return [];
+    const memberIds = new Set(group.members.map((member) => member.providerKeyId));
+    return keys.value.filter(
+      (key) => key.providerId === group.providerId && key.enabled && !memberIds.has(key.id)
+    );
+  });
   const editProviderOptions = computed(() => {
     const current = providers.value.find((provider) => provider.id === editForm.value.providerId);
     if (!current || current.builtIn) return supportedProviders.value;
     return [current, ...supportedProviders.value];
   });
+  const groupEditProviderOptions = computed(() => {
+    const current = providers.value.find(
+      (provider) => provider.id === groupEditForm.value.providerId
+    );
+    if (!current || current.builtIn) return supportedProviders.value;
+    return [current, ...supportedProviders.value];
+  });
 
   async function load() {
-    const [keyBody, providerBody] = await Promise.all([
-      apiFetch<{ items: KeyRow[] }>("/sysadmin/provider-keys?includeUnsupported=1"),
-      apiFetch<{ items: ProviderRow[] }>("/sysadmin/providers")
-    ]);
-    keys.value = keyBody.items;
-    providers.value = providerBody.items;
+    const body = await loadSysadminKeysData();
+    keys.value = body.keys;
+    providers.value = body.providers;
+    groups.value = body.groups;
     if (!form.value.providerId && supportedProviders.value[0]) {
       form.value.providerId = supportedProviders.value[0].id;
       form.value.model = supportedProviders.value[0].defaultModel;
+    }
+    if (
+      !selectedGroupId.value ||
+      !groups.value.some((group) => group.id === selectedGroupId.value)
+    ) {
+      selectedGroupId.value = groups.value[0]?.id ?? "";
     }
   }
 
   function openCreate() {
     createSaving.value = false;
-    const provider = supportedProviders.value[0];
-    form.value = {
-      providerId: provider?.id ?? "",
-      label: "",
-      model: provider?.defaultModel ?? "gpt-image-2",
-      apiKey: "",
-      allocatedQuota: null,
-      enabled: true
-    };
+    form.value = defaultKeyForm(supportedProviders.value[0]);
     createOpen.value = true;
   }
 
@@ -93,10 +109,7 @@ export function useSysadminKeysController() {
     if (createSaving.value) return;
     createSaving.value = true;
     try {
-      await apiFetch("/sysadmin/provider-keys", {
-        method: "POST",
-        body: JSON.stringify(form.value)
-      });
+      await createProviderKey(form.value);
       toast.success(t("sysadmin.keyCreated"));
       createOpen.value = false;
       await load();
@@ -114,14 +127,7 @@ export function useSysadminKeysController() {
   function openEdit(key: KeyRow) {
     editSaving.value = false;
     editing.value = key;
-    editForm.value = {
-      providerId: key.providerId,
-      label: key.label,
-      model: key.model ?? "",
-      apiKey: "",
-      allocatedQuota: key.allocatedQuota,
-      enabled: key.enabled
-    };
+    editForm.value = editKeyForm(key);
     editOpen.value = true;
   }
 
@@ -135,19 +141,8 @@ export function useSysadminKeysController() {
     if (!editing.value || editSaving.value) return;
     editSaving.value = true;
     const key = editing.value;
-    const providerChanged = editForm.value.providerId !== key.providerId;
     try {
-      await apiFetch(`/sysadmin/provider-keys/${key.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({
-          providerId: providerChanged ? editForm.value.providerId : undefined,
-          label: editForm.value.label,
-          model: editForm.value.model,
-          apiKey: editForm.value.apiKey || undefined,
-          allocatedQuota: editForm.value.allocatedQuota,
-          enabled: editForm.value.enabled
-        })
-      });
+      await updateProviderKey(key, editForm.value);
       toast.success(t("sysadmin.keyUpdated"));
       editOpen.value = false;
       editing.value = null;
@@ -159,27 +154,111 @@ export function useSysadminKeysController() {
 
   async function toggleKey(key: KeyRow) {
     const enabled = !key.enabled;
-    await apiFetch(`/sysadmin/provider-keys/${key.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled })
-    });
+    await setProviderKeyEnabled(key, enabled);
     toast.success(enabled ? t("sysadmin.keyEnabled") : t("sysadmin.keyDisabled"));
     await load();
   }
 
   async function deleteKey(key: KeyRow) {
     if (!window.confirm(t("sysadmin.deleteKeyConfirm", { label: key.label }))) return;
-    await apiFetch(`/sysadmin/provider-keys/${key.id}`, { method: "DELETE" });
+    await deleteProviderKey(key);
     toast.success(t("sysadmin.keyDeleted"));
     await load();
+  }
+
+  function openCreateGroup() {
+    groupSaving.value = false;
+    groupForm.value = defaultGroupForm(supportedProviders.value[0]);
+    groupCreateOpen.value = true;
+  }
+
+  async function createGroup() {
+    if (groupSaving.value) return;
+    groupSaving.value = true;
+    try {
+      const body = await createProviderKeyGroup(groupForm.value);
+      toast.success(t("sysadmin.keyGroupCreated"));
+      selectedGroupId.value = body.id;
+      groupCreateOpen.value = false;
+      await load();
+    } finally {
+      groupSaving.value = false;
+    }
+  }
+
+  function openEditGroup(group: KeyGroupRow) {
+    groupSaving.value = false;
+    editingGroup.value = group;
+    groupEditForm.value = editGroupForm(group);
+    groupEditOpen.value = true;
+  }
+
+  async function saveGroupEdit() {
+    if (!editingGroup.value || groupSaving.value) return;
+    groupSaving.value = true;
+    const group = editingGroup.value;
+    try {
+      await updateProviderKeyGroup(group, groupEditForm.value);
+      toast.success(t("sysadmin.keyGroupUpdated"));
+      groupEditOpen.value = false;
+      editingGroup.value = null;
+      await load();
+    } finally {
+      groupSaving.value = false;
+    }
+  }
+
+  async function deleteGroup(group: KeyGroupRow) {
+    if (!window.confirm(t("sysadmin.deleteKeyGroupConfirm", { name: group.name }))) return;
+    await deleteProviderKeyGroup(group);
+    toast.success(t("sysadmin.keyGroupDeleted"));
+    selectedGroupId.value = "";
+    await load();
+  }
+
+  async function addMember(keyId: string) {
+    const group = selectedGroup.value;
+    if (!group || !keyId || memberSaving.value) return;
+    const keyIds = [...group.members.map((member) => member.providerKeyId), keyId];
+    await saveMembers(group, keyIds, t("sysadmin.keyGroupMembersUpdated"));
+  }
+
+  async function removeMember(member: GroupMember) {
+    const group = selectedGroup.value;
+    if (!group || memberSaving.value) return;
+    const keyIds = group.members
+      .map((item) => item.providerKeyId)
+      .filter((providerKeyId) => providerKeyId !== member.providerKeyId);
+    await saveMembers(group, keyIds, t("sysadmin.keyGroupMembersUpdated"));
+  }
+
+  async function moveMember(fromIndex: number, toIndex: number) {
+    const group = selectedGroup.value;
+    if (!group || memberSaving.value) return;
+    await saveMembers(
+      group,
+      reorderProviderKeyIds(group.members, fromIndex, toIndex),
+      t("sysadmin.keyGroupMembersUpdated")
+    );
+  }
+
+  async function saveMembers(group: KeyGroupRow, keyIds: string[], successMessage: string) {
+    memberSaving.value = true;
+    try {
+      const body = await updateProviderKeyGroupMembers(group, keyIds);
+      const target = groups.value.find((item) => item.id === group.id);
+      if (target) target.members = body.members;
+      toast.success(successMessage);
+    } finally {
+      memberSaving.value = false;
+      await nextTick();
+    }
   }
 
   async function testKey(key: KeyRow) {
     testingKeyId.value = key.id;
     try {
-      const body = await apiFetch<{ ok: boolean }>(`/sysadmin/provider-keys/${key.id}/test`, {
-        method: "POST"
-      });
+      const body = await testProviderKey(key);
       if (body.ok) {
         toast.success(t("sysadmin.keyTestPassed"));
       } else {
@@ -211,18 +290,31 @@ export function useSysadminKeysController() {
 
   return {
     keys,
+    groups,
     providers,
     t,
     createOpen,
     editOpen,
+    groupCreateOpen,
+    groupEditOpen,
     editing,
+    editingGroup,
+    selectedGroupId,
     testingKeyId,
     createSaving,
     editSaving,
+    groupSaving,
+    memberSaving,
     form,
     editForm,
+    groupForm,
+    groupEditForm,
+    selectedGroup,
+    groupMembers,
+    availableKeysForGroup,
     supportedProviders,
     editProviderOptions,
+    groupEditProviderOptions,
     load,
     openCreate,
     create,
@@ -233,8 +325,17 @@ export function useSysadminKeysController() {
     toggleKey,
     deleteKey,
     testKey,
+    openCreateGroup,
+    createGroup,
+    openEditGroup,
+    saveGroupEdit,
+    deleteGroup,
+    addMember,
+    removeMember,
+    moveMember,
     providerLabel,
     providerMeta,
     tableRowNumber
   };
 }
+export { reorderProviderKeyIds } from "./sysadminKeysForms";

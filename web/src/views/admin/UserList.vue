@@ -18,7 +18,7 @@ const {
   auth,
   t,
   users,
-  keys,
+  groups,
   q,
   status,
   role,
@@ -70,7 +70,7 @@ const {
   openQuotaDialog,
   roleLabel,
   formatDateTime,
-  keyLabel,
+  groupLabel,
   tableRowNumber
 } = useAdminUsersController();
 </script>
@@ -163,7 +163,7 @@ const {
         :transactions-next-cursor="transactionsNextCursor"
         :role-label="roleLabel"
         :format-date-time="formatDateTime"
-        :key-label="keyLabel"
+        :group-label="groupLabel"
         @load-more-quota="loadQuota()"
       />
     </div>
@@ -203,18 +203,24 @@ const {
             <span>{{ t("auth.emailOptional") }}</span>
             <input v-model="form.email" class="ui-field mt-1.5 h-10 px-3" type="email" />
           </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKey") }}</span>
-            <select
-              v-model="form.providerKeyId"
-              class="ui-field mt-1.5 h-10 px-3"
-              :required="form.role === 'admin'"
-            >
-              <option value="">{{ t("sysadmin.selectKey") }}</option>
-              <option v-for="key in keys" :key="key.id" :value="key.id">
-                {{ key.label }} ({{ key.keyHint }})
+          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
+            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+            <select v-model="form.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3" required>
+              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
+              <option v-for="group in groups" :key="group.id" :value="group.id">
+                {{ group.name }}
               </option>
             </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+            <input
+              v-model.number="form.maxConcurrentTasks"
+              class="ui-field mt-1.5 h-10 px-3"
+              :max="form.role === 'admin' ? 15 : 10"
+              min="1"
+              type="number"
+            />
           </label>
           <label class="block text-sm font-medium">
             <span>{{ t("adminUsers.initialQuota") }}</span>
@@ -255,14 +261,25 @@ const {
               <option value="disabled">{{ t("common.disabled") }}</option>
             </select>
           </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKey") }}</span>
-            <select v-model="editForm.providerKeyId" class="ui-field mt-1.5 h-10 px-3">
-              <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
-              <option v-for="key in keys" :key="key.id" :value="key.id">
-                {{ key.label }} ({{ key.keyHint }})
+          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
+            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+            <select v-model="editForm.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3">
+              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
+              <option v-for="group in groups" :key="group.id" :value="group.id">
+                {{ group.name }}
               </option>
             </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+            <input
+              v-model.number="editForm.maxConcurrentTasks"
+              class="ui-field mt-1.5 h-10 px-3"
+              :max="editingUser?.role === 'admin' ? 15 : 10"
+              min="1"
+              required
+              type="number"
+            />
           </label>
           <label class="block text-sm font-medium">
             <span>{{ t("sysadmin.totalQuota") }}</span>

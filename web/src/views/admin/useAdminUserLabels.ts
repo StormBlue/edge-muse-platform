@@ -2,20 +2,20 @@ import { computed, type Ref } from "vue";
 import {
   aggregateAdminUsage,
   formatAdminUserDateTime,
-  providerKeyDisplayLabel
+  providerKeyGroupDisplayLabel
 } from "./adminUserHelpers";
-import type { ProviderKeyRow, UsageResponse } from "./adminUserTypes";
+import type { ProviderKeyGroupRow, UsageResponse } from "./adminUserTypes";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
 
 export function useAdminUserLabels(input: {
-  keys: Ref<ProviderKeyRow[]>;
+  groups: Ref<ProviderKeyGroupRow[]>;
   locale: Ref<string>;
   t: Translate;
   usage: Ref<UsageResponse | null>;
   userListOffset: Ref<number>;
 }) {
-  const { keys, locale, t, usage, userListOffset } = input;
+  const { groups, locale, t, usage, userListOffset } = input;
   const statusItems = computed(() => aggregateAdminUsage(usage.value, "status", statusLabel));
   const modeItems = computed(() => aggregateAdminUsage(usage.value, "mode", modeLabel));
   const trendPoints = computed(
@@ -46,8 +46,8 @@ export function useAdminUserLabels(input: {
     return formatAdminUserDateTime(locale.value, value);
   }
 
-  function keyLabel(id?: string | null) {
-    return providerKeyDisplayLabel(keys.value, t("sysadmin.unassigned"), id);
+  function groupLabel(id?: string | null, name?: string | null) {
+    return providerKeyGroupDisplayLabel(groups.value, t("sysadmin.unassigned"), id, name);
   }
 
   function modeLabel(mode: string) {
@@ -67,7 +67,7 @@ export function useAdminUserLabels(input: {
     statusLabel,
     roleLabel,
     formatDateTime,
-    keyLabel,
+    groupLabel,
     tableRowNumber
   };
 }

@@ -1,10 +1,11 @@
 import { now } from "../id";
 import { parseJson } from "../json";
 import { logError, logWarn } from "../log";
-import { startGenerateTask } from "./dispatch";
 import { broadcastTaskEvent, notifyTaskEvent } from "./events";
 import { failGenerateTask } from "./failure";
 import { recoverTaskFromPersistedImages } from "./imageRecovery";
+import { enqueueGenerateTask, enqueueGenerateTaskGroup } from "./queue";
+import { resetStaleAssignedQueuedTasks } from "./scheduler";
 import { claimRecoveryWindow } from "./state";
 import {
   GENERATION_ATTEMPT_TIMEOUT_MS,
@@ -35,6 +36,8 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
         logWarn("task.recovery_scheduled", {
           scheduled: result.scheduled,
           taskIds: result.taskIds,
+          groupIds: result.groupIds,
+          resetAssigned: result.resetAssigned,
           timedOut: result.timedOut
         });
       })
@@ -45,7 +48,7 @@ export function scheduleInterruptedTaskRecovery(env: AppBindings, ctx: WaitUntil
 }
 
 /**
- * 1) KV 节流下跳过重入；2) 扫「超时未结束」的 running 任务；3) 对 queued 老任务再 `startGenerateTask` 点火。
+ * 1) KV 节流下跳过重入；2) 扫超时 running；3) 重置孤儿 assigned queued；4) 唤醒 group DO。
  */
 export async function recoverInterruptedGenerateTasks(
   env: AppBindings,
@@ -54,29 +57,46 @@ export async function recoverInterruptedGenerateTasks(
 ): Promise<TaskRecoveryResult> {
   const throttled = options.throttle !== false && !(await claimRecoveryWindow(env));
   const emptyTimedOut = { failed: 0, recovered: 0, taskIds: [] };
-  if (throttled) return { scheduled: 0, taskIds: [], throttled: true, timedOut: emptyTimedOut };
+  if (throttled)
+    return {
+      scheduled: 0,
+      taskIds: [],
+      groupIds: [],
+      resetAssigned: 0,
+      throttled: true,
+      timedOut: emptyTimedOut
+    };
 
   const limit = options.limit ?? INTERRUPTED_TASK_RECOVERY_LIMIT;
   const timedOut = await sweepTimedOutGenerateTasks(env, {
     limit,
     notify: (taskId, event) => broadcastTaskEvent(env, taskId, event)
   });
+  const resetAssigned = await resetStaleAssignedQueuedTasks(env, { limit });
   const result = await env.DB.prepare(
-    `SELECT id
+    `SELECT id, provider_key_group_id, assigned_at
      FROM tasks
      WHERE status = 'queued'
      ORDER BY queued_at ASC
      LIMIT ?1`
   )
     .bind(limit)
-    .all<{ id: string }>();
+    .all<{ id: string; provider_key_group_id: string | null; assigned_at: number | null }>();
   const taskIds = result.results.map((row) => row.id);
-  for (const taskId of taskIds) {
-    startGenerateTask(env, ctx, taskId);
+  const groupIds = [
+    ...new Set(result.results.map((row) => row.provider_key_group_id).filter(Boolean) as string[])
+  ];
+  for (const groupId of groupIds) {
+    enqueueGenerateTaskGroup(env, ctx, groupId);
+  }
+  for (const row of result.results) {
+    if (!row.provider_key_group_id) enqueueGenerateTask(env, ctx, row.id);
   }
   return {
     scheduled: taskIds.length,
     taskIds,
+    groupIds,
+    resetAssigned,
     throttled: false,
     timedOut: {
       failed: timedOut.failedTaskIds.length,
@@ -100,6 +120,7 @@ export async function failTimedOutGenerateTaskIfNeeded(
             session_id,
             message_id,
             user_id,
+            provider_key_group_id,
             params,
             queued_at,
             started_at
@@ -129,6 +150,7 @@ async function sweepTimedOutGenerateTasks(
             session_id,
             message_id,
             user_id,
+            provider_key_group_id,
             params,
             queued_at,
             started_at
@@ -175,6 +197,7 @@ async function settleTimedOutGenerateTask(
     sessionId: row.session_id,
     messageId: row.message_id,
     userId: row.user_id,
+    providerKeyGroupId: row.provider_key_group_id,
     params: row.params,
     queuedAt: row.queued_at,
     startedAt: row.started_at

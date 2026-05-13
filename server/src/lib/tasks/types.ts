@@ -44,6 +44,8 @@ export type TaskEvent =
 export type TaskRecoveryResult = {
   scheduled: number;
   taskIds: string[];
+  groupIds: string[];
+  resetAssigned: number;
   throttled: boolean;
   timedOut: {
     failed: number;
@@ -113,6 +115,7 @@ export type TimedOutTaskRow = {
   session_id: string;
   message_id: string;
   user_id: string;
+  provider_key_group_id: string | null;
   params: string;
   queued_at: number;
   started_at: number;
@@ -130,6 +133,7 @@ export type FailureContext = {
     userId: string;
     messageId: string;
     params: string;
+    providerKeyGroupId?: string | null;
     startedAt: number | null;
     queuedAt: number;
   };

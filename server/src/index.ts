@@ -32,6 +32,7 @@ import { createAltchaChallenge, getPublicCaptchaConfig } from "./lib/captcha";
 import { resolveCaptchaRegion } from "./lib/captcha/region";
 import type { AppEnv } from "./types";
 export { TaskRoom } from "./do/TaskRoom";
+export { GenerateQueue } from "./do/GenerateQueue";
 export { GenerateImageWorkflow } from "./workflows/GenerateImage";
 
 const app = new Hono<AppEnv>();

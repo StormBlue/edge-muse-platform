@@ -23,7 +23,7 @@ defineProps<{
   transactionsNextCursor: number | null;
   roleLabel: (value: string) => string;
   formatDateTime: (value?: number | null) => string;
-  keyLabel: (id?: string | null) => string;
+  groupLabel: (id?: string | null, name?: string | null) => string;
 }>();
 
 const emit = defineEmits<{
@@ -51,8 +51,12 @@ const { locale, t } = useI18n();
           {{ formatDateTime(selectedUser.lastGenerationAt) }}
         </p>
         <p v-if="isSysadmin">
-          {{ t("sysadmin.providerKey") }}:
-          {{ keyLabel(selectedUser.providerKeyId ?? selectedUser.preferredProviderKeyId) }}
+          {{ t("sysadmin.providerKeyGroup") }}:
+          {{ groupLabel(selectedUser.providerKeyGroupId, selectedUser.providerKeyGroupName) }}
+        </p>
+        <p>
+          {{ t("adminUsers.maxConcurrentTasks") }}:
+          {{ selectedUser.maxConcurrentTasks ?? (selectedUser.role === "admin" ? 10 : 5) }}
         </p>
       </div>
     </div>

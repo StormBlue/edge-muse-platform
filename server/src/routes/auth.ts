@@ -228,6 +228,8 @@ function publicUser(user: {
   role: AuthUser["role"];
   status: AuthUser["status"];
   preferredProviderKeyId?: string | null;
+  providerKeyGroupId?: string | null;
+  maxConcurrentTasks?: number | null;
 }): AuthUser {
   return {
     id: user.id,
@@ -236,6 +238,8 @@ function publicUser(user: {
     nickname: user.nickname,
     role: user.role,
     status: user.status,
-    preferredProviderKeyId: user.preferredProviderKeyId ?? null
+    preferredProviderKeyId: user.preferredProviderKeyId ?? null,
+    providerKeyGroupId: user.providerKeyGroupId ?? null,
+    maxConcurrentTasks: user.maxConcurrentTasks ?? null
   };
 }

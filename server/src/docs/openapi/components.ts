@@ -79,7 +79,17 @@ export const components = {
         preferredProviderKeyId: {
           type: "string",
           nullable: true,
-          description: "优先使用的 provider key ID。"
+          description: "旧单 key 偏好，仅兼容历史数据。"
+        },
+        providerKeyGroupId: {
+          type: "string",
+          nullable: true,
+          description: "当前账号使用的 provider key group ID。"
+        },
+        maxConcurrentTasks: {
+          type: "integer",
+          nullable: true,
+          description: "账号级 queued/running 生成任务上限；sysadmin 不受此字段限制。"
         }
       },
       additionalProperties: true
@@ -102,6 +112,30 @@ export const components = {
     ProviderCapabilities: {
       type: "object",
       description: "当前用户可用 provider 能力快照；字段随 provider catalog 扩展。",
+      required: [
+        "providerId",
+        "providerName",
+        "providerKeyId",
+        "providerKeyGroupId",
+        "providerKeyGroupName",
+        "requestFormat",
+        "model",
+        "supportedModes",
+        "supportedSizes",
+        "maxReferenceImages"
+      ],
+      properties: {
+        providerId: { type: "string" },
+        providerName: { type: "string" },
+        providerKeyId: { type: "string", nullable: true },
+        providerKeyGroupId: { type: "string", nullable: true },
+        providerKeyGroupName: { type: "string", nullable: true },
+        requestFormat: { type: "string" },
+        model: { type: "string" },
+        supportedModes: arrayOf(ref("GenerationMode")),
+        supportedSizes: arrayOf({ type: "string" }),
+        maxReferenceImages: { type: "integer", nullable: true }
+      },
       additionalProperties: true
     },
     GenerationEntry: {
@@ -262,6 +296,10 @@ export const components = {
         allocatedQuota: { type: "integer", nullable: true },
         usedQuota: { type: "integer", nullable: true },
         providerKeyId: { type: "string", nullable: true },
+        providerKeyGroupId: { type: "string", nullable: true },
+        providerKeyGroupName: { type: "string", nullable: true },
+        providerKeyGroupProviderId: { type: "string", nullable: true },
+        maxConcurrentTasks: { type: "integer", nullable: true },
         generationCount: { type: "integer", nullable: true },
         lastLoginAt: { type: "integer", nullable: true },
         lastGenerationAt: { type: "integer", nullable: true },
@@ -286,7 +324,7 @@ export const components = {
     },
     ProviderKeySummary: {
       type: "object",
-      required: ["id", "label", "keyHint", "enabled"],
+      required: ["id", "label", "keyHint", "enabled", "maxConcurrency", "activeSlots"],
       properties: {
         id: { type: "string" },
         label: { type: "string" },
@@ -295,8 +333,56 @@ export const components = {
         providerId: { type: "string" },
         model: { type: "string" },
         allocatedQuota: { type: "integer", nullable: true },
+        maxConcurrency: {
+          type: "integer",
+          minimum: 1,
+          description: "该 key 在调度器中允许同时占用的最大 queued/running 任务数。"
+        },
+        activeSlots: {
+          type: "integer",
+          minimum: 0,
+          description: "当前已 assigned 的 queued/running 任务数。"
+        },
         usedQuota: { type: "integer", nullable: true },
         ownerAdminId: { type: "string", nullable: true },
+        createdAt: { type: "integer" },
+        updatedAt: { type: "integer" }
+      },
+      additionalProperties: true
+    },
+    ProviderKeyGroupMember: {
+      type: "object",
+      required: [
+        "id",
+        "providerKeyId",
+        "label",
+        "keyHint",
+        "enabled",
+        "maxConcurrency",
+        "sortOrder"
+      ],
+      properties: {
+        id: { type: "string" },
+        providerKeyId: { type: "string" },
+        label: { type: "string" },
+        keyHint: { type: "string" },
+        model: { type: "string", nullable: true },
+        enabled: { type: "boolean" },
+        maxConcurrency: { type: "integer", minimum: 1 },
+        sortOrder: { type: "integer", minimum: 0 }
+      },
+      additionalProperties: true
+    },
+    ProviderKeyGroup: {
+      type: "object",
+      required: ["id", "providerId", "name", "enabled", "members"],
+      properties: {
+        id: { type: "string" },
+        providerId: { type: "string" },
+        name: { type: "string" },
+        description: { type: "string", nullable: true },
+        enabled: { type: "boolean" },
+        members: arrayOf(ref("ProviderKeyGroupMember")),
         createdAt: { type: "integer" },
         updatedAt: { type: "integer" }
       },

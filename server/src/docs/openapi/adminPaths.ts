@@ -27,7 +27,7 @@ export const adminPaths = {
       operationId: "listAssignableProviderKeys",
       summary: "读取可分配 provider key",
       description:
-        "要求 admin 或 sysadmin 登录。sysadmin 返回所有启用且可分配的内置 provider key；admin 只返回分配给自己的启用 key。响应永不包含明文或密文 API key，只返回 label、keyHint 和 enabled。",
+        "要求 admin 或 sysadmin 登录。保留给历史页面兼容；生成分配以 provider key group 为准。响应永不包含明文或密文 API key。",
       security: adminSecurity,
       responses: {
         "200": jsonResponse("可分配密钥列表。", {
@@ -47,7 +47,7 @@ export const adminPaths = {
       operationId: "listAdminUsers",
       summary: "分页读取用户管理列表",
       description:
-        "要求 admin 或 sysadmin 登录。admin 只能查看自己创建的普通用户；sysadmin 可查看 admin/user，并可按 role 过滤。返回配额、分配 key、生成次数和最近生成时间。",
+        "要求 admin 或 sysadmin 登录。admin 只能查看自己创建的普通用户；sysadmin 可查看 admin/user，并可按 role 过滤。返回配额、分配 key group、并发上限、生成次数和最近生成时间。",
       security: adminSecurity,
       parameters: [
         pageParam,
@@ -95,7 +95,7 @@ export const adminPaths = {
       operationId: "createManagedUser",
       summary: "创建下级用户或管理员",
       description:
-        "要求 admin 或 sysadmin 登录和 CSRF。admin 只能创建普通用户，且初始配额不能超过自身剩余配额；sysadmin 可创建 admin 或 user，并可授予无限配额 (`quota=null`)。创建时会写 users、quotas，并在需要时绑定 provider key。",
+        "要求 admin 或 sysadmin 登录和 CSRF。admin 只能创建普通用户，且初始配额不能超过自身剩余配额；普通用户继承创建者 key group。sysadmin 可创建 admin 或 user，并可指定 provider key group、授予无限配额 (`quota=null`)。",
       security: csrfSecurity,
       requestBody: requestJson("新用户信息。", {
         type: "object",
@@ -111,10 +111,16 @@ export const adminPaths = {
           password: { type: "string", minLength: 8 },
           nickname: { type: "string", minLength: 1, maxLength: 40 },
           role: { type: "string", enum: ["admin", "user"], default: "user" },
-          providerKeyId: {
+          providerKeyGroupId: {
             type: "string",
             nullable: true,
-            description: "admin 账号必须绑定可分配 provider key；普通 user 默认继承创建者 key。"
+            description: "仅 sysadmin 可指定；admin 创建普通用户时固定继承创建者 group。"
+          },
+          maxConcurrentTasks: {
+            type: "integer",
+            minimum: 1,
+            maximum: 15,
+            description: "admin 最大 15，普通 user 最大 10。"
           },
           quota: {
             type: "integer",
@@ -149,7 +155,7 @@ export const adminPaths = {
       operationId: "updateManagedUser",
       summary: "编辑下级用户",
       description:
-        "要求 admin 或 sysadmin 登录和 CSRF。非 sysadmin 只能改昵称/状态，不能改 provider key、总配额或密码；sysadmin 可覆盖总配额、重置密码、改绑 provider key。注意这里的 `quota` 是覆盖总配额，不是追加。",
+        "要求 admin 或 sysadmin 登录和 CSRF。admin 只能编辑下属普通用户的昵称、状态和最大同时任务数；sysadmin 可覆盖总配额、重置密码、改绑 provider key group。注意这里的 `quota` 是覆盖总配额，不是追加。",
       security: csrfSecurity,
       parameters: [pathParam("id", "目标用户 ID。")],
       requestBody: requestJson("要更新的字段。", {
@@ -157,7 +163,14 @@ export const adminPaths = {
         properties: {
           nickname: { type: "string", minLength: 1, maxLength: 40 },
           status: { type: "string", enum: ["active", "disabled"] },
-          providerKeyId: { type: "string", nullable: true },
+          providerKeyGroupId: { type: "string", nullable: true },
+          maxConcurrentTasks: {
+            type: "integer",
+            minimum: 1,
+            maximum: 15,
+            description:
+              "admin 最大 15，普通 user 最大 10；普通 admin 只能编辑下属 user，因此最大 10。"
+          },
           quota: {
             type: "integer",
             nullable: true,
@@ -462,6 +475,7 @@ export const adminPaths = {
             description: "仅请求体提交；响应、日志和列表都不返回明文。"
           },
           allocatedQuota: { type: "integer", nullable: true, minimum: 0 },
+          maxConcurrency: { type: "integer", minimum: 1, maximum: 100, default: 1 },
           ownerAdminId: {
             type: "string",
             nullable: true,
@@ -504,6 +518,7 @@ export const adminPaths = {
           model: { type: "string", minLength: 1 },
           apiKey: { type: "string", minLength: 1 },
           allocatedQuota: { type: "integer", nullable: true, minimum: 0 },
+          maxConcurrency: { type: "integer", minimum: 1, maximum: 100 },
           ownerAdminId: { type: "string", nullable: true },
           enabled: { type: "boolean" }
         },
@@ -547,6 +562,133 @@ export const adminPaths = {
           additionalProperties: false
         }),
         ...providerError,
+        ...forbiddenError,
+        ...commonErrors
+      }
+    }
+  },
+  "/api/sysadmin/provider-key-groups": {
+    get: {
+      tags: ["Sysadmin"],
+      operationId: "listProviderKeyGroups",
+      summary: "读取 provider key group 列表",
+      description:
+        "要求 sysadmin 登录。返回未软删 key group 及成员，成员按 sortOrder 排序，用于生成调度配置。",
+      security: sysadminSecurity,
+      responses: {
+        "200": jsonResponse("key group 列表。", {
+          type: "object",
+          required: ["items"],
+          properties: { items: arrayOf(ref("ProviderKeyGroup")) },
+          additionalProperties: false
+        }),
+        ...forbiddenError,
+        ...commonErrors
+      }
+    },
+    post: {
+      tags: ["Sysadmin"],
+      operationId: "createProviderKeyGroup",
+      summary: "创建 provider key group",
+      description:
+        "要求 sysadmin 登录和 CSRF。创建一个同 provider 的 key group；成员 key 必须属于同一 provider。",
+      security: csrfSecurity,
+      requestBody: requestJson("key group。", {
+        type: "object",
+        required: ["providerId", "name"],
+        properties: {
+          providerId: { type: "string" },
+          name: { type: "string", minLength: 1 },
+          description: { type: "string", nullable: true },
+          enabled: { type: "boolean", default: true },
+          keyIds: arrayOf({ type: "string" })
+        },
+        additionalProperties: false
+      }),
+      responses: {
+        "201": jsonResponse("key group 已创建。", {
+          type: "object",
+          required: ["id"],
+          properties: { id: { type: "string" } },
+          additionalProperties: false
+        }),
+        ...validationError,
+        ...forbiddenError,
+        ...commonErrors
+      }
+    }
+  },
+  "/api/sysadmin/provider-key-groups/{id}": {
+    get: {
+      tags: ["Sysadmin"],
+      operationId: "getProviderKeyGroup",
+      summary: "读取 provider key group 详情",
+      security: sysadminSecurity,
+      parameters: [pathParam("id", "provider key group ID。")],
+      responses: {
+        "200": jsonResponse("key group 详情。", ref("ProviderKeyGroup")),
+        ...forbiddenError,
+        ...commonErrors
+      }
+    },
+    patch: {
+      tags: ["Sysadmin"],
+      operationId: "updateProviderKeyGroup",
+      summary: "更新 provider key group",
+      description:
+        "要求 sysadmin 登录和 CSRF。可更新名称、描述、启用状态或 provider；换 provider 时必须同步提交同 provider 成员。",
+      security: csrfSecurity,
+      parameters: [pathParam("id", "provider key group ID。")],
+      requestBody: requestJson("key group 补丁。", {
+        type: "object",
+        properties: {
+          providerId: { type: "string" },
+          name: { type: "string", minLength: 1 },
+          description: { type: "string", nullable: true },
+          enabled: { type: "boolean" },
+          keyIds: arrayOf({ type: "string" })
+        },
+        additionalProperties: false
+      }),
+      responses: {
+        "200": jsonResponse("key group 已更新。", okBody),
+        ...validationError,
+        ...forbiddenError,
+        ...commonErrors
+      }
+    },
+    delete: {
+      tags: ["Sysadmin"],
+      operationId: "deleteProviderKeyGroup",
+      summary: "软删除 provider key group",
+      description: "要求 sysadmin 登录和 CSRF。软删除并禁用 group，保留历史任务引用。",
+      security: csrfSecurity,
+      parameters: [pathParam("id", "provider key group ID。")],
+      responses: {
+        "200": jsonResponse("key group 已软删。", okBody),
+        ...forbiddenError,
+        ...commonErrors
+      }
+    }
+  },
+  "/api/sysadmin/provider-key-groups/{id}/members": {
+    put: {
+      tags: ["Sysadmin"],
+      operationId: "replaceProviderKeyGroupMembers",
+      summary: "保存 provider key group 成员排序",
+      description:
+        "要求 sysadmin 登录和 CSRF。整体替换成员列表，数组顺序即调度优先级；所有 key 必须属于 group provider。",
+      security: csrfSecurity,
+      parameters: [pathParam("id", "provider key group ID。")],
+      requestBody: requestJson("排序后的 key ID 列表。", {
+        type: "object",
+        required: ["keyIds"],
+        properties: { keyIds: arrayOf({ type: "string" }) },
+        additionalProperties: false
+      }),
+      responses: {
+        "200": jsonResponse("成员已保存。", okBody),
+        ...validationError,
         ...forbiddenError,
         ...commonErrors
       }

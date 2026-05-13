@@ -21,7 +21,7 @@ export const sysadminPaths = {
       operationId: "listTenantAdmins",
       summary: "读取租户管理员列表",
       description:
-        "要求 sysadmin 登录。返回 role=admin 的管理员账号、状态、绑定 provider key 和配额池信息；不返回密码哈希。",
+        "要求 sysadmin 登录。返回 role=admin 的管理员账号、状态、绑定 provider key group、并发上限和配额池信息；不返回密码哈希。",
       security: sysadminSecurity,
       responses: {
         "200": jsonResponse("管理员列表。", {
@@ -39,17 +39,18 @@ export const sysadminPaths = {
       operationId: "createTenantAdmin",
       summary: "创建租户管理员",
       description:
-        "要求 sysadmin 登录和 CSRF。创建 role=admin 账号、初始配额行，并绑定 provider key。邮箱可选，省略时服务端生成占位邮箱。",
+        "要求 sysadmin 登录和 CSRF。创建 role=admin 账号、初始配额行，并分配 provider key group。邮箱可选，省略时服务端生成占位邮箱。",
       security: csrfSecurity,
       requestBody: requestJson("管理员账号信息。", {
         type: "object",
-        required: ["username", "password", "nickname", "providerKeyId", "quota"],
+        required: ["username", "password", "nickname", "providerKeyGroupId", "quota"],
         properties: {
           email: { type: "string", format: "email", nullable: true },
           username: { type: "string", minLength: 3, maxLength: 40 },
           password: { type: "string", minLength: 8 },
           nickname: { type: "string", minLength: 1 },
-          providerKeyId: { type: "string", minLength: 1 },
+          providerKeyGroupId: { type: "string", minLength: 1 },
+          maxConcurrentTasks: { type: "integer", minimum: 1, maximum: 15, default: 10 },
           quota: {
             type: "integer",
             nullable: true,
@@ -78,7 +79,7 @@ export const sysadminPaths = {
       operationId: "updateTenantAdmin",
       summary: "编辑租户管理员",
       description:
-        "要求 sysadmin 登录和 CSRF。可更新昵称、状态、provider key、总配额和密码。改绑 provider key 时，会同步该管理员及其下属用户的 preferredProviderKeyId 与 user_provider_keys 绑定。",
+        "要求 sysadmin 登录和 CSRF。可更新昵称、状态、provider key group、最大同时任务数、总配额和密码。改绑 group 时，会同步该管理员及其下属用户的 providerKeyGroupId。",
       security: csrfSecurity,
       parameters: [pathParam("id", "管理员用户 ID。")],
       requestBody: requestJson("管理员补丁。", {
@@ -86,7 +87,8 @@ export const sysadminPaths = {
         properties: {
           nickname: { type: "string", minLength: 1 },
           status: { type: "string", enum: ["active", "disabled"] },
-          providerKeyId: { type: "string", minLength: 1 },
+          providerKeyGroupId: { type: "string", minLength: 1 },
+          maxConcurrentTasks: { type: "integer", minimum: 1, maximum: 15 },
           quota: {
             type: "integer",
             nullable: true,

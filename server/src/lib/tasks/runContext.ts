@@ -19,6 +19,10 @@ export async function resolveTaskRunContext(
 ) {
   const db = getDb(env);
   const { task, params, baseLogFields } = input;
+  if (!task.providerKeyId) {
+    logWarn("task.provider_key_unassigned", baseLogFields);
+    throw appError("PROVIDER_ERROR", "Provider key not assigned");
+  }
   const key = await db.query.providerKeys.findFirst({
     where: and(eq(providerKeys.id, task.providerKeyId), isNull(providerKeys.deletedAt))
   });

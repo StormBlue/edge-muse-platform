@@ -1,19 +1,12 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "../../db/client";
-import {
-  messages,
-  providers,
-  sessions,
-  tasks,
-  users,
-  type Session as SessionRow
-} from "../../db/schema";
+import { messages, sessions, tasks, users, type Session as SessionRow } from "../../db/schema";
 import { appError } from "../errors";
-import { isSingleActiveGenerationRole, resolveImageCountForRole } from "../generationPolicy";
+import { resolveImageCountForRole, resolveMaxConcurrentTasksForRole } from "../generationPolicy";
 import { newId, now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logInfo, logWarn, promptSummary } from "../log";
-import { resolveProviderKey } from "../providerKeys";
+import { resolveProviderKeyGroupForUser } from "../providerKeyGroups";
 import { refundQuota, tryConsumeQuota } from "../quota";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
@@ -76,16 +69,27 @@ export async function findActiveGenerationTaskForUser(
 }
 
 /**
- * 普通用户/管理员同时只允许一个进行中的生图；sysadmin 直接放行。冲突时 409 并带 `activeGeneration` 详情。
+ * 用户级 queued/running 任务数限制；sysadmin 直接放行。冲突时 409 并带当前活跃任务统计。
  */
 export async function assertNoActiveGenerationTask(
   env: AppBindings,
   input: { userId: string; role: UserRole }
 ): Promise<void> {
-  if (!isSingleActiveGenerationRole(input.role)) return;
+  const user = await getDb(env).query.users.findFirst({ where: eq(users.id, input.userId) });
+  const limit = resolveMaxConcurrentTasksForRole(input.role, user?.maxConcurrentTasks);
+  if (limit === null) return;
+  const rows = await getDb(env)
+    .select({ count: sql<number>`count(*)` })
+    .from(tasks)
+    .where(and(eq(tasks.userId, input.userId), inArray(tasks.status, ["queued", "running"])));
+  const activeCount = rows[0]?.count ?? 0;
+  if (activeCount < limit) return;
   const activeGeneration = await findActiveGenerationTaskForUser(env, input.userId);
-  if (!activeGeneration) return;
-  throw appError("CONFLICT", "A generation task is already running", { activeGeneration });
+  throw appError("CONFLICT", "Too many active generation tasks", {
+    activeGeneration,
+    activeCount,
+    limit
+  });
 }
 
 /**
@@ -130,13 +134,10 @@ export async function createGenerateTask(
     n: resolveImageCountForRole(user.role, input.params.mode, input.params.n),
     referenceImageIds
   };
-  const key = await resolveProviderKey(env, input.userId);
-  const provider = await db.query.providers.findFirst({
-    where: and(eq(providers.id, key.providerId), isNull(providers.deletedAt))
-  });
-  if (!provider || !provider.enabled) {
-    throw appError("PROVIDER_ERROR", "Provider disabled");
-  }
+  const keyGroup = await resolveProviderKeyGroupForUser(env, input.userId);
+  const provider = keyGroup.provider;
+  const initialProviderKeyId = keyGroup.members[0]?.providerKeyId;
+  if (!initialProviderKeyId) throw appError("PROVIDER_ERROR", "No provider key configured");
   const providerImpl = getProvider(provider.requestFormat);
   assertProviderSupportsGenerateParams(provider, providerImpl, params);
   const settings = stringifyJson({
@@ -176,7 +177,8 @@ export async function createGenerateTask(
         userId: input.userId,
         title,
         mode: params.mode,
-        providerKeyId: key.id,
+        providerKeyId: initialProviderKeyId,
+        providerKeyGroupId: keyGroup.group.id,
         settings,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -187,14 +189,16 @@ export async function createGenerateTask(
       logInfo("task.create.session_created", {
         userId: input.userId,
         sessionId,
-        providerKeyId: key.id,
+        providerKeyId: initialProviderKeyId,
+        providerKeyGroupId: keyGroup.group.id,
         mode: params.mode
       });
     } else {
       logInfo("task.create.session_reused", {
         userId: input.userId,
         sessionId,
-        providerKeyId: key.id,
+        providerKeyId: initialProviderKeyId,
+        providerKeyGroupId: keyGroup.group.id,
         mode: params.mode
       });
     }
@@ -231,7 +235,8 @@ export async function createGenerateTask(
       .update(sessions)
       .set({
         mode: params.mode,
-        providerKeyId: key.id,
+        providerKeyId: initialProviderKeyId,
+        providerKeyGroupId: keyGroup.group.id,
         settings,
         updatedAt: timestamp,
         lastMessageAt: timestamp
@@ -241,7 +246,8 @@ export async function createGenerateTask(
       userId: input.userId,
       taskId,
       sessionId,
-      providerKeyId: key.id,
+      providerKeyId: initialProviderKeyId,
+      providerKeyGroupId: keyGroup.group.id,
       mode: params.mode
     });
 
@@ -250,7 +256,8 @@ export async function createGenerateTask(
       sessionId,
       messageId: assistantMessageId,
       userId: input.userId,
-      providerKeyId: key.id,
+      providerKeyId: initialProviderKeyId,
+      providerKeyGroupId: keyGroup.group.id,
       status: "queued",
       mode: params.mode,
       params: stringifyJson(params),
@@ -259,6 +266,7 @@ export async function createGenerateTask(
       providerRequestId: null,
       providerRawResponse: null,
       queuedAt: timestamp,
+      assignedAt: null,
       startedAt: null,
       heartbeatAt: null,
       finishedAt: null,
@@ -269,7 +277,8 @@ export async function createGenerateTask(
       taskId,
       sessionId,
       messageId: assistantMessageId,
-      providerKeyId: key.id,
+      providerKeyId: initialProviderKeyId,
+      providerKeyGroupId: keyGroup.group.id,
       retryOf: input.retryOf ?? null,
       mode: params.mode,
       size: params.size,

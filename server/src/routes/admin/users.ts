@@ -2,29 +2,17 @@ import { and, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../../db/client";
-import {
-  providerKeys,
-  quotaTransactions,
-  quotas,
-  tasks,
-  userProviderKeys,
-  users
-} from "../../db/schema";
+import { providerKeyGroups, quotaTransactions, quotas, tasks, users } from "../../db/schema";
 import { assertManagedUserAccess } from "../../lib/access";
 import { generatedEmailForUserId, normalizeOptionalEmail } from "../../lib/account";
 import { audit } from "../../lib/audit";
 import { appError } from "../../lib/errors";
+import { assertMaxConcurrentTasksConfigAllowed } from "../../lib/generationPolicy";
 import { newId, now } from "../../lib/id";
 import { hashPassword } from "../../lib/password";
-import { getAssignableProviderKey } from "../../lib/providerKeys";
+import { resolveProviderKeyGroup } from "../../lib/providerKeyGroups";
 import { getQuota, grantQuota } from "../../lib/quota";
-import {
-  optionalEmailSchema,
-  optionalProviderKeySchema,
-  parsePositiveInt,
-  usernameSchema,
-  type AdminRouter
-} from "./common";
+import { optionalEmailSchema, parsePositiveInt, usernameSchema, type AdminRouter } from "./common";
 
 export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
   adminRoutes.get("/users", async (c) => {
@@ -71,13 +59,16 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
         lastLoginAt: users.lastLoginAt,
         allocatedQuota: quotas.allocatedQuota,
         usedQuota: quotas.usedQuota,
-        providerKeyId: userProviderKeys.providerKeyId,
+        providerKeyGroupId: users.providerKeyGroupId,
+        providerKeyGroupName: providerKeyGroups.name,
+        providerKeyGroupProviderId: providerKeyGroups.providerId,
+        maxConcurrentTasks: users.maxConcurrentTasks,
         generationCount: sql<number>`count(${tasks.id})`,
         lastGenerationAt: sql<number | null>`max(${tasks.queuedAt})`
       })
       .from(users)
       .leftJoin(quotas, eq(quotas.userId, users.id))
-      .leftJoin(userProviderKeys, eq(userProviderKeys.userId, users.id))
+      .leftJoin(providerKeyGroups, eq(providerKeyGroups.id, users.providerKeyGroupId))
       .leftJoin(tasks, eq(tasks.userId, users.id))
       .where(userFilters)
       .groupBy(users.id)
@@ -97,7 +88,8 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
         password: z.string().min(8),
         nickname: z.string().min(1).max(40),
         role: z.enum(["admin", "user"]).default("user"),
-        providerKeyId: optionalProviderKeySchema,
+        providerKeyGroupId: z.string().min(1).optional(),
+        maxConcurrentTasks: z.number().int().min(1).max(15).optional(),
         quota: z.number().int().min(0).nullable().default(0)
       })
     ),
@@ -115,22 +107,17 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
       });
       if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
 
-      let providerKeyId = body.providerKeyId;
-      const actorKey = await getDb(c.env).query.userProviderKeys.findFirst({
-        where: eq(userProviderKeys.userId, actor.id)
+      const maxConcurrentTasks = body.maxConcurrentTasks ?? (body.role === "admin" ? 10 : 5);
+      assertMaxConcurrentTasksConfigAllowed(body.role, maxConcurrentTasks);
+      const actorRecord = await getDb(c.env).query.users.findFirst({
+        where: eq(users.id, actor.id)
       });
-
-      if (actor.role !== "sysadmin" && providerKeyId && providerKeyId !== actorKey?.providerKeyId) {
-        throw appError("FORBIDDEN", "No access to provider key");
+      const providerKeyGroupId =
+        actor.role === "sysadmin" ? body.providerKeyGroupId : actorRecord?.providerKeyGroupId;
+      if (!providerKeyGroupId) {
+        throw appError("VALIDATION_ERROR", "Provider key group is required");
       }
-      providerKeyId = providerKeyId ?? actorKey?.providerKeyId;
-      if (body.role === "admin" && !providerKeyId) {
-        throw appError("VALIDATION_ERROR", "Provider key is required for admins");
-      }
-
-      if (providerKeyId) {
-        await getAssignableProviderKey(c.env, providerKeyId);
-      }
+      await resolveProviderKeyGroup(c.env, providerKeyGroupId);
 
       if (actor.role !== "sysadmin") {
         if (body.quota === null) {
@@ -154,7 +141,9 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
           nickname: body.nickname,
           role: body.role,
           createdBy: actor.id,
-          preferredProviderKeyId: providerKeyId ?? null,
+          preferredProviderKeyId: null,
+          providerKeyGroupId,
+          maxConcurrentTasks,
           locale: "zh-CN",
           status: "active",
           createdAt: timestamp,
@@ -167,13 +156,6 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
         usedQuota: 0,
         updatedAt: timestamp
       });
-      if (providerKeyId) {
-        await getDb(c.env).insert(userProviderKeys).values({
-          userId: id,
-          providerKeyId,
-          assignedAt: timestamp
-        });
-      }
       if (actor.role !== "sysadmin" && (body.quota ?? 0) > 0) {
         await c.env.DB.prepare(
           "UPDATE quotas SET allocated_quota = allocated_quota - ?1, updated_at = ?2 WHERE user_id = ?3"
@@ -199,7 +181,8 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
       z.object({
         nickname: z.string().min(1).max(40).optional(),
         status: z.enum(["active", "disabled"]).optional(),
-        providerKeyId: optionalProviderKeySchema,
+        providerKeyGroupId: z.string().min(1).optional(),
+        maxConcurrentTasks: z.number().int().min(1).max(15).optional(),
         quota: z.number().int().min(0).nullable().optional(),
         password: z.string().min(8).optional()
       })
@@ -212,29 +195,39 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
         throw appError("FORBIDDEN", "System admins cannot be edited here");
       if (
         actor.role !== "sysadmin" &&
-        ("providerKeyId" in body || "quota" in body || body.password)
+        ("providerKeyGroupId" in body ||
+          "quota" in body ||
+          body.password ||
+          (target.role !== "user" && "maxConcurrentTasks" in body))
       ) {
         throw appError("FORBIDDEN", "Insufficient role");
       }
       const timestamp = now();
-      let changedProviderKeyId: string | null = null;
+      let changedProviderKeyGroupId: string | null = null;
+      if (body.maxConcurrentTasks !== undefined) {
+        assertMaxConcurrentTasksConfigAllowed(target.role, body.maxConcurrentTasks);
+      }
       if (
-        body.providerKeyId !== undefined &&
-        body.providerKeyId !== target.preferredProviderKeyId
+        body.providerKeyGroupId !== undefined &&
+        body.providerKeyGroupId !== target.providerKeyGroupId
       ) {
-        await getAssignableProviderKey(c.env, body.providerKeyId);
-        changedProviderKeyId = body.providerKeyId;
+        if (actor.role !== "sysadmin") throw appError("FORBIDDEN", "Insufficient role");
+        await resolveProviderKeyGroup(c.env, body.providerKeyGroupId);
+        changedProviderKeyGroupId = body.providerKeyGroupId;
       }
       const userUpdate: {
         nickname?: string;
         status?: "active" | "disabled";
-        preferredProviderKeyId?: string;
+        providerKeyGroupId?: string;
+        maxConcurrentTasks?: number;
         passwordHash?: string;
         updatedAt: number;
       } = { updatedAt: timestamp };
       if (body.nickname !== undefined) userUpdate.nickname = body.nickname;
       if (body.status !== undefined) userUpdate.status = body.status;
-      if (changedProviderKeyId) userUpdate.preferredProviderKeyId = changedProviderKeyId;
+      if (changedProviderKeyGroupId) userUpdate.providerKeyGroupId = changedProviderKeyGroupId;
+      if (body.maxConcurrentTasks !== undefined)
+        userUpdate.maxConcurrentTasks = body.maxConcurrentTasks;
       if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
       if (Object.keys(userUpdate).length > 1) {
         await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, target.id));
@@ -248,33 +241,17 @@ export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
           .bind(target.id, body.quota ?? null, timestamp)
           .run();
       }
-      if (changedProviderKeyId) {
-        const managed =
-          target.role === "admin"
-            ? await getDb(c.env)
-                .select({ id: users.id })
-                .from(users)
-                .where(sql`${users.id} = ${target.id} OR ${users.createdBy} = ${target.id}`)
-            : [{ id: target.id }];
+      if (changedProviderKeyGroupId && target.role === "admin") {
+        const managed = await getDb(c.env)
+          .select({ id: users.id })
+          .from(users)
+          .where(sql`${users.id} = ${target.id} OR ${users.createdBy} = ${target.id}`);
         const managedUserIds = managed.map((row) => row.id);
-        await getDb(c.env)
-          .update(users)
-          .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
-          .where(inArray(users.id, managedUserIds));
-        for (const row of managed) {
-          await c.env.DB.prepare(
-            `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(user_id) DO UPDATE SET provider_key_id = ?2, assigned_at = ?3`
-          )
-            .bind(row.id, changedProviderKeyId, timestamp)
-            .run();
-        }
-        if (target.role === "admin") {
+        if (managedUserIds.length) {
           await getDb(c.env)
-            .update(providerKeys)
-            .set({ ownerAdminId: target.id, updatedAt: timestamp })
-            .where(eq(providerKeys.id, changedProviderKeyId));
+            .update(users)
+            .set({ providerKeyGroupId: changedProviderKeyGroupId, updatedAt: timestamp })
+            .where(inArray(users.id, managedUserIds));
         }
       }
       await audit(c.env, {

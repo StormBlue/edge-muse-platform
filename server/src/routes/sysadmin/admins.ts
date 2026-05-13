@@ -2,13 +2,14 @@ import { desc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../../db/client";
-import { providerKeys, quotas, userProviderKeys, users } from "../../db/schema";
+import { providerKeyGroups, quotas, users } from "../../db/schema";
 import { generatedEmailForUserId, normalizeOptionalEmail } from "../../lib/account";
 import { audit } from "../../lib/audit";
 import { appError } from "../../lib/errors";
 import { newId, now } from "../../lib/id";
 import { hashPassword } from "../../lib/password";
-import { getAssignableProviderKey } from "../../lib/providerKeys";
+import { assertMaxConcurrentTasksConfigAllowed } from "../../lib/generationPolicy";
+import { resolveProviderKeyGroup } from "../../lib/providerKeyGroups";
 import { optionalEmailSchema, usernameSchema, type SysadminRouter } from "./common";
 
 export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
@@ -22,7 +23,8 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         username: usernameSchema,
         password: z.string().min(8),
         nickname: z.string().min(1),
-        providerKeyId: z.string().min(1),
+        providerKeyGroupId: z.string().min(1),
+        maxConcurrentTasks: z.number().int().min(1).max(15).default(10),
         quota: z.number().int().min(0).nullable()
       })
     ),
@@ -36,7 +38,8 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       });
       if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
 
-      await getAssignableProviderKey(c.env, body.providerKeyId);
+      assertMaxConcurrentTasksConfigAllowed("admin", body.maxConcurrentTasks);
+      await getAssignableProviderKeyGroup(c.env, body.providerKeyGroupId);
 
       const id = newId("adm");
       const timestamp = now();
@@ -50,7 +53,9 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
           nickname: body.nickname,
           role: "admin",
           createdBy: c.get("user").id,
-          preferredProviderKeyId: body.providerKeyId,
+          preferredProviderKeyId: null,
+          providerKeyGroupId: body.providerKeyGroupId,
+          maxConcurrentTasks: body.maxConcurrentTasks,
           locale: "zh-CN",
           status: "active",
           createdAt: timestamp,
@@ -62,11 +67,6 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         allocatedQuota: body.quota,
         usedQuota: 0,
         updatedAt: timestamp
-      });
-      await getDb(c.env).insert(userProviderKeys).values({
-        userId: id,
-        providerKeyId: body.providerKeyId,
-        assignedAt: timestamp
       });
       return c.json({ id }, 201);
     }
@@ -81,13 +81,16 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         nickname: users.nickname,
         status: users.status,
         preferredProviderKeyId: users.preferredProviderKeyId,
+        providerKeyGroupId: users.providerKeyGroupId,
+        providerKeyGroupName: providerKeyGroups.name,
+        providerKeyGroupProviderId: providerKeyGroups.providerId,
+        maxConcurrentTasks: users.maxConcurrentTasks,
         allocatedQuota: quotas.allocatedQuota,
-        usedQuota: quotas.usedQuota,
-        providerKeyId: userProviderKeys.providerKeyId
+        usedQuota: quotas.usedQuota
       })
       .from(users)
       .leftJoin(quotas, eq(quotas.userId, users.id))
-      .leftJoin(userProviderKeys, eq(userProviderKeys.userId, users.id))
+      .leftJoin(providerKeyGroups, eq(providerKeyGroups.id, users.providerKeyGroupId))
       .where(eq(users.role, "admin"))
       .orderBy(desc(users.createdAt));
     return c.json({ items: rows });
@@ -100,7 +103,8 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       z.object({
         nickname: z.string().min(1).optional(),
         status: z.enum(["active", "disabled"]).optional(),
-        providerKeyId: z.string().min(1).optional(),
+        providerKeyGroupId: z.string().min(1).optional(),
+        maxConcurrentTasks: z.number().int().min(1).max(15).optional(),
         quota: z.number().int().min(0).nullable().optional(),
         password: z.string().min(8).optional()
       })
@@ -111,21 +115,30 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       const timestamp = now();
       const admin = await getDb(c.env).query.users.findFirst({ where: eq(users.id, adminId) });
       if (!admin || admin.role !== "admin") throw appError("NOT_FOUND", "Admin not found");
-      let changedProviderKeyId: string | null = null;
-      if (body.providerKeyId !== undefined && body.providerKeyId !== admin.preferredProviderKeyId) {
-        await getAssignableProviderKey(c.env, body.providerKeyId);
-        changedProviderKeyId = body.providerKeyId;
+      let changedProviderKeyGroupId: string | null = null;
+      if (body.maxConcurrentTasks !== undefined) {
+        assertMaxConcurrentTasksConfigAllowed("admin", body.maxConcurrentTasks);
+      }
+      if (
+        body.providerKeyGroupId !== undefined &&
+        body.providerKeyGroupId !== admin.providerKeyGroupId
+      ) {
+        await getAssignableProviderKeyGroup(c.env, body.providerKeyGroupId);
+        changedProviderKeyGroupId = body.providerKeyGroupId;
       }
       const userUpdate: {
         nickname?: string;
         status?: "active" | "disabled";
-        preferredProviderKeyId?: string;
+        providerKeyGroupId?: string;
+        maxConcurrentTasks?: number;
         passwordHash?: string;
         updatedAt: number;
       } = { updatedAt: timestamp };
       if (body.nickname !== undefined) userUpdate.nickname = body.nickname;
       if (body.status !== undefined) userUpdate.status = body.status;
-      if (changedProviderKeyId) userUpdate.preferredProviderKeyId = changedProviderKeyId;
+      if (changedProviderKeyGroupId) userUpdate.providerKeyGroupId = changedProviderKeyGroupId;
+      if (body.maxConcurrentTasks !== undefined)
+        userUpdate.maxConcurrentTasks = body.maxConcurrentTasks;
       if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
       if (Object.keys(userUpdate).length > 1) {
         await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, adminId));
@@ -139,30 +152,19 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
           .bind(adminId, body.quota ?? null, timestamp)
           .run();
       }
-      if (changedProviderKeyId) {
+      if (changedProviderKeyGroupId) {
         const managed = await getDb(c.env)
           .select({ id: users.id })
           .from(users)
           .where(sql`${users.id} = ${adminId} OR ${users.createdBy} = ${adminId}`);
         const managedUserIds = managed.map((row) => row.id);
-        // `resolveProviderKey` 优先读取 users.preferredProviderKeyId，改绑管理员时必须同步子用户偏好。
         await getDb(c.env)
           .update(users)
-          .set({ preferredProviderKeyId: changedProviderKeyId, updatedAt: timestamp })
+          .set({
+            providerKeyGroupId: changedProviderKeyGroupId,
+            updatedAt: timestamp
+          })
           .where(inArray(users.id, managedUserIds));
-        for (const row of managed) {
-          await c.env.DB.prepare(
-            `INSERT INTO user_provider_keys (user_id, provider_key_id, assigned_at)
-             VALUES (?1, ?2, ?3)
-             ON CONFLICT(user_id) DO UPDATE SET provider_key_id = ?2, assigned_at = ?3`
-          )
-            .bind(row.id, changedProviderKeyId, timestamp)
-            .run();
-        }
-        await getDb(c.env)
-          .update(providerKeys)
-          .set({ ownerAdminId: adminId, updatedAt: timestamp })
-          .where(eq(providerKeys.id, changedProviderKeyId));
       }
       await audit(c.env, {
         actorId: c.get("user").id,
@@ -174,4 +176,8 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       return c.json({ ok: true });
     }
   );
+}
+
+async function getAssignableProviderKeyGroup(env: Cloudflare.Env, groupId: string) {
+  await resolveProviderKeyGroup(env, groupId);
 }

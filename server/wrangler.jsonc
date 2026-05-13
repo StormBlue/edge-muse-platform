@@ -81,6 +81,10 @@
       {
         "name": "TASK_ROOM",
         "class_name": "TaskRoom"
+      },
+      {
+        "name": "GENERATE_QUEUE",
+        "class_name": "GenerateQueue"
       }
     ]
   },
@@ -88,6 +92,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["TaskRoom"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["GenerateQueue"]
     }
   ],
   "workflows": [

@@ -5,6 +5,7 @@ import { now } from "../id";
 import { stringifyJson } from "../json";
 import { logInfo, logWarn } from "../log";
 import { recordTaskResultGenerationEvent } from "../generationEntry";
+import { releaseGenerateTaskSlotNow } from "./queue";
 import { finishRunningTaskIfCurrent } from "./state";
 import { cleanupTaskGeneratedImagesExcept, loadTaskGeneratedImages } from "./taskImages";
 import type { AppBindings, GenerateParams, TaskStatus } from "../../types";
@@ -21,6 +22,7 @@ export async function recoverTaskFromPersistedImages(
       messageId: string;
       sessionId: string;
       userId: string;
+      providerKeyGroupId?: string | null;
     };
     params: GenerateParams;
     startedAt: number;
@@ -152,5 +154,9 @@ export async function recoverTaskFromPersistedImages(
       images
     });
   }
+  await releaseGenerateTaskSlotNow(env, {
+    taskId: input.task.id,
+    providerKeyGroupId: input.task.providerKeyGroupId
+  });
   return true;
 }

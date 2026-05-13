@@ -10,20 +10,43 @@ import type { WaitUntilContext } from "./types";
  * - 无 Workflow：直接 `waitUntil(runGenerateTask)`，便于本地/测试环境。
  */
 export function startGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskId: string): void {
+  ctx.waitUntil(startGenerateTaskIfAssigned(env, ctx, taskId));
+}
+
+async function startGenerateTaskIfAssigned(
+  env: AppBindings,
+  ctx: WaitUntilContext,
+  taskId: string
+): Promise<void> {
+  const assigned = await env.DB.prepare(
+    `SELECT provider_key_id, assigned_at
+     FROM tasks
+     WHERE id = ?1
+       AND status = 'queued'`
+  )
+    .bind(taskId)
+    .first<{ provider_key_id: string | null; assigned_at: number | null }>();
+  if (!assigned?.provider_key_id || !assigned.assigned_at) {
+    logWarn("task.dispatch.skipped_unassigned", {
+      taskId,
+      providerKeyId: assigned?.provider_key_id ?? null,
+      assignedAt: assigned?.assigned_at ?? null
+    });
+    return;
+  }
+
   const workflow = env.GEN_WORKFLOW;
   logInfo("task.dispatch.requested", { taskId, workflowConfigured: Boolean(workflow) });
   if (workflow && typeof workflow.create === "function") {
-    ctx.waitUntil(
-      startWorkflowGenerateTask(env, taskId).catch((error) => {
-        logError("task.workflow_start_failed", error, { taskId });
-        logWarn("task.dispatch.fallback_inline", { taskId });
-        return runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event));
-      })
-    );
+    await startWorkflowGenerateTask(env, taskId).catch((error) => {
+      logError("task.workflow_start_failed", error, { taskId });
+      logWarn("task.dispatch.fallback_inline", { taskId });
+      return runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event));
+    });
     return;
   }
   logInfo("task.dispatch.inline", { taskId });
-  ctx.waitUntil(runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event)));
+  await runGenerateTask(env, taskId, (event) => broadcastTaskEvent(env, taskId, event));
 }
 
 /**

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createGenerateTask } from "../src/lib/tasks";
 import { GENERATE_WORKFLOW_STEP_CONFIG } from "../src/lib/tasks/workflowConfig";
+import { MICU_PROVIDER_ID } from "../src/providers/catalog";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
 import type { AppBindings, GenerateParams } from "../src/types";
 
@@ -98,11 +99,11 @@ async function seedGenerationAccount(
      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, NULL)`
   )
     .bind(
-      "prv_task",
+      MICU_PROVIDER_ID,
       "Task Provider",
       "mock:",
       "gpt-image-2",
-      "openai_compatible",
+      "micu_images",
       JSON.stringify(["1024x1024"]),
       timestamp,
       timestamp
@@ -116,7 +117,7 @@ async function seedGenerationAccount(
   )
     .bind(
       "key_task",
-      "prv_task",
+      MICU_PROVIDER_ID,
       "Task Key",
       "gpt-image-2",
       "encrypted",

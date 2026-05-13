@@ -19,15 +19,15 @@ import {
   sanitizeAdminUsersPage
 } from "./adminUserRouteQuery";
 import {
-  fetchAdminProviderKeys,
   fetchAdminUserQuota,
   fetchAdminUsers,
-  fetchAdminUserUsage
+  fetchAdminUserUsage,
+  fetchSysadminProviderKeyGroups
 } from "./adminUserApi";
 import { buildAdminUserEditPayload, createAdminEditFormForUser } from "./adminUserPayloads";
 import type {
   AdminUser,
-  ProviderKeyRow,
+  ProviderKeyGroupRow,
   QuotaSnapshot,
   QuotaTransaction,
   UsageResponse
@@ -41,7 +41,7 @@ export function useAdminUsersController() {
   const { locale, t } = useI18n();
 
   const users = ref<AdminUser[]>([]);
-  const keys = ref<ProviderKeyRow[]>([]);
+  const groups = ref<ProviderKeyGroupRow[]>([]);
   const q = ref(queryString(route.query.q).trim());
   const status = ref<"" | "active" | "disabled">(readAdminUsersRouteStatus(route.query));
   const role = ref<"" | "admin" | "user">(readAdminUsersRouteRole(route.query));
@@ -84,10 +84,10 @@ export function useAdminUsersController() {
     statusLabel,
     roleLabel,
     formatDateTime,
-    keyLabel,
+    groupLabel,
     tableRowNumber
   } = useAdminUserLabels({
-    keys,
+    groups,
     locale,
     t,
     usage,
@@ -150,11 +150,12 @@ export function useAdminUsersController() {
     await load(targetPage);
   }
 
-  async function loadKeys() {
-    const body = await fetchAdminProviderKeys();
-    keys.value = body.items;
-    if (!form.value.providerKeyId && keys.value.length) {
-      form.value.providerKeyId = keys.value[0].id;
+  async function loadGroups() {
+    if (!auth.isSysadmin) return;
+    const body = await fetchSysadminProviderKeyGroups();
+    groups.value = body.items.filter((group) => group.enabled);
+    if (!form.value.providerKeyGroupId && groups.value.length) {
+      form.value.providerKeyGroupId = groups.value[0].id;
     }
   }
 
@@ -165,9 +166,9 @@ export function useAdminUsersController() {
 
   function openCreateDialog() {
     createSaving.value = false;
-    form.value = createDefaultAdminUserForm(keys.value);
+    form.value = createDefaultAdminUserForm(groups.value, auth.isSysadmin);
     createOpen.value = true;
-    if (!keys.value.length) void loadKeys();
+    if (auth.isSysadmin && !groups.value.length) void loadGroups();
   }
 
   async function createUser() {
@@ -175,12 +176,16 @@ export function useAdminUsersController() {
     createSaving.value = true;
     const createdRole = form.value.role;
     try {
-      await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(form.value) });
+      const payload = {
+        ...form.value,
+        providerKeyGroupId: auth.isSysadmin ? form.value.providerKeyGroupId || undefined : undefined
+      };
+      await apiFetch("/admin/users", { method: "POST", body: JSON.stringify(payload) });
       toast.success(
         createdRole === "admin" ? t("adminUsers.adminCreated") : t("adminUsers.userCreated")
       );
       createOpen.value = false;
-      form.value = createDefaultAdminUserForm(keys.value);
+      form.value = createDefaultAdminUserForm(groups.value, auth.isSysadmin);
       await load(1);
     } finally {
       createSaving.value = false;
@@ -192,7 +197,7 @@ export function useAdminUsersController() {
     editingUser.value = user;
     editForm.value = createAdminEditFormForUser(user);
     editOpen.value = true;
-    if (!keys.value.length) void loadKeys();
+    if (auth.isSysadmin && !groups.value.length) void loadGroups();
   }
 
   async function saveEdit() {
@@ -332,14 +337,14 @@ export function useAdminUsersController() {
 
   onMounted(() => {
     void load(page.value, { syncRoute: false });
-    void loadKeys();
+    void loadGroups();
   });
 
   return {
     auth,
     t,
     users,
-    keys,
+    groups,
     q,
     status,
     role,
@@ -392,7 +397,7 @@ export function useAdminUsersController() {
     statusLabel,
     roleLabel,
     formatDateTime,
-    keyLabel,
+    groupLabel,
     tableRowNumber
   };
 }

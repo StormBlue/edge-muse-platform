@@ -33,7 +33,7 @@ pnpm dev
 
 ## 架构一览
 
-单一 Worker 托管 API + SPA 静态资源；异步生图走 Workflow/`waitUntil`，状态经 Durable Object WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。生成入口开关、导航目标、`POST /api/generation/events` 与 `/api/me` 中的 `generationEntry` 见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
+单一 Worker 托管 API + SPA 静态资源；异步生图先入 D1 队列，再由 `GenerateQueue` Durable Object 按 provider key group 与 key 并发阈值调度到 Workflow/`waitUntil`，状态经 `TaskRoom` WebSocket 推送到浏览器。Provider 由 `request_format` 选择；内置米醋 API 与 Cubence 由 catalog 维护。生成入口开关、导航目标、`POST /api/generation/events` 与 `/api/me` 中的 `generationEntry` 见 [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md)。详见 [`ARCHITECTURE.md`](ARCHITECTURE.md)。
 
 ## 文档地图
 
@@ -63,15 +63,16 @@ pnpm dev
 ## 关键约定
 
 1. **类型与领域类型**：共享类型在 [`server/src/types.ts`](server/src/types.ts)；路由用 Hono `AppEnv`。
-2. **密钥**：上游 API Key 仅密文存 D1；解析与能力快照见 `lib/providerKeys.ts`；禁止把明文密钥打进日志或响应。
-3. **配额**：[`createGenerateTask`](server/src/lib/tasks/create.ts) 内按张数预扣（自 `lib/tasks.ts` 再导出）；非服务商错误的失败路径需按业务退还（见 `server/src/lib/tasks/` 与 facade [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts)）。
-4. **Provider 能力**：`openai_images`（Cubence）限制 chat、多参考图等，前后端须一致（`/api/me` 带 `providerCapabilities`）。
-5. **错误响应**：统一 `{ error: { code, message, details } }`（见 `docs/API.md`）。
-6. **迁移**：schema 变更走 `pnpm -F server db:gen`，提交 SQL 后再 `db:migrate:local` / remote。
+2. **密钥与分组**：上游 API Key 仅密文存 D1；admin/user 生成分配以 `users.provider_key_group_id` → `provider_key_groups` 为准，解析与能力快照见 `lib/providerKeyGroups.ts`；禁止把明文密钥打进日志或响应。
+3. **队列并发**：queued 任务在 `assigned_at` 为空时尚未占用 key slot；`provider_key_id` 可能只是兼容旧约束的占位值，调度器会在占用 slot 时覆盖为最终 key。key 并发统计看 `queued/running + assigned_at`，用户任务上限看 `queued + running`。
+4. **配额**：[`createGenerateTask`](server/src/lib/tasks/create.ts) 内按张数预扣（自 `lib/tasks.ts` 再导出）；非服务商错误的失败路径需按业务退还（见 `server/src/lib/tasks/` 与 facade [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts)）。
+5. **Provider 能力**：`openai_images`（Cubence）限制 chat、多参考图等，前后端须一致（`/api/me` 带 `providerCapabilities`）。
+6. **错误响应**：统一 `{ error: { code, message, details } }`（见 `docs/API.md`）。
+7. **迁移**：schema 变更走 `pnpm -F server db:gen`，提交 SQL 后再 `db:migrate:local` / remote。
 
 ## 常见任务
 
-- **新增 API**：在 `server/src/routes/` 增加路由并在 `index.ts` 挂载；补 Zod 校验与角色中间件。
+- **新增 API**：在 `server/src/routes/` 增加路由并在 `index.ts` 挂载；补 Zod 校验与角色中间件；OpenAPI 源也要同步。
 - **改 D1**：改 `server/src/db/schema.ts` → `db:gen` → 审 SQL → 迁移。
 - **新前端页面**：`web/src/router/index.ts` 注册路由；权限与布局参考现有 `views/`。
 - **接入新 provider 形态**：在 `providers/` 实现 `ImageProvider`，`registry.ts` 注册，`request_format` 与 catalog 策略与运维文档同步。

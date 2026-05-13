@@ -6,7 +6,10 @@ export type AdminUser = {
   role: "admin" | "user";
   status: "active" | "disabled";
   preferredProviderKeyId?: string | null;
-  providerKeyId?: string | null;
+  providerKeyGroupId?: string | null;
+  providerKeyGroupName?: string | null;
+  providerKeyGroupProviderId?: string | null;
+  maxConcurrentTasks?: number | null;
   allocatedQuota: number | null;
   usedQuota: number | null;
   createdAt?: number;
@@ -36,9 +39,10 @@ export type UsageResponse = {
   trend: Array<{ day: number; count: number }>;
 };
 
-export type ProviderKeyRow = {
+export type ProviderKeyGroupRow = {
   id: string;
-  label: string;
-  keyHint: string;
+  providerId: string;
+  name: string;
+  description?: string | null;
   enabled: boolean;
 };

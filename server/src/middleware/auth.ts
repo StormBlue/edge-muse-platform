@@ -29,7 +29,9 @@ export const optionalAuth = createMiddleware<AppEnv>(async (c, next) => {
         nickname: user.nickname,
         role: user.role,
         status: user.status,
-        preferredProviderKeyId: user.preferredProviderKeyId
+        preferredProviderKeyId: user.preferredProviderKeyId,
+        providerKeyGroupId: user.providerKeyGroupId,
+        maxConcurrentTasks: user.maxConcurrentTasks
       });
     }
   } catch {
@@ -60,7 +62,9 @@ export const requireAuth = createMiddleware<AppEnv>(async (c, next) => {
     nickname: user.nickname,
     role: user.role,
     status: user.status,
-    preferredProviderKeyId: user.preferredProviderKeyId
+    preferredProviderKeyId: user.preferredProviderKeyId,
+    providerKeyGroupId: user.providerKeyGroupId,
+    maxConcurrentTasks: user.maxConcurrentTasks
   });
   return next();
 });

@@ -17,8 +17,8 @@ All paths are under `/api`.
 | Prompt assistant | `POST /prompt-assistant/turn`                                                                                                                       |
 | Prompt cases     | `GET /prompt-cases`, `GET /prompt-cases/:id`, `/sysadmin/prompt-cases*`                                                                             |
 | Announcements    | `/announcements*`, `/sysadmin/announcements*`                                                                                                       |
-| Admin            | `/admin/provider-keys`, `/admin/users`, quota, usage, and manual user password reset endpoints                                                      |
-| Sysadmin         | `/sysadmin/providers`, `/sysadmin/provider-keys`, `/sysadmin/generation-entry`, admins, dashboard, users, session inspection, preferences, settings |
+| Admin            | `/admin/users`, quota, usage, manual user password reset endpoints; `/admin/provider-keys` remains a legacy read-only compatibility surface         |
+| Sysadmin         | `/sysadmin/providers`, `/sysadmin/provider-keys`, `/sysadmin/provider-key-groups`, `/sysadmin/generation-entry`, admins, dashboard, users, sessions |
 
 Account provisioning is manual only: sysadmins create admins with passwords, and admins create users with passwords. There is no public signup, forgot-password, reset-token, or invite-email API.
 
@@ -42,6 +42,9 @@ Authentication notes:
 - `GET /captcha/altcha/challenge` is only available when the active regional provider is `altcha`. It is anonymously rate-limited and returns an ALTCHA Widget v3 native `SHA-256` challenge: `{ parameters: { algorithm, cost, data: { difficulty }, expiresAt, keyLength, keyPrefix, nonce, salt }, signature }`.
 - `POST /auth/login` accepts `captcha`: `{ provider: "tencent", ticket, randstr }`, `{ provider: "turnstile", token }`, `{ provider: "altcha", payload }`, or `{ provider: "disabled" }`. The legacy `turnstileToken` field is still accepted as a Turnstile proof for compatibility.
 - Admin endpoints require role `admin` or `sysadmin`; sysadmin endpoints require role `sysadmin`.
+- Sysadmins create provider keys with `maxConcurrency` and arrange them into provider key groups through `/sysadmin/provider-key-groups`; each group contains sorted keys from one provider only.
+- Admin/user generation assignment uses `providerKeyGroupId`, not a single provider key id. Sysadmins assign a key group to each admin; an admin-created user inherits that admin's group. User-level active generation limits are `queued + running`: admin default 10 max 15, user default 5 max 10, sysadmin unlimited.
+- `POST /generate` creates a queued task and returns `202` immediately. The provider key is selected later by the group queue; if no group/key is available the request returns `PROVIDER_ERROR`.
 - `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded` or `failed`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.
 

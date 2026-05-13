@@ -7,6 +7,7 @@ import { logError, logInfo, logWarn } from "../log";
 import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { refundQuota } from "../quota";
 import { notifyTaskEvent } from "./events";
+import { releaseGenerateTaskSlotNow } from "./queue";
 import { markGenerateTaskFailed } from "./state";
 import { loadTaskGeneratedImages } from "./taskImages";
 import { logSlowTask } from "./timing";
@@ -118,5 +119,9 @@ export async function failGenerateTask(
     task: { id: taskId, status: "failed" },
     error: { code, message },
     images: preservedImages
+  });
+  await releaseGenerateTaskSlotNow(env, {
+    taskId,
+    providerKeyGroupId: task.providerKeyGroupId
   });
 }

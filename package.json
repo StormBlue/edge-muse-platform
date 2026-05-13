@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -F server test && pnpm -F web test",
     "prepare": "husky"
   },
   "devDependencies": {

@@ -20,6 +20,7 @@ export { startGenerateTask } from "./tasks/dispatch";
 export { broadcastTaskEvent } from "./tasks/events";
 export { failGenerateTask } from "./tasks/failure";
 export { assertProviderSupportsGenerateParams } from "./tasks/providerParams";
+export { enqueueGenerateTask, releaseGenerateTaskSlot } from "./tasks/queue";
 export { orderRowsByImageIds } from "./tasks/references";
 export {
   failTimedOutGenerateTaskIfNeeded,

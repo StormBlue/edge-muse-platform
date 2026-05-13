@@ -10,7 +10,7 @@ flowchart LR
   Worker --> D1["D1 + Drizzle\nserver/src/db/"]
   Worker --> R2["私有 R2\nserver/src/lib/r2.ts"]
   Worker --> KV["KV\n限流 / JWT 黑名单 / 缓存"]
-  Worker --> DO["Durable Object\nserver/src/do/TaskRoom.ts"]
+  Worker --> DO["Durable Objects\nTaskRoom + GenerateQueue"]
   Worker --> WF["Workflow\nserver/src/workflows/GenerateImage.ts"]
   WF --> Provider["Provider 适配器\nserver/src/providers/"]
   WF --> R2
@@ -31,7 +31,7 @@ flowchart LR
 - **单一 Worker** 同时提供：`/api/*` REST、任务 WebSocket（见 [`server/src/index.ts`](server/src/index.ts) 注释）、以及构建后的 SPA（Workers Static Assets）。
 - **D1** 存用户、配额、会话、消息、任务、服务商元数据、密钥密文、审计等（[`server/src/db/schema.ts`](server/src/db/schema.ts)）。
 - **R2** 私有；图片仅通过鉴权后的 [`server/src/routes/images.ts`](server/src/routes/images.ts) 等路径读出。
-- **Durable Objects**（`TaskRoom`）按任务维护 WebSocket 房间与最新任务状态。
+- **Durable Objects**：`TaskRoom` 按任务维护 WebSocket 房间；`GenerateQueue` 按 provider key group 串行调度 key slot。
 - **Workflow** `GenerateImage` 承载长耗时生图路径并回写 D1/R2。
 
 ## Provider 与多服务商
@@ -40,7 +40,9 @@ flowchart LR
 - **`openai_compatible`**：米醋 API 等 Responses/兼容路径（[`server/src/providers/openai-compatible.ts`](server/src/providers/openai-compatible.ts)）。
 - **`openai_images`**：OpenAI Images 形态，用于 Cubence 等（[`server/src/providers/openai-images.ts`](server/src/providers/openai-images.ts)）——文生图 `/v1/images/generations`，图生图 multipart `/v1/images/edits`。
 - **内置服务商目录**：[`server/src/providers/catalog.ts`](server/src/providers/catalog.ts) 自动补齐/恢复「米醋API」与 Cubence 元数据；独立「服务商管理页」已移除，密钥在系统管理 → 密钥中创建。
-- **密钥解析**：[`server/src/lib/providerKeys.ts`](server/src/lib/providerKeys.ts)——用户须具备**明确**偏好密钥或 `user_provider_keys` 绑定；**无**「全局最新 key」兜底。
+- **密钥分组**：sysadmin 在 [`/api/sysadmin/provider-key-groups`](server/src/routes/sysadmin/keyGroups.ts) 中把同一 provider 的多把 key 排序成 group；每把 key 有 `max_concurrency`。
+- **密钥解析**：[`server/src/lib/providerKeyGroups.ts`](server/src/lib/providerKeyGroups.ts) 以 `users.provider_key_group_id` 为权威来源；旧 `user_provider_keys` 只在用户尚无 group 时自愈为 `pkg_<keyId>` 兼容 group。**无**「全局最新 key」兜底。
+- **调度并发**：[`server/src/do/GenerateQueue.ts`](server/src/do/GenerateQueue.ts) 按 group 串行选择未满载 key；所有 key 满载时任务保持 queued，等待终态 release、alarm 或恢复扫描继续推进。
 
 ## 生图任务管线（模块化）
 
@@ -57,9 +59,10 @@ flowchart LR
 
 ## 请求与数据流（摘要）
 
-1. 浏览器调用 `POST /api/generate`（[`server/src/routes/generate.ts`](server/src/routes/generate.ts)）→ 创建任务、预扣配额、返回 `taskId` / WebSocket URL。
-2. Workflow 或 `waitUntil` 执行 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 导出的生成管线（实现见 `lib/tasks/*`）→ 调 provider → 图片入 R2 → 更新消息附件。
-3. 任务事件经 DO 广播，前端 [`web/src/composables/useTaskWebSocket.ts`](web/src/composables/useTaskWebSocket.ts) / [`web/src/stores/session.ts`](web/src/stores/session.ts) 合并状态。
+1. 浏览器调用 `POST /api/generate`（[`server/src/routes/generate.ts`](server/src/routes/generate.ts)）→ 创建 queued 任务、预扣配额、返回 `taskId` / WebSocket URL。
+2. `GenerateQueue` 按用户 key group 选择未满载 provider key，写入 `provider_key_id` / `assigned_at`，再启动 Workflow 或 `waitUntil`。
+3. Workflow 或 `waitUntil` 执行 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 导出的生成管线（实现见 `lib/tasks/*`）→ 调 provider → 图片入 R2 → 更新消息附件。
+4. 任务事件经 `TaskRoom` 广播，前端 [`web/src/composables/useTaskWebSocket.ts`](web/src/composables/useTaskWebSocket.ts) / [`web/src/stores/session.ts`](web/src/stores/session.ts) 合并状态；终态释放 slot 并唤醒同 group 队列。
 
 ## 横切关注点
 

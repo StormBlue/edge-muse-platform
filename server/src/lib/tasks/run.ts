@@ -8,6 +8,7 @@ import { logError, logInfo, logWarn, promptSummary } from "../log";
 import { notifyTaskEvent } from "./events";
 import { failGenerateTask } from "./failure";
 import { recoverTaskFromPersistedImages } from "./imageRecovery";
+import { releaseGenerateTaskSlotNow } from "./queue";
 import { resolveTaskRunContext } from "./runContext";
 import { runTaskGenerations } from "./runGenerations";
 import { resolveParallelGenerationsForRole } from "./runPolicy";
@@ -228,6 +229,10 @@ export async function runGenerateTask(
       ...baseLogFields,
       finalStatus,
       imageCount: finalImages.length
+    });
+    await releaseGenerateTaskSlotNow(env, {
+      taskId,
+      providerKeyGroupId: task.providerKeyGroupId
     });
   } catch (error) {
     if (error instanceof TaskClaimLostError) {

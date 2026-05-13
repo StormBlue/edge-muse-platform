@@ -13,6 +13,7 @@ import { registerSysadminAnnouncementRoutes } from "./sysadmin/announcements";
 import { registerSysadminAuditSessionRoutes } from "./sysadmin/auditSessions";
 import { registerSysadminDashboardRoutes } from "./sysadmin/dashboard";
 import { registerSysadminGenerationEntryRoutes } from "./sysadmin/generationEntry";
+import { registerSysadminKeyGroupRoutes } from "./sysadmin/keyGroups";
 import { registerSysadminPreferenceRoutes } from "./sysadmin/preferences";
 import { registerSysadminPromptCaseRoutes } from "./sysadmin/promptCases";
 import { registerSysadminProviderKeyRoutes } from "./sysadmin/providerKeys";
@@ -26,6 +27,7 @@ sysadminRoutes.use("*", requireAuth, requireRole("sysadmin"));
 
 registerSysadminProviderRoutes(sysadminRoutes);
 registerSysadminProviderKeyRoutes(sysadminRoutes);
+registerSysadminKeyGroupRoutes(sysadminRoutes);
 registerSysadminAdminRoutes(sysadminRoutes);
 registerSysadminDashboardRoutes(sysadminRoutes);
 registerSysadminUserRoutes(sysadminRoutes);

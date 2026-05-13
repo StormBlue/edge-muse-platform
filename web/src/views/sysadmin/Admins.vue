@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * 平台级「租户管理员」维护：与 UserList 中 role=admin 的下属用户不同，此处为 sysadmin 专用 CRUD。
- * 创建走 POST，编辑为差异 PATCH，密钥下拉与 Keys 管理页数据同源（仅 enabled）。
+ * 平台级租户管理员维护：sysadmin 分配 key group、配额池和管理员自身最大同时任务数。
  */
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -18,66 +17,72 @@ import {
 } from "@/components/ui/dialog";
 import { apiFetch } from "@/api/client";
 
-/** 列表行：不含密码；配额为租户分配给该管理员的池 */
 type AdminRow = {
   id: string;
   email: string;
   username: string;
   nickname: string;
   status: "active" | "disabled";
-  providerKeyId: string | null;
+  providerKeyGroupId: string | null;
+  providerKeyGroupName?: string | null;
+  providerKeyGroupProviderId?: string | null;
+  maxConcurrentTasks?: number | null;
   allocatedQuota: number | null;
   usedQuota: number | null;
 };
 
-type ProviderKeyRow = {
+type ProviderKeyGroupRow = {
   id: string;
-  label: string;
-  keyHint: string;
+  providerId: string;
+  name: string;
   enabled: boolean;
 };
-/** 与后端 PATCH 体一致：仅非空/有变更字段 */
+
 type AdminUpdatePayload = {
   nickname?: string;
   status?: "active" | "disabled";
-  providerKeyId?: string;
+  providerKeyGroupId?: string;
+  maxConcurrentTasks?: number;
   quota?: number | null;
   password?: string;
 };
 
 const admins = ref<AdminRow[]>([]);
-const keys = ref<ProviderKeyRow[]>([]);
+const groups = ref<ProviderKeyGroupRow[]>([]);
 const { t } = useI18n();
 const createOpen = ref(false);
 const editOpen = ref(false);
 const editing = ref<AdminRow | null>(null);
 const createSaving = ref(false);
 const editSaving = ref(false);
-/** 创建管理员：初配 email/username/password、默认额度与 provider */
 const form = ref({
   email: "",
   username: "",
   password: "",
   nickname: "",
-  providerKeyId: "",
+  providerKeyGroupId: "",
+  maxConcurrentTasks: 10,
   quota: 100
 });
 const editForm = ref({
   nickname: "",
   status: "active" as "active" | "disabled",
-  providerKeyId: "",
+  providerKeyGroupId: "",
+  maxConcurrentTasks: 10,
   quota: 100 as number | null,
   password: ""
 });
 
-/** 并行拉管理员与密钥；密钥筛 enabled 给下拉用 */
 async function load() {
-  const [adminBody, keyBody] = await Promise.all([
+  const [adminBody, groupBody] = await Promise.all([
     apiFetch<{ items: AdminRow[] }>("/sysadmin/admins"),
-    apiFetch<{ items: ProviderKeyRow[] }>("/sysadmin/provider-keys")
+    apiFetch<{ items: ProviderKeyGroupRow[] }>("/sysadmin/provider-key-groups")
   ]);
   admins.value = adminBody.items;
-  keys.value = keyBody.items.filter((key) => key.enabled);
+  groups.value = groupBody.items.filter((group) => group.enabled);
+  if (!form.value.providerKeyGroupId && groups.value[0]) {
+    form.value.providerKeyGroupId = groups.value[0].id;
+  }
 }
 
 function setCreateOpen(open: boolean) {
@@ -90,10 +95,18 @@ function setEditOpen(open: boolean) {
 
 function openCreate() {
   createSaving.value = false;
+  form.value = {
+    email: "",
+    username: "",
+    password: "",
+    nickname: "",
+    providerKeyGroupId: groups.value[0]?.id ?? "",
+    maxConcurrentTasks: 10,
+    quota: 100
+  };
   createOpen.value = true;
 }
 
-/** 新建租户管理员账号并刷新表 */
 async function create() {
   if (createSaving.value) return;
   createSaving.value = true;
@@ -101,35 +114,26 @@ async function create() {
     await apiFetch("/sysadmin/admins", { method: "POST", body: JSON.stringify(form.value) });
     toast.success(t("sysadmin.adminCreated"));
     createOpen.value = false;
-    form.value = {
-      email: "",
-      username: "",
-      password: "",
-      nickname: "",
-      providerKeyId: "",
-      quota: 100
-    };
     await load();
   } finally {
     createSaving.value = false;
   }
 }
 
-/** 编辑时 password 留空表示不改 */
 function openEdit(admin: AdminRow) {
   editSaving.value = false;
   editing.value = admin;
   editForm.value = {
     nickname: admin.nickname,
     status: admin.status,
-    providerKeyId: admin.providerKeyId ?? "",
+    providerKeyGroupId: admin.providerKeyGroupId ?? "",
+    maxConcurrentTasks: admin.maxConcurrentTasks ?? 10,
     quota: admin.allocatedQuota,
     password: ""
   };
   editOpen.value = true;
 }
 
-/** 仅提交变更字段；password 非空才更新哈希 */
 async function saveEdit() {
   if (!editing.value || editSaving.value) return;
   editSaving.value = true;
@@ -137,8 +141,14 @@ async function saveEdit() {
   const payload: AdminUpdatePayload = {};
   if (editForm.value.nickname !== admin.nickname) payload.nickname = editForm.value.nickname;
   if (editForm.value.status !== admin.status) payload.status = editForm.value.status;
-  if (editForm.value.providerKeyId && editForm.value.providerKeyId !== admin.providerKeyId) {
-    payload.providerKeyId = editForm.value.providerKeyId;
+  if (
+    editForm.value.providerKeyGroupId &&
+    editForm.value.providerKeyGroupId !== admin.providerKeyGroupId
+  ) {
+    payload.providerKeyGroupId = editForm.value.providerKeyGroupId;
+  }
+  if (editForm.value.maxConcurrentTasks !== (admin.maxConcurrentTasks ?? 10)) {
+    payload.maxConcurrentTasks = editForm.value.maxConcurrentTasks;
   }
   if (editForm.value.quota !== admin.allocatedQuota) payload.quota = editForm.value.quota;
   if (editForm.value.password) payload.password = editForm.value.password;
@@ -160,10 +170,13 @@ async function saveEdit() {
   }
 }
 
-/** 表格中 provider 列：label + hint，未绑定时显示未分配 */
-function keyLabel(id: string | null) {
-  const key = keys.value.find((item) => item.id === id);
-  return key ? `${key.label} (${key.keyHint})` : id || t("sysadmin.unassigned");
+function groupLabel(admin: AdminRow) {
+  if (admin.providerKeyGroupName) return admin.providerKeyGroupName;
+  if (!admin.providerKeyGroupId) return t("sysadmin.unassigned");
+  return (
+    groups.value.find((item) => item.id === admin.providerKeyGroupId)?.name ??
+    admin.providerKeyGroupId
+  );
 }
 
 onMounted(load);
@@ -179,11 +192,12 @@ onMounted(load);
     </div>
 
     <div class="panel overflow-hidden">
-      <table class="w-full text-sm">
+      <table class="w-full min-w-[56rem] text-sm">
         <thead class="bg-muted text-left text-muted-foreground">
           <tr>
             <th class="p-3">{{ t("sysadmin.adminsTitle") }}</th>
-            <th class="p-3">{{ t("sysadmin.providerKey") }}</th>
+            <th class="p-3">{{ t("sysadmin.providerKeyGroup") }}</th>
+            <th class="p-3">{{ t("adminUsers.maxConcurrentTasks") }}</th>
             <th class="p-3">{{ t("common.quota") }}</th>
             <th class="p-3">{{ t("adminUsers.status") }}</th>
             <th class="p-3"></th>
@@ -195,7 +209,13 @@ onMounted(load);
               <p class="font-medium">{{ admin.nickname }}</p>
               <p class="text-xs text-muted-foreground">{{ admin.username }} · {{ admin.email }}</p>
             </td>
-            <td class="p-3">{{ keyLabel(admin.providerKeyId) }}</td>
+            <td class="p-3">
+              <p>{{ groupLabel(admin) }}</p>
+              <p class="text-xs text-muted-foreground">
+                {{ admin.providerKeyGroupProviderId ?? admin.providerKeyGroupId ?? "-" }}
+              </p>
+            </td>
+            <td class="p-3">{{ admin.maxConcurrentTasks ?? 10 }}</td>
             <td class="p-3">{{ admin.usedQuota ?? 0 }} / {{ admin.allocatedQuota ?? "∞" }}</td>
             <td class="p-3">
               {{ admin.status === "active" ? t("common.enabled") : t("common.disabled") }}
@@ -234,8 +254,8 @@ onMounted(load);
               v-model="form.password"
               class="ui-field mt-1.5 h-10 px-3"
               minlength="8"
-              type="password"
               required
+              type="password"
             />
           </label>
           <label class="block text-sm font-medium">
@@ -243,13 +263,23 @@ onMounted(load);
             <input v-model="form.email" class="ui-field mt-1.5 h-10 px-3" type="email" />
           </label>
           <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKey") }}</span>
-            <select v-model="form.providerKeyId" class="ui-field mt-1.5 h-10 px-3" required>
-              <option value="">{{ t("sysadmin.selectKey") }}</option>
-              <option v-for="key in keys" :key="key.id" :value="key.id">
-                {{ key.label }} ({{ key.keyHint }})
+            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+            <select v-model="form.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3" required>
+              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
+              <option v-for="group in groups" :key="group.id" :value="group.id">
+                {{ group.name }}
               </option>
             </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+            <input
+              v-model.number="form.maxConcurrentTasks"
+              class="ui-field mt-1.5 h-10 px-3"
+              max="15"
+              min="1"
+              type="number"
+            />
           </label>
           <label class="block text-sm font-medium">
             <span>{{ t("adminUsers.initialQuota") }}</span>
@@ -288,13 +318,23 @@ onMounted(load);
             </select>
           </label>
           <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKey") }}</span>
-            <select v-model="editForm.providerKeyId" class="ui-field mt-1.5 h-10 px-3">
-              <option value="">{{ t("sysadmin.keepUnassigned") }}</option>
-              <option v-for="key in keys" :key="key.id" :value="key.id">
-                {{ key.label }} ({{ key.keyHint }})
+            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+            <select v-model="editForm.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3">
+              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
+              <option v-for="group in groups" :key="group.id" :value="group.id">
+                {{ group.name }}
               </option>
             </select>
+          </label>
+          <label class="block text-sm font-medium">
+            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+            <input
+              v-model.number="editForm.maxConcurrentTasks"
+              class="ui-field mt-1.5 h-10 px-3"
+              max="15"
+              min="1"
+              type="number"
+            />
           </label>
           <label class="block text-sm font-medium">
             <span>{{ t("sysadmin.totalQuota") }}</span>

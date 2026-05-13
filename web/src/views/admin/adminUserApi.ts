@@ -1,7 +1,7 @@
 import { apiFetch } from "@/api/client";
 import type {
   AdminUser,
-  ProviderKeyRow,
+  ProviderKeyGroupRow,
   QuotaSnapshot,
   QuotaTransaction,
   UsageResponse
@@ -31,8 +31,8 @@ export async function fetchAdminUsers(input: {
   }>(`/admin/users${params.size ? `?${params.toString()}` : ""}`);
 }
 
-export function fetchAdminProviderKeys() {
-  return apiFetch<{ items: ProviderKeyRow[] }>("/admin/provider-keys");
+export function fetchSysadminProviderKeyGroups() {
+  return apiFetch<{ items: ProviderKeyGroupRow[] }>("/sysadmin/provider-key-groups");
 }
 
 export function fetchAdminUserQuota(userId: string, cursor: number | null) {

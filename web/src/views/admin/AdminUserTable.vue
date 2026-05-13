@@ -32,6 +32,8 @@ const emit = defineEmits<{
             <th class="w-16 p-3">{{ t("common.sequence") }}</th>
             <th class="p-3">{{ t("adminUsers.user") }}</th>
             <th class="p-3">{{ t("adminUsers.role") }}</th>
+            <th class="p-3">{{ t("sysadmin.providerKeyGroup") }}</th>
+            <th class="p-3">{{ t("adminUsers.maxConcurrentTasks") }}</th>
             <th class="p-3">{{ t("common.quota") }}</th>
             <th class="p-3">{{ t("adminUsers.lastLoginAt") }}</th>
             <th class="p-3">{{ t("adminUsers.lastGenerationAt") }}</th>
@@ -41,7 +43,7 @@ const emit = defineEmits<{
         </thead>
         <tbody>
           <tr v-if="loading && !users.length" class="border-t border-border">
-            <td class="p-6 text-center text-muted-foreground" colspan="8">
+            <td class="p-6 text-center text-muted-foreground" colspan="10">
               <span class="inline-flex items-center gap-2">
                 <Loader2 class="h-4 w-4 animate-spin" />
                 {{ t("common.loading") }}
@@ -49,7 +51,7 @@ const emit = defineEmits<{
             </td>
           </tr>
           <tr v-else-if="!users.length" class="border-t border-border">
-            <td class="p-6 text-center text-muted-foreground" colspan="8">
+            <td class="p-6 text-center text-muted-foreground" colspan="10">
               {{ t("adminUsers.noUsers") }}
             </td>
           </tr>
@@ -67,6 +69,13 @@ const emit = defineEmits<{
               </button>
             </td>
             <td class="p-3">{{ roleLabel(user.role) }}</td>
+            <td class="p-3">
+              <p class="max-w-48 truncate">{{ user.providerKeyGroupName ?? "-" }}</p>
+              <p class="max-w-48 truncate text-xs text-muted-foreground">
+                {{ user.providerKeyGroupProviderId ?? user.providerKeyGroupId ?? "-" }}
+              </p>
+            </td>
+            <td class="p-3">{{ user.maxConcurrentTasks ?? (user.role === "admin" ? 10 : 5) }}</td>
             <td class="p-3">{{ user.usedQuota ?? 0 }} / {{ user.allocatedQuota ?? "∞" }}</td>
             <td class="p-3 text-muted-foreground">{{ formatDateTime(user.lastLoginAt) }}</td>
             <td class="p-3">

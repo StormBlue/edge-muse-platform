@@ -22,6 +22,7 @@ function providerKey(id: string): ProviderKey {
     keyHint: "test",
     allocatedQuota: null,
     usedQuota: 0,
+    maxConcurrency: 1,
     ownerAdminId: null,
     enabled: true,
     createdAt: 0,

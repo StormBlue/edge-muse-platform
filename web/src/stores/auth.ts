@@ -18,7 +18,9 @@ export type Role = "sysadmin" | "admin" | "user";
 export type ProviderCapabilities = {
   providerId: string;
   providerName: string;
-  providerKeyId: string;
+  providerKeyId: string | null;
+  providerKeyGroupId: string | null;
+  providerKeyGroupName: string | null;
   requestFormat: string;
   model: string;
   supportedModes: Array<"text2image" | "image2image">;
@@ -34,6 +36,8 @@ export type User = {
   role: Role;
   status: string;
   preferredProviderKeyId?: string | null;
+  providerKeyGroupId?: string | null;
+  maxConcurrentTasks?: number | null;
 };
 /** 剩余额度等；`allocatedQuota` 为 null 表示不限制（仅后端 sysadmin 语义） */
 export type Quota = {
