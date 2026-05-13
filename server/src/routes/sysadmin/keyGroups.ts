@@ -11,7 +11,10 @@ import {
 import { audit } from "../../lib/audit";
 import { appError } from "../../lib/errors";
 import { newId, now } from "../../lib/id";
-import { assertProviderKeyGroupContainsKeysFromSameProvider } from "../../lib/providerKeyGroups";
+import {
+  assertProviderKeyGroupContainsKeysFromSameProvider,
+  assertProviderKeysNotUsedByOtherGroups
+} from "../../lib/providerKeyGroups";
 import { ensureBuiltInProviders, isProviderKeyAssignable } from "../../providers/catalog";
 import type { SysadminRouter } from "./common";
 
@@ -73,6 +76,7 @@ export function registerSysadminKeyGroupRoutes(sysadminRoutes: SysadminRouter) {
       providerId: body.providerId,
       providerKeyIds: keyIds
     });
+    await assertProviderKeysNotUsedByOtherGroups(c.env, { providerKeyIds: keyIds });
 
     const timestamp = now();
     const groupId = newId("pkg");
@@ -244,6 +248,10 @@ async function replaceGroupMembers(
 ): Promise<void> {
   await assertProviderKeyGroupContainsKeysFromSameProvider(env, {
     providerId: input.providerId,
+    providerKeyIds: input.keyIds
+  });
+  await assertProviderKeysNotUsedByOtherGroups(env, {
+    groupId: input.groupId,
     providerKeyIds: input.keyIds
   });
   await getDb(env)

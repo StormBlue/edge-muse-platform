@@ -12,12 +12,9 @@
  *   Client <--202-- { taskId, wsUrl, ... }
  *   Client --WS /ws/task/taskId--> TaskRoom（后续事件由 Workflow/runGenerateTask → broadcastTaskEvent → DO）
  */
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
-import { getDb } from "../db/client";
-import { tasks } from "../db/schema";
 import { assertTaskAccess } from "../lib/access";
 import { audit } from "../lib/audit";
 import { appError } from "../lib/errors";
@@ -36,6 +33,7 @@ import {
   enqueueGenerateTask,
   releaseGenerateTaskSlot
 } from "../lib/tasks";
+import { cancelQueuedGenerateTask } from "../lib/tasks/state";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import type { AppContext, AppEnv } from "../types";
@@ -235,11 +233,26 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
   if (task.status !== "queued")
     throw appError("VALIDATION_ERROR", "Only queued tasks can be cancelled");
-  await getDb(c.env)
-    .update(tasks)
-    .set({ status: "cancelled", finishedAt: Date.now() })
-    .where(eq(tasks.id, task.id));
-  releaseGenerateTaskSlot(c.env, c.executionCtx, {
+  const cancelled = await cancelQueuedGenerateTask(c.env, {
+    taskId: task.id,
+    messageId: task.messageId,
+    sessionId: task.sessionId,
+    providerKeyGroupId: task.providerKeyGroupId
+  });
+  if (!cancelled) {
+    throw appError("VALIDATION_ERROR", "Only queued tasks can be cancelled");
+  }
+  const executionCtx =
+    "executionCtx" in c
+      ? (() => {
+          try {
+            return c.executionCtx;
+          } catch {
+            return null;
+          }
+        })()
+      : null;
+  releaseGenerateTaskSlot(c.env, executionCtx, {
     taskId: task.id,
     providerKeyGroupId: task.providerKeyGroupId
   });

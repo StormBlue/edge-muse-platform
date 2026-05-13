@@ -5,7 +5,8 @@ import { adminRoutes } from "../src/routes/admin";
 import { generateRoutes } from "../src/routes/generate";
 import { sysadminRoutes } from "../src/routes/sysadmin";
 import { signJwt } from "../src/lib/jwt";
-import { MICU_PROVIDER_ID } from "../src/providers/catalog";
+import { cancelQueuedGenerateTask } from "../src/lib/tasks/state";
+import { CUBENCE_PROVIDER_ID, MICU_PROVIDER_ID } from "../src/providers/catalog";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
 import type { ApiErrorBody, AppBindings, AppEnv, UserRole } from "../src/types";
 
@@ -62,7 +63,7 @@ describe("provider key group API permissions", () => {
         body: JSON.stringify({
           providerId: MICU_PROVIDER_ID,
           name: "Created Group",
-          keyIds: ["key_perm_extra", "key_perm"]
+          keyIds: ["key_perm_new_b", "key_perm_new_a"]
         })
       },
       context.env
@@ -79,9 +80,30 @@ describe("provider key group API permissions", () => {
       .bind(body.id)
       .all<{ provider_key_id: string; sort_order: number }>();
     expect(members.results).toEqual([
-      { provider_key_id: "key_perm_extra", sort_order: 0 },
-      { provider_key_id: "key_perm", sort_order: 1 }
+      { provider_key_id: "key_perm_new_b", sort_order: 0 },
+      { provider_key_id: "key_perm_new_a", sort_order: 1 }
     ]);
+  });
+
+  it("rejects provider keys reused by another key group", async () => {
+    const response = await app.request(
+      "/api/sysadmin/provider-key-groups",
+      {
+        method: "POST",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({
+          providerId: MICU_PROVIDER_ID,
+          name: "Duplicate Key Group",
+          keyIds: ["key_perm"]
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toContain("already used");
   });
 
   it("rejects cross-provider key group members", async () => {
@@ -102,6 +124,25 @@ describe("provider key group API permissions", () => {
 
     expect(response.status).toBe(400);
     expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects changing provider for a key that belongs to a group", async () => {
+    const response = await app.request(
+      "/api/sysadmin/provider-keys/key_perm",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({
+          providerId: CUBENCE_PROVIDER_ID
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toContain("grouped key");
   });
 
   it("allows an admin to update only a managed user max concurrent task limit", async () => {
@@ -175,6 +216,82 @@ describe("provider key group API permissions", () => {
     expect(body.error.code).toBe("PROVIDER_ERROR");
     expect(body.error.message).toContain("No provider key");
   });
+
+  it("cancels only tasks that are still queued and syncs assistant message status", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_cancel",
+      messageId: "msg_cancel",
+      status: "queued"
+    });
+
+    const response = await app.request(
+      "/api/tasks/tsk_cancel/cancel",
+      { method: "POST", headers: await jsonHeaders("usr_managed") },
+      context.env
+    );
+
+    expect(response.status).toBe(200);
+    const row = await context.env.DB.prepare(
+      `SELECT tasks.status AS task_status, messages.status AS message_status
+       FROM tasks
+       INNER JOIN messages ON messages.id = tasks.message_id
+       WHERE tasks.id = 'tsk_cancel'`
+    ).first<{ task_status: string; message_status: string }>();
+    expect(row).toEqual({ task_status: "cancelled", message_status: "cancelled" });
+  });
+
+  it("does not cancel a task that changed status after access check", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_cancel_race",
+      messageId: "msg_cancel_race",
+      status: "running"
+    });
+
+    const response = await app.request(
+      "/api/tasks/tsk_cancel_race/cancel",
+      { method: "POST", headers: await jsonHeaders("usr_managed") },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    const task = await context.env.DB.prepare(
+      "SELECT status FROM tasks WHERE id = 'tsk_cancel_race'"
+    ).first<{ status: string }>();
+    expect(task?.status).toBe("running");
+  });
+
+  it("preserves a task that races from queued to running before cancellation is persisted", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_cancel_stale_snapshot",
+      messageId: "msg_cancel_stale_snapshot",
+      status: "queued"
+    });
+    await context.env.DB.prepare(
+      `UPDATE tasks
+       SET status = 'running', assigned_at = ?1, started_at = ?2, heartbeat_at = ?2
+       WHERE id = 'tsk_cancel_stale_snapshot'`
+    )
+      .bind(1_778_000_000_100, 1_778_000_000_200)
+      .run();
+
+    const cancelled = await cancelQueuedGenerateTask(context.env, {
+      taskId: "tsk_cancel_stale_snapshot",
+      messageId: "msg_cancel_stale_snapshot",
+      sessionId: "ses_tsk_cancel_stale_snapshot",
+      providerKeyGroupId: "grp_perm"
+    });
+
+    expect(cancelled).toBeNull();
+    const row = await context.env.DB.prepare(
+      `SELECT tasks.status AS task_status, messages.status AS message_status
+       FROM tasks
+       INNER JOIN messages ON messages.id = tasks.message_id
+       WHERE tasks.id = 'tsk_cancel_stale_snapshot'`
+    ).first<{ task_status: string; message_status: string }>();
+    expect(row).toEqual({ task_status: "running", message_status: "queued" });
+  });
 });
 
 async function jsonHeaders(userId: string): Promise<HeadersInit> {
@@ -234,15 +351,17 @@ async function seedPermissionFixture(env: AppBindings) {
     .run();
   await seedProviderKey(env, "key_perm", timestamp);
   await seedProviderKey(env, "key_perm_extra", timestamp + 1);
+  await seedProviderKey(env, "key_perm_new_a", timestamp + 2);
+  await seedProviderKey(env, "key_perm_new_b", timestamp + 3);
   await env.DB.prepare(
     `INSERT INTO providers (
        id, name, base_url, default_model, request_format, supported_sizes,
        enabled, created_at, updated_at, deleted_at
-     ) VALUES ('openai_images', 'Cubence', 'mock:', 'gpt-image-2', 'openai_images', ?1, 1, ?2, ?2, NULL)`
+     ) VALUES (?1, 'Cubence', 'mock:', 'gpt-image-2', 'openai_images', ?2, 1, ?3, ?3, NULL)`
   )
-    .bind(JSON.stringify(["1024x1024"]), timestamp)
+    .bind(CUBENCE_PROVIDER_ID, JSON.stringify(["1024x1024"]), timestamp)
     .run();
-  await seedProviderKey(env, "key_other_provider", timestamp + 2, "openai_images");
+  await seedProviderKey(env, "key_other_provider", timestamp + 4, CUBENCE_PROVIDER_ID);
   await env.DB.prepare(
     `INSERT INTO provider_key_groups (
        id, provider_id, name, description, enabled, created_by, updated_by,
@@ -352,5 +471,50 @@ async function seedUser(
      VALUES (?1, 100, 0, ?2)`
   )
     .bind(input.id, timestamp)
+    .run();
+}
+
+async function seedSessionAndTask(
+  env: AppBindings,
+  input: { taskId: string; messageId: string; status: "queued" | "running" }
+) {
+  const timestamp = 1_778_000_000_000;
+  const sessionId = `ses_${input.taskId}`;
+  await env.DB.prepare(
+    `INSERT INTO sessions (
+       id, user_id, title, mode, provider_key_id, provider_key_group_id,
+       settings, created_at, updated_at, last_message_at, archived, deleted_at
+     ) VALUES (?1, 'usr_managed', ?1, 'text2image', 'key_perm', 'grp_perm',
+       ?2, ?3, ?3, ?3, 0, NULL)`
+  )
+    .bind(sessionId, JSON.stringify({ size: "1024x1024", n: 1 }), timestamp)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO messages (
+       id, session_id, role, prompt, reference_image_ids, attachments,
+       task_id, status, created_at, deleted_at
+     ) VALUES (?1, ?2, 'assistant', 'prompt', '[]', '[]', ?3, ?4, ?5, NULL)`
+  )
+    .bind(input.messageId, sessionId, input.taskId, input.status, timestamp)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO tasks (
+       id, session_id, message_id, user_id, provider_key_id, provider_key_group_id,
+       status, mode, params, error_code, error_msg, provider_request_id,
+       provider_raw_response, queued_at, assigned_at, started_at, heartbeat_at,
+       finished_at, retry_of
+     ) VALUES (?1, ?2, ?3, 'usr_managed', 'key_perm', 'grp_perm', ?4, 'text2image',
+       ?5, NULL, NULL, NULL, NULL, ?6, ?7, ?8, ?8, NULL, NULL)`
+  )
+    .bind(
+      input.taskId,
+      sessionId,
+      input.messageId,
+      input.status,
+      JSON.stringify({ prompt: "prompt", mode: "text2image", size: "1024x1024", n: 1 }),
+      timestamp,
+      input.status === "running" ? timestamp : null,
+      input.status === "running" ? timestamp + 1 : null
+    )
     .run();
 }

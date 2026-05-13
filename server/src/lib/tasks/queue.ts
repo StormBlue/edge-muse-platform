@@ -1,7 +1,13 @@
 import { logInfo } from "../log";
 import { startGenerateTask } from "./dispatch";
+import { assignQueuedTaskToPlaceholderProviderKey } from "./scheduler";
 import type { AppBindings } from "../../types";
 import type { WaitUntilContext } from "./types";
+
+function hasWaitUntil(ctx: unknown): ctx is WaitUntilContext {
+  if (!ctx || typeof ctx !== "object") return false;
+  return "waitUntil" in ctx && typeof (ctx as { waitUntil?: unknown }).waitUntil === "function";
+}
 
 /**
  * 任务入队门面。
@@ -27,14 +33,19 @@ export function enqueueGenerateTaskGroup(
 
 export function releaseGenerateTaskSlot(
   env: AppBindings,
-  ctx: WaitUntilContext,
+  ctx: WaitUntilContext | null | undefined,
   input: { taskId: string; providerKeyGroupId?: string | null }
 ): void {
   if (!input.providerKeyGroupId || !env.GENERATE_QUEUE) return;
   logInfo("task.queue.release_requested", input);
   const id = env.GENERATE_QUEUE.idFromName(input.providerKeyGroupId);
   const stub = env.GENERATE_QUEUE.get(id);
-  ctx.waitUntil(stub.release(input.taskId, input.providerKeyGroupId));
+  const release = stub.release(input.taskId, input.providerKeyGroupId);
+  if (hasWaitUntil(ctx)) {
+    ctx.waitUntil(release);
+    return;
+  }
+  void release.catch(() => undefined);
 }
 
 export async function releaseGenerateTaskSlotNow(
@@ -57,11 +68,14 @@ async function enqueueGenerateTaskAsync(
     .bind(taskId)
     .first<{ provider_key_group_id: string | null }>();
   if (!row?.provider_key_group_id || !env.GENERATE_QUEUE) {
+    const claimed = await assignQueuedTaskToPlaceholderProviderKey(env, { taskId });
     logInfo("task.queue.inline_fallback", {
       taskId,
       queueConfigured: Boolean(env.GENERATE_QUEUE),
-      providerKeyGroupId: row?.provider_key_group_id ?? null
+      providerKeyGroupId: row?.provider_key_group_id ?? null,
+      claimed
     });
+    if (!claimed) return;
     startGenerateTask(env, ctx, taskId);
     return;
   }

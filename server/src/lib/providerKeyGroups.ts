@@ -314,3 +314,27 @@ export async function assertProviderKeyGroupContainsKeysFromSameProvider(
     throw appError("VALIDATION_ERROR", "Provider key group members must belong to one provider");
   }
 }
+
+export async function assertProviderKeysNotUsedByOtherGroups(
+  env: AppBindings,
+  input: { groupId?: string; providerKeyIds: string[] }
+): Promise<void> {
+  if (!input.providerKeyIds.length) return;
+  const rows = await getDb(env)
+    .select({
+      groupId: providerKeyGroupMembers.groupId,
+      providerKeyId: providerKeyGroupMembers.providerKeyId
+    })
+    .from(providerKeyGroupMembers)
+    .innerJoin(providerKeyGroups, eq(providerKeyGroups.id, providerKeyGroupMembers.groupId))
+    .where(
+      and(
+        inArray(providerKeyGroupMembers.providerKeyId, input.providerKeyIds),
+        isNull(providerKeyGroups.deletedAt)
+      )
+    );
+  const conflict = rows.find((row) => row.groupId !== input.groupId);
+  if (conflict) {
+    throw appError("VALIDATION_ERROR", "Provider key is already used by another group");
+  }
+}

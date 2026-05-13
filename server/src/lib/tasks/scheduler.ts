@@ -103,9 +103,42 @@ export async function assignQueuedTaskToProviderKey(
          assigned_at = ?2
      WHERE id = ?3
        AND status = 'queued'
-       AND assigned_at IS NULL`
+       AND assigned_at IS NULL
+       AND (
+         SELECT COUNT(*)
+         FROM tasks active
+         WHERE active.provider_key_id = ?1
+           AND active.status IN ('queued', 'running')
+           AND active.assigned_at IS NOT NULL
+       ) < (
+         SELECT CASE
+           WHEN provider_keys.max_concurrency < 1 THEN 1
+           ELSE provider_keys.max_concurrency
+         END
+         FROM provider_keys
+         WHERE provider_keys.id = ?1
+           AND provider_keys.enabled = 1
+           AND provider_keys.deleted_at IS NULL
+       )`
   )
     .bind(input.providerKeyId, input.assignedAt ?? now(), input.taskId)
+    .run();
+  return (result.meta.changes ?? 0) > 0;
+}
+
+export async function assignQueuedTaskToPlaceholderProviderKey(
+  env: AppBindings,
+  input: { taskId: string; assignedAt?: number }
+): Promise<boolean> {
+  const result = await env.DB.prepare(
+    `UPDATE tasks
+     SET assigned_at = ?1
+     WHERE id = ?2
+       AND status = 'queued'
+       AND assigned_at IS NULL
+       AND provider_key_id IS NOT NULL`
+  )
+    .bind(input.assignedAt ?? now(), input.taskId)
     .run();
   return (result.meta.changes ?? 0) > 0;
 }

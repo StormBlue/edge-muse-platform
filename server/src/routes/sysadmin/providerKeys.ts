@@ -2,7 +2,14 @@ import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../../db/client";
-import { providerKeys, providers, tasks, userProviderKeys } from "../../db/schema";
+import {
+  providerKeyGroupMembers,
+  providerKeyGroups,
+  providerKeys,
+  providers,
+  tasks,
+  userProviderKeys
+} from "../../db/schema";
 import { audit } from "../../lib/audit";
 import { decryptString, encryptString } from "../../lib/crypto";
 import { appError } from "../../lib/errors";
@@ -163,6 +170,22 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
           )
         });
         if (!provider) throw appError("NOT_FOUND", "Provider not found");
+        if (body.providerId !== existingKey.providerId) {
+          const member = await getDb(c.env)
+            .select({ groupId: providerKeyGroupMembers.groupId })
+            .from(providerKeyGroupMembers)
+            .innerJoin(providerKeyGroups, eq(providerKeyGroups.id, providerKeyGroupMembers.groupId))
+            .where(
+              and(
+                eq(providerKeyGroupMembers.providerKeyId, existingKey.id),
+                isNull(providerKeyGroups.deletedAt)
+              )
+            )
+            .limit(1);
+          if (member.length > 0) {
+            throw appError("VALIDATION_ERROR", "Cannot change provider for a grouped key");
+          }
+        }
       }
       if (body.ownerAdminId) {
         // 给 admin 绑定已有 key 时按补丁后的最终状态校验，禁止旧 provider key 或禁用 key 继续被分配。

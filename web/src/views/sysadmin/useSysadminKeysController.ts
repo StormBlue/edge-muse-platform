@@ -65,8 +65,17 @@ export function useSysadminKeysController() {
     const group = selectedGroup.value;
     if (!group) return [];
     const memberIds = new Set(group.members.map((member) => member.providerKeyId));
+    const usedByOtherGroupIds = new Set(
+      groups.value
+        .filter((item) => item.id !== group.id)
+        .flatMap((item) => item.members.map((member) => member.providerKeyId))
+    );
     return keys.value.filter(
-      (key) => key.providerId === group.providerId && key.enabled && !memberIds.has(key.id)
+      (key) =>
+        key.providerId === group.providerId &&
+        key.enabled &&
+        !memberIds.has(key.id) &&
+        !usedByOtherGroupIds.has(key.id)
     );
   });
   const editProviderOptions = computed(() => {

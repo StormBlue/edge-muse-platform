@@ -56,6 +56,13 @@ export type TaskRecoveryResult = {
 
 export type WaitUntilContext = Pick<ExecutionContext, "waitUntil">;
 
+export type CancelQueuedTaskResult = {
+  taskId: string;
+  messageId: string;
+  sessionId: string;
+  providerKeyGroupId: string | null;
+};
+
 /** 并行槽 `mapWithConcurrency` 每一「张」的聚合结果 */
 export type GenerationResult = {
   index: number;

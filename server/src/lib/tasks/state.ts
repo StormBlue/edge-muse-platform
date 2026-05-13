@@ -2,6 +2,7 @@ import { now } from "../id";
 import { logError, logInfo } from "../log";
 import type { AppBindings, TaskStatus } from "../../types";
 import {
+  type CancelQueuedTaskResult,
   TaskClaimLostError,
   TASK_HEARTBEAT_INTERVAL_MS,
   TASK_RECOVERY_THROTTLE_KEY,
@@ -107,6 +108,38 @@ export async function markGenerateTaskFailed(
           .bind(input.code, input.message, input.finishedAt, input.taskId, input.expectedStartedAt)
           .run();
   return (result.meta.changes ?? 0) > 0;
+}
+
+export async function cancelQueuedGenerateTask(
+  env: AppBindings,
+  input: {
+    taskId: string;
+    messageId: string;
+    sessionId: string;
+    providerKeyGroupId: string | null;
+    finishedAt?: number;
+  }
+): Promise<CancelQueuedTaskResult | null> {
+  const finishedAt = input.finishedAt ?? now();
+  const result = await env.DB.prepare(
+    `UPDATE tasks
+     SET status = 'cancelled',
+         finished_at = ?1
+     WHERE id = ?2
+       AND status = 'queued'`
+  )
+    .bind(finishedAt, input.taskId)
+    .run();
+  if ((result.meta.changes ?? 0) === 0) return null;
+  await env.DB.prepare("UPDATE messages SET status = 'cancelled' WHERE id = ?1")
+    .bind(input.messageId)
+    .run();
+  return {
+    taskId: input.taskId,
+    messageId: input.messageId,
+    sessionId: input.sessionId,
+    providerKeyGroupId: input.providerKeyGroupId
+  };
 }
 
 /** 仅当 status=queued 且已占用 provider slot 时改为 running 并写 started_at/heartbeat，返回是否抢到 */

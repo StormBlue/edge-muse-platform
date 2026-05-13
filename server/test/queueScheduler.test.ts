@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertNoActiveGenerationTask } from "../src/lib/tasks";
 import {
+  assignQueuedTaskToPlaceholderProviderKey,
   assignQueuedTaskToProviderKey,
   getNextAvailableProviderKeySlot,
   getNextQueuedTaskForGroup,
@@ -87,6 +88,45 @@ describe("provider key queue scheduler", () => {
     await expectTaskAssignment(context.env, "tsk_wait_first", {
       providerKeyId: "key_queue_2",
       assignedAt: 3_000
+    });
+  });
+
+  it("atomically rejects a second assignment when the selected key is already full", async () => {
+    await seedTask(context.env, { id: "tsk_first" });
+    await seedTask(context.env, { id: "tsk_second", queuedAt: 2_000 });
+
+    expect(
+      await assignQueuedTaskToProviderKey(context.env, {
+        taskId: "tsk_first",
+        providerKeyId: "key_queue_1",
+        assignedAt: 3_000
+      })
+    ).toBe(true);
+    expect(
+      await assignQueuedTaskToProviderKey(context.env, {
+        taskId: "tsk_second",
+        providerKeyId: "key_queue_1",
+        assignedAt: 4_000
+      })
+    ).toBe(false);
+    await expectTaskAssignment(context.env, "tsk_second", {
+      providerKeyId: "key_queue_1",
+      assignedAt: null
+    });
+  });
+
+  it("claims an unassigned queued task for inline fallback dispatch", async () => {
+    await seedTask(context.env, { id: "tsk_inline_fallback" });
+
+    const claimed = await assignQueuedTaskToPlaceholderProviderKey(context.env, {
+      taskId: "tsk_inline_fallback",
+      assignedAt: 5_000
+    });
+
+    expect(claimed).toBe(true);
+    await expectTaskAssignment(context.env, "tsk_inline_fallback", {
+      providerKeyId: "key_queue_1",
+      assignedAt: 5_000
     });
   });
 
