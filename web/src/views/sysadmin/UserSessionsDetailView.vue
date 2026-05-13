@@ -335,16 +335,16 @@ defineEmits<{
 }
 
 .audit-detail-masonry {
-  column-gap: 0.75rem;
-  column-width: 13rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .audit-detail-masonry-item {
-  display: inline-block;
+  display: block;
   width: 100%;
-  margin: 0 0 0.75rem;
   overflow: hidden;
-  break-inside: avoid;
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   background: var(--muted);
@@ -364,8 +364,8 @@ defineEmits<{
 .audit-detail-masonry-image {
   display: block;
   width: 100%;
+  aspect-ratio: 16 / 9;
   height: auto;
-  max-height: min(70dvh, 52rem);
   object-fit: contain;
 }
 
@@ -379,21 +379,6 @@ defineEmits<{
   line-height: 1rem;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-@supports (grid-template-rows: masonry) {
-  .audit-detail-masonry {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-    grid-template-rows: masonry;
-    gap: 0.75rem;
-    column-width: auto;
-  }
-
-  .audit-detail-masonry-item {
-    display: block;
-    margin: 0;
-  }
 }
 
 @media (max-width: 1023px) {
@@ -427,12 +412,8 @@ defineEmits<{
 
 @media (max-width: 640px) {
   .audit-detail-masonry {
-    column-gap: 0.5rem;
-    column-width: 10.5rem;
-  }
-
-  .audit-detail-masonry-item {
-    margin-bottom: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+    gap: 0.5rem;
   }
 }
 </style>

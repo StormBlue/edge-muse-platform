@@ -187,6 +187,20 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
           }
         }
       }
+      if (body.enabled === false && existingKey.enabled) {
+        const group = await findGroupWhereKeyIsOnlyEnabledMember(c.env, existingKey.id);
+        if (group) {
+          throw appError(
+            "VALIDATION_ERROR",
+            "Provider key group must keep at least one enabled key",
+            {
+              reason: "LAST_ENABLED_PROVIDER_KEY_IN_GROUP",
+              groupId: group.group_id,
+              groupName: group.group_name
+            }
+          );
+        }
+      }
       if (body.ownerAdminId) {
         // 给 admin 绑定已有 key 时按补丁后的最终状态校验，禁止旧 provider key 或禁用 key 继续被分配。
         assertAssignableProviderKey({
@@ -231,16 +245,29 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
   );
 
   sysadminRoutes.delete("/provider-keys/:id", async (c) => {
+    const keyId = c.req.param("id");
+    const existingKey = await getDb(c.env).query.providerKeys.findFirst({
+      where: and(eq(providerKeys.id, keyId), isNull(providerKeys.deletedAt))
+    });
+    if (!existingKey) throw appError("NOT_FOUND", "Provider key not found");
+    const group = await findActiveProviderKeyGroupMembership(c.env, keyId);
+    if (group) {
+      throw appError("VALIDATION_ERROR", "Provider key belongs to a key group", {
+        reason: "PROVIDER_KEY_IN_GROUP",
+        groupId: group.group_id,
+        groupName: group.group_name
+      });
+    }
     const timestamp = now();
     await getDb(c.env)
       .update(providerKeys)
       .set({ enabled: false, updatedAt: timestamp, deletedAt: timestamp })
-      .where(eq(providerKeys.id, c.req.param("id")));
+      .where(eq(providerKeys.id, keyId));
     await audit(c.env, {
       actorId: c.get("user").id,
       action: "sys.key_delete",
       targetType: "provider_key",
-      targetId: c.req.param("id")
+      targetId: keyId
     });
     return c.json({ ok: true });
   });
@@ -263,4 +290,59 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
     });
     return c.json({ ok });
   });
+}
+
+type ProviderKeyGroupMembershipRow = {
+  group_id: string;
+  group_name: string;
+};
+
+async function findActiveProviderKeyGroupMembership(
+  env: Cloudflare.Env,
+  providerKeyId: string
+): Promise<ProviderKeyGroupMembershipRow | null> {
+  return env.DB.prepare(
+    `SELECT provider_key_groups.id AS group_id,
+            provider_key_groups.name AS group_name
+     FROM provider_key_group_members
+     INNER JOIN provider_key_groups
+       ON provider_key_groups.id = provider_key_group_members.group_id
+     WHERE provider_key_group_members.provider_key_id = ?1
+       AND provider_key_groups.deleted_at IS NULL
+     LIMIT 1`
+  )
+    .bind(providerKeyId)
+    .first<ProviderKeyGroupMembershipRow>();
+}
+
+async function findGroupWhereKeyIsOnlyEnabledMember(
+  env: Cloudflare.Env,
+  providerKeyId: string
+): Promise<ProviderKeyGroupMembershipRow | null> {
+  return env.DB.prepare(
+    `SELECT grouped.group_id AS group_id,
+            grouped.group_name AS group_name
+     FROM (
+       SELECT provider_key_groups.id AS group_id,
+              provider_key_groups.name AS group_name,
+              provider_key_groups.provider_id AS provider_id
+       FROM provider_key_group_members
+       INNER JOIN provider_key_groups
+         ON provider_key_groups.id = provider_key_group_members.group_id
+       WHERE provider_key_group_members.provider_key_id = ?1
+         AND provider_key_groups.deleted_at IS NULL
+     ) grouped
+     LEFT JOIN provider_key_group_members
+       ON provider_key_group_members.group_id = grouped.group_id
+     LEFT JOIN provider_keys
+       ON provider_keys.id = provider_key_group_members.provider_key_id
+      AND provider_keys.enabled = 1
+      AND provider_keys.deleted_at IS NULL
+      AND provider_keys.provider_id = grouped.provider_id
+     GROUP BY grouped.group_id, grouped.group_name
+     HAVING COUNT(provider_keys.id) <= 1
+     LIMIT 1`
+  )
+    .bind(providerKeyId)
+    .first<ProviderKeyGroupMembershipRow>();
 }

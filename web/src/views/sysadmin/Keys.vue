@@ -20,7 +20,6 @@ const {
   groupEditOpen,
   editing,
   editingGroup,
-  selectedGroupId,
   testingKeyId,
   createSaving,
   editSaving,
@@ -30,8 +29,6 @@ const {
   editForm,
   groupForm,
   groupEditForm,
-  selectedGroup,
-  groupMembers,
   availableKeysForGroup,
   supportedProviders,
   editProviderOptions,
@@ -55,8 +52,7 @@ const {
   removeMember,
   moveMember,
   providerLabel,
-  providerMeta,
-  tableRowNumber
+  providerMeta
 } = useSysadminKeysController();
 
 let escapeListenerActive = false;
@@ -107,8 +103,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <AppShell>
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+  <AppShell :content-scrollable="false" main-class="flex min-h-0 flex-col">
+    <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">{{ t("nav.keys") }}</h1>
       <div class="flex flex-wrap gap-2">
         <button class="ui-button ui-button-secondary" type="button" @click="load">
@@ -126,11 +122,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(28rem,0.9fr)]">
+    <div class="grid min-h-0 flex-1 grid-rows-2 gap-4 xl:grid-cols-2 xl:grid-rows-1">
       <KeyTable
         :keys="keys"
         :provider-label="providerLabel"
-        :table-row-number="tableRowNumber"
         :testing-key-id="testingKeyId"
         :t="t"
         @delete-key="deleteKey"
@@ -140,13 +135,10 @@ onBeforeUnmount(() => {
       />
 
       <KeyGroupPanel
-        v-model:selected-group-id="selectedGroupId"
         :available-keys-for-group="availableKeysForGroup"
-        :group-members="groupMembers"
         :groups="groups"
         :member-saving="memberSaving"
         :provider-label="providerLabel"
-        :selected-group="selectedGroup"
         :t="t"
         @add-member="addMember"
         @delete-group="deleteGroup"

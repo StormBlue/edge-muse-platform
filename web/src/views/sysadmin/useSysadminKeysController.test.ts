@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { reorderProviderKeyIds, type GroupMember } from "./useSysadminKeysController";
+import {
+  filterProviderKeyIdsForGroup,
+  reorderProviderKeyIds,
+  type GroupMember,
+  type KeyRow
+} from "./useSysadminKeysController";
 
 describe("provider key group member ordering", () => {
   it("builds sorted member payloads for drag and button moves", () => {
@@ -18,6 +23,21 @@ describe("provider key group member ordering", () => {
   });
 });
 
+describe("provider key group member payload filtering", () => {
+  it("keeps current provider keys and drops stale or cross-provider members", () => {
+    expect(
+      filterProviderKeyIdsForGroup(
+        ["key_deleted_member", "key_cubence_new", "key_micu"],
+        [
+          keyRow({ id: "key_cubence_new", providerId: "prv_cubence" }),
+          keyRow({ id: "key_micu", providerId: "prv_micu" })
+        ],
+        "prv_cubence"
+      )
+    ).toEqual(["key_cubence_new"]);
+  });
+});
+
 function groupMembers(ids: string[]): GroupMember[] {
   return ids.map((id, index) => ({
     id,
@@ -33,4 +53,20 @@ function groupMembers(ids: string[]): GroupMember[] {
     activeSlots: 0,
     sortOrder: index
   }));
+}
+
+function keyRow(overrides: Partial<KeyRow>): KeyRow {
+  return {
+    id: "key_1",
+    providerId: "prv_micu",
+    label: "Key",
+    model: "gpt-image-2",
+    keyHint: "test",
+    enabled: true,
+    allocatedQuota: null,
+    usedQuota: 0,
+    maxConcurrency: 1,
+    activeSlots: 0,
+    ...overrides
+  };
 }

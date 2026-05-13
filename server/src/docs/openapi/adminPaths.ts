@@ -507,7 +507,7 @@ export const adminPaths = {
       operationId: "updateProviderKey",
       summary: "更新 provider key",
       description:
-        "要求 sysadmin 登录和 CSRF。可改 provider、label、model、明文 apiKey、配额、归属 admin、启用状态。传入新 apiKey 时会重新加密并刷新 keyHint；响应不返回密钥。",
+        "要求 sysadmin 登录和 CSRF。可改 provider、label、model、明文 apiKey、配额、归属 admin、启用状态。传入新 apiKey 时会重新加密并刷新 keyHint；响应不返回密钥。若某 key 是分组里最后一个启用且未删除的成员，则不能停用。",
       security: csrfSecurity,
       parameters: [pathParam("id", "provider key ID。")],
       requestBody: requestJson("provider key 补丁。", {
@@ -535,11 +535,13 @@ export const adminPaths = {
       tags: ["Sysadmin"],
       operationId: "deleteProviderKey",
       summary: "软删除 provider key",
-      description: "要求 sysadmin 登录和 CSRF。将 key 禁用并写入 deletedAt；不会返回明文/密文。",
+      description:
+        "要求 sysadmin 登录和 CSRF。将 key 禁用并写入 deletedAt；不会返回明文/密文。已添加到未删除 key group 的密钥不能直接删除，需先从分组移除。",
       security: csrfSecurity,
       parameters: [pathParam("id", "provider key ID。")],
       responses: {
         "200": jsonResponse("密钥已软删。", okBody),
+        ...validationError,
         ...forbiddenError,
         ...commonErrors
       }

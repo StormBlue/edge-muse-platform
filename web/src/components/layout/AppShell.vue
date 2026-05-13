@@ -7,11 +7,24 @@
  * - **路由高亮**：`isActiveNav` 用路径前三段前缀匹配，避免 `/sysadmin/foo` 与子路径全等失败。
  */
 import { RouterLink } from "vue-router";
+import type { HTMLAttributes } from "vue";
 import { LogOut, Menu, Settings } from "lucide-vue-next";
 import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 import { useAppShellController } from "./useAppShellController";
+
+const shellProps = withDefaults(
+  defineProps<{
+    contentScrollable?: boolean;
+    mainClass?: HTMLAttributes["class"];
+  }>(),
+  {
+    contentScrollable: true,
+    mainClass: undefined
+  }
+);
 
 const {
   auth,
@@ -34,6 +47,8 @@ const {
   closeMobileSidebar,
   logout
 } = useAppShellController();
+
+const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5 lg:pb-5";
 </script>
 
 <template>
@@ -184,11 +199,17 @@ const {
           </button>
         </div>
       </header>
-      <ScrollArea class="min-h-0 flex-1">
-        <main class="mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5 lg:pb-5">
+      <ScrollArea v-if="shellProps.contentScrollable" class="min-h-0 flex-1">
+        <main :class="cn(mainBaseClass, shellProps.mainClass)">
           <slot />
         </main>
       </ScrollArea>
+      <main
+        v-else
+        :class="cn(mainBaseClass, 'min-h-0 flex-1 overflow-hidden', shellProps.mainClass)"
+      >
+        <slot />
+      </main>
     </div>
 
     <nav class="app-mobile-nav fixed inset-x-3 bottom-3 z-40 grid gap-1 rounded-lg p-1 lg:hidden">

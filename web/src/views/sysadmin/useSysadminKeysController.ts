@@ -1,6 +1,7 @@
 import { computed, nextTick, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import type { ApiError } from "@/api/client";
 import {
   createProviderKey,
   createProviderKeyGroup,
@@ -28,7 +29,7 @@ export type {
   KeyRow,
   ProviderRow
 } from "./sysadminKeysTypes";
-import type { GroupMember, KeyGroupRow, KeyRow, ProviderRow } from "./sysadminKeysTypes";
+import type { KeyGroupRow, KeyRow, ProviderRow } from "./sysadminKeysTypes";
 
 export function useSysadminKeysController() {
   const keys = ref<KeyRow[]>([]);
@@ -41,7 +42,6 @@ export function useSysadminKeysController() {
   const groupEditOpen = ref(false);
   const editing = ref<KeyRow | null>(null);
   const editingGroup = ref<KeyGroupRow | null>(null);
-  const selectedGroupId = ref<string>("");
   const testingKeyId = ref<string | null>(null);
   const createSaving = ref(false);
   const editSaving = ref(false);
@@ -55,14 +55,12 @@ export function useSysadminKeysController() {
   const supportedProviders = computed(() =>
     providers.value.filter((provider) => provider.enabled && provider.builtIn)
   );
-  const keyListOffset = computed(() => 0);
-  const selectedGroup = computed(
-    () =>
-      groups.value.find((group) => group.id === selectedGroupId.value) ?? groups.value[0] ?? null
-  );
-  const groupMembers = computed(() => selectedGroup.value?.members ?? []);
-  const availableKeysForGroup = computed(() => {
-    const group = selectedGroup.value;
+  function groupById(groupId: string): KeyGroupRow | null {
+    return groups.value.find((group) => group.id === groupId) ?? null;
+  }
+
+  function availableKeysForGroup(groupId: string): KeyRow[] {
+    const group = groupById(groupId);
     if (!group) return [];
     const memberIds = new Set(group.members.map((member) => member.providerKeyId));
     const usedByOtherGroupIds = new Set(
@@ -77,7 +75,24 @@ export function useSysadminKeysController() {
         !memberIds.has(key.id) &&
         !usedByOtherGroupIds.has(key.id)
     );
-  });
+  }
+  function groupContainingKey(keyId: string): KeyGroupRow | null {
+    return (
+      groups.value.find((group) =>
+        group.members.some((member) => member.providerKeyId === keyId)
+      ) ?? null
+    );
+  }
+
+  function groupWhereKeyIsLastEnabledMember(keyId: string): KeyGroupRow | null {
+    return (
+      groups.value.find(
+        (group) =>
+          group.members.some((member) => member.providerKeyId === keyId) &&
+          group.members.filter((member) => member.enabled).length <= 1
+      ) ?? null
+    );
+  }
   const editProviderOptions = computed(() => {
     const current = providers.value.find((provider) => provider.id === editForm.value.providerId);
     if (!current || current.builtIn) return supportedProviders.value;
@@ -99,12 +114,6 @@ export function useSysadminKeysController() {
     if (!form.value.providerId && supportedProviders.value[0]) {
       form.value.providerId = supportedProviders.value[0].id;
       form.value.model = supportedProviders.value[0].defaultModel;
-    }
-    if (
-      !selectedGroupId.value ||
-      !groups.value.some((group) => group.id === selectedGroupId.value)
-    ) {
-      selectedGroupId.value = groups.value[0]?.id ?? "";
     }
   }
 
@@ -156,6 +165,8 @@ export function useSysadminKeysController() {
       editOpen.value = false;
       editing.value = null;
       await load();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t("sysadmin.keyUpdateFailed"), t));
     } finally {
       editSaving.value = false;
     }
@@ -163,16 +174,36 @@ export function useSysadminKeysController() {
 
   async function toggleKey(key: KeyRow) {
     const enabled = !key.enabled;
-    await setProviderKeyEnabled(key, enabled);
-    toast.success(enabled ? t("sysadmin.keyEnabled") : t("sysadmin.keyDisabled"));
-    await load();
+    if (!enabled) {
+      const group = groupWhereKeyIsLastEnabledMember(key.id);
+      if (group) {
+        toast.error(t("sysadmin.keyDisableBlockedLastGroupKey", { name: group.name }));
+        return;
+      }
+    }
+    try {
+      await setProviderKeyEnabled(key, enabled);
+      toast.success(enabled ? t("sysadmin.keyEnabled") : t("sysadmin.keyDisabled"));
+      await load();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t("sysadmin.keyToggleFailed"), t));
+    }
   }
 
   async function deleteKey(key: KeyRow) {
+    const group = groupContainingKey(key.id);
+    if (group) {
+      toast.error(t("sysadmin.keyDeleteBlockedByGroup", { name: group.name }));
+      return;
+    }
     if (!window.confirm(t("sysadmin.deleteKeyConfirm", { label: key.label }))) return;
-    await deleteProviderKey(key);
-    toast.success(t("sysadmin.keyDeleted"));
-    await load();
+    try {
+      await deleteProviderKey(key);
+      toast.success(t("sysadmin.keyDeleted"));
+      await load();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t("sysadmin.keyDeleteFailed"), t));
+    }
   }
 
   function openCreateGroup() {
@@ -185,9 +216,8 @@ export function useSysadminKeysController() {
     if (groupSaving.value) return;
     groupSaving.value = true;
     try {
-      const body = await createProviderKeyGroup(groupForm.value);
+      await createProviderKeyGroup(groupForm.value);
       toast.success(t("sysadmin.keyGroupCreated"));
-      selectedGroupId.value = body.id;
       groupCreateOpen.value = false;
       await load();
     } finally {
@@ -212,6 +242,8 @@ export function useSysadminKeysController() {
       groupEditOpen.value = false;
       editingGroup.value = null;
       await load();
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t("sysadmin.keyGroupProviderMismatch")));
     } finally {
       groupSaving.value = false;
     }
@@ -221,28 +253,32 @@ export function useSysadminKeysController() {
     if (!window.confirm(t("sysadmin.deleteKeyGroupConfirm", { name: group.name }))) return;
     await deleteProviderKeyGroup(group);
     toast.success(t("sysadmin.keyGroupDeleted"));
-    selectedGroupId.value = "";
     await load();
   }
 
-  async function addMember(keyId: string) {
-    const group = selectedGroup.value;
+  async function addMember(groupId: string, keyId: string) {
+    const group = groupById(groupId);
     if (!group || !keyId || memberSaving.value) return;
+    const key = keys.value.find((item) => item.id === keyId);
+    if (!key || key.providerId !== group.providerId) {
+      toast.error(t("sysadmin.keyGroupProviderMismatch"));
+      return;
+    }
     const keyIds = [...group.members.map((member) => member.providerKeyId), keyId];
     await saveMembers(group, keyIds, t("sysadmin.keyGroupMembersUpdated"));
   }
 
-  async function removeMember(member: GroupMember) {
-    const group = selectedGroup.value;
+  async function removeMember(groupId: string, providerKeyId: string) {
+    const group = groupById(groupId);
     if (!group || memberSaving.value) return;
     const keyIds = group.members
       .map((item) => item.providerKeyId)
-      .filter((providerKeyId) => providerKeyId !== member.providerKeyId);
+      .filter((itemProviderKeyId) => itemProviderKeyId !== providerKeyId);
     await saveMembers(group, keyIds, t("sysadmin.keyGroupMembersUpdated"));
   }
 
-  async function moveMember(fromIndex: number, toIndex: number) {
-    const group = selectedGroup.value;
+  async function moveMember(groupId: string, fromIndex: number, toIndex: number) {
+    const group = groupById(groupId);
     if (!group || memberSaving.value) return;
     await saveMembers(
       group,
@@ -252,12 +288,15 @@ export function useSysadminKeysController() {
   }
 
   async function saveMembers(group: KeyGroupRow, keyIds: string[], successMessage: string) {
+    const nextKeyIds = filterProviderKeyIdsForGroup(keyIds, keys.value, group.providerId);
     memberSaving.value = true;
     try {
-      const body = await updateProviderKeyGroupMembers(group, keyIds);
+      const body = await updateProviderKeyGroupMembers(group, nextKeyIds);
       const target = groups.value.find((item) => item.id === group.id);
       if (target) target.members = body.members;
       toast.success(successMessage);
+    } catch (error) {
+      toast.error(apiErrorMessage(error, t("sysadmin.keyGroupProviderMismatch")));
     } finally {
       memberSaving.value = false;
       await nextTick();
@@ -291,10 +330,6 @@ export function useSysadminKeysController() {
     return `${provider.defaultModel} · ${provider.baseUrl}`;
   }
 
-  function tableRowNumber(index: number) {
-    return keyListOffset.value + index + 1;
-  }
-
   onMounted(load);
 
   return {
@@ -308,7 +343,6 @@ export function useSysadminKeysController() {
     groupEditOpen,
     editing,
     editingGroup,
-    selectedGroupId,
     testingKeyId,
     createSaving,
     editSaving,
@@ -318,8 +352,6 @@ export function useSysadminKeysController() {
     editForm,
     groupForm,
     groupEditForm,
-    selectedGroup,
-    groupMembers,
     availableKeysForGroup,
     supportedProviders,
     editProviderOptions,
@@ -343,8 +375,31 @@ export function useSysadminKeysController() {
     removeMember,
     moveMember,
     providerLabel,
-    providerMeta,
-    tableRowNumber
+    providerMeta
   };
 }
 export { reorderProviderKeyIds } from "./sysadminKeysForms";
+
+export function filterProviderKeyIdsForGroup(keyIds: string[], keys: KeyRow[], providerId: string) {
+  const keyById = new Map(keys.map((key) => [key.id, key]));
+  return keyIds.filter((keyId) => keyById.get(keyId)?.providerId === providerId);
+}
+
+type Translate = (key: string, params?: Record<string, unknown>) => string;
+
+function apiErrorMessage(error: unknown, fallback: string, t?: Translate) {
+  const maybeApiError = error as Partial<ApiError>;
+  const details = maybeApiError.error?.details;
+  if (t && details && typeof details === "object") {
+    const reason = (details as { reason?: unknown }).reason;
+    const groupName = (details as { groupName?: unknown }).groupName;
+    const name = typeof groupName === "string" && groupName ? groupName : t("sysadmin.keyGroups");
+    if (reason === "PROVIDER_KEY_IN_GROUP") {
+      return t("sysadmin.keyDeleteBlockedByGroup", { name });
+    }
+    if (reason === "LAST_ENABLED_PROVIDER_KEY_IN_GROUP") {
+      return t("sysadmin.keyDisableBlockedLastGroupKey", { name });
+    }
+  }
+  return maybeApiError.error?.message || fallback;
+}

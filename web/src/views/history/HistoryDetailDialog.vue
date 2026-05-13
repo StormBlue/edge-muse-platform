@@ -1,13 +1,7 @@
 <script setup lang="ts">
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Image as ImageIcon,
-  Loader2,
-  Trash2
-} from "lucide-vue-next";
+import { Image as ImageIcon, Loader2 } from "lucide-vue-next";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import HistoryDetailHeader from "./HistoryDetailHeader.vue";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
 import type { GenerationStats, HistoryMessage, HistorySession } from "./historyTypes";
 
@@ -50,62 +44,18 @@ const emit = defineEmits<{
 
 <template>
   <div class="history-detail-shell flex min-h-0 flex-col">
-    <div class="mb-4 flex shrink-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div class="min-w-0">
-        <button
-          class="ui-button ui-button-secondary mb-3 h-9 px-3 text-sm"
-          type="button"
-          @click="emit('back')"
-        >
-          <ArrowLeft class="h-4 w-4" />
-          {{ t("history.backToGrid") }}
-        </button>
-        <h1 class="truncate text-xl font-semibold leading-8">
-          {{ selectedSession?.title ?? t("history.detail") }}
-        </h1>
-        <p v-if="selectedSession" class="mt-1 text-sm text-muted-foreground">
-          {{ t("history.updatedAt") }} {{ formatDateTime(selectedSession.lastMessageAt) }}
-        </p>
-      </div>
-      <div class="flex shrink-0 flex-wrap items-center gap-2 text-sm">
-        <template v-if="displayResultMessages.length > 1">
-          <button
-            class="ui-button ui-button-secondary h-9 px-3"
-            type="button"
-            :disabled="activeResultIndex <= 0"
-            @click="emit('previousResult')"
-          >
-            <ChevronLeft class="h-4 w-4" />
-            {{ t("common.previous") }}
-          </button>
-          <span class="min-w-16 text-center text-muted-foreground">
-            {{ activeResultIndex + 1 }} / {{ displayResultMessages.length }}
-          </span>
-          <button
-            class="ui-button ui-button-secondary h-9 px-3"
-            type="button"
-            :disabled="activeResultIndex >= displayResultMessages.length - 1"
-            @click="emit('nextResult')"
-          >
-            {{ t("common.next") }}
-            <ChevronRight class="h-4 w-4" />
-          </button>
-        </template>
-        <button
-          v-if="selectedSession"
-          class="ui-button h-9 border-destructive/25 bg-destructive/10 px-3 text-sm text-destructive"
-          type="button"
-          :disabled="!canDeleteSelectedSession"
-          :title="
-            canDeleteSelectedSession ? t('history.deleteSession') : t('history.deleteUnavailable')
-          "
-          @click="emit('delete')"
-        >
-          <Trash2 class="h-4 w-4" />
-          {{ t("history.deleteSession") }}
-        </button>
-      </div>
-    </div>
+    <HistoryDetailHeader
+      :active-result-index="activeResultIndex"
+      :can-delete-selected-session="canDeleteSelectedSession"
+      :display-result-count="displayResultMessages.length"
+      :format-date-time="formatDateTime"
+      :selected-session="selectedSession"
+      :t="t"
+      @back="emit('back')"
+      @delete="emit('delete')"
+      @next-result="emit('nextResult')"
+      @previous-result="emit('previousResult')"
+    />
 
     <div
       v-if="detailLoading"

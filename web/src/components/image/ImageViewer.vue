@@ -1,26 +1,18 @@
 <script setup lang="ts">
 /**
- * 全屏大图查看器（固定层 z-50）：
+ * 全屏大图查看器（Teleport 到 body，固定层 z-70）：
  * - **单图**：仅传 `image`，无左右箭头；
  * - **多图**：传 `image`（当前张）+ `images`（全集），`currentIndex` 由 id 匹配，左右键/按钮 emit `select` 换张；
- * - **缩放**：`scale` 作用于 `<img>` 的 transform，换图时重置为 1；
+ * - **缩放**：`scale` 作用于图片本体的 transform，换图时重置为 1；
  * - **删除**：需 `image.messageId` 有值（软删消息），无则禁用；
  * - **键盘**：Esc 关闭，左右箭头在有多图时切换（与 `move` 一致）。
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, toRef } from "vue";
 import { useI18n } from "vue-i18n";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Copy,
-  Download,
-  RotateCcw,
-  Trash2,
-  X,
-  ZoomIn,
-  ZoomOut
-} from "lucide-vue-next";
 import { toast } from "vue-sonner";
+import ImageViewerNavButton from "./ImageViewerNavButton.vue";
+import ImageViewerToolbar from "./ImageViewerToolbar.vue";
+import { useImageViewerZoom } from "./useImageViewerZoom";
 import type { ImageAttachment } from "@/stores/session";
 
 const props = withDefaults(
@@ -36,20 +28,24 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-/** 仅影响当前展示图，切图时由 watch 重置 */
-const scale = ref(1);
-const offset = ref({ x: 0, y: 0 });
-const stageRef = ref<HTMLElement | null>(null);
-const imageRef = ref<HTMLImageElement | null>(null);
-const dragState = ref<{
-  pointerId: number;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  moved: boolean;
-} | null>(null);
-const ignoreNextBackdropClick = ref(false);
+const imageRefProp = toRef(props, "image");
+const {
+  canDrag,
+  dragState,
+  imageStyle,
+  imageRef,
+  scale,
+  stageRef,
+  consumeBackdropClickIgnore,
+  onImageLoad,
+  onStagePointerDown,
+  onStagePointerEnd,
+  onStagePointerMove,
+  onStageWheel,
+  resetView,
+  setScale,
+  zoomStep
+} = useImageViewerZoom(imageRefProp);
 /** 在 `images` 里定位当前 `image.id`；无集合时为 -1，左右不可用 */
 const currentIndex = computed(() =>
   props.image && props.images?.length
@@ -60,7 +56,6 @@ const hasPrevious = computed(() => currentIndex.value > 0);
 const hasNext = computed(
   () => currentIndex.value >= 0 && currentIndex.value < (props.images?.length ?? 0) - 1
 );
-const canDrag = computed(() => scale.value > 1);
 const fileName = computed(() => `${props.image?.id ?? "edge-muse-image"}.${extension.value}`);
 const displayTitle = computed(() => props.image?.displayName || props.image?.id || "");
 const extension = computed(() => {
@@ -83,15 +78,12 @@ const metadata = computed(() => {
     .join(" / ");
 });
 
-watch(
-  () => props.image?.id,
-  () => {
-    resetView();
-  }
-);
-
-onMounted(() => window.addEventListener("keydown", onKeydown));
-onBeforeUnmount(() => window.removeEventListener("keydown", onKeydown));
+onMounted(() => {
+  window.addEventListener("keydown", onKeydown);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", onKeydown);
+});
 
 async function copyPrompt() {
   const prompt = props.image?.prompt;
@@ -107,97 +99,17 @@ function move(delta: -1 | 1) {
   if (next) emit("select", next);
 }
 
-function setScale(nextScale: number) {
-  scale.value = Math.min(4, Math.max(1, nextScale));
-  if (scale.value === 1) {
-    offset.value = { x: 0, y: 0 };
-    return;
-  }
-  void nextTick(() => clampOffset());
-}
-
-function resetView() {
-  scale.value = 1;
-  offset.value = { x: 0, y: 0 };
-  dragState.value = null;
-}
-
-function onStagePointerDown(event: PointerEvent) {
-  if (!canDrag.value || event.button !== 0) return;
-  event.preventDefault();
-  dragState.value = {
-    pointerId: event.pointerId,
-    startX: event.clientX,
-    startY: event.clientY,
-    originX: offset.value.x,
-    originY: offset.value.y,
-    moved: false
-  };
-  stageRef.value?.setPointerCapture(event.pointerId);
-}
-
-function onStagePointerMove(event: PointerEvent) {
-  const drag = dragState.value;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
-    drag.moved = true;
-  }
-  offset.value = clampOffsetValue({
-    x: drag.originX + event.clientX - drag.startX,
-    y: drag.originY + event.clientY - drag.startY
-  });
-}
-
-function onStagePointerEnd(event: PointerEvent) {
-  const drag = dragState.value;
-  if (!drag || drag.pointerId !== event.pointerId) return;
-  if (stageRef.value?.hasPointerCapture(event.pointerId)) {
-    stageRef.value.releasePointerCapture(event.pointerId);
-  }
-  if (drag.moved) {
-    ignoreNextBackdropClick.value = true;
-    window.setTimeout(() => {
-      ignoreNextBackdropClick.value = false;
-    }, 200);
-  }
-  dragState.value = null;
-  clampOffset();
-}
-
 function closeFromBackdrop(event: MouseEvent) {
-  if (ignoreNextBackdropClick.value) {
+  if (consumeBackdropClickIgnore()) {
     event.preventDefault();
     event.stopPropagation();
-    ignoreNextBackdropClick.value = false;
     return;
   }
   emit("close");
 }
 
-function onStageWheel(event: WheelEvent) {
-  if (!props.image) return;
-  event.preventDefault();
-  setScale(scale.value + (event.deltaY < 0 ? 0.25 : -0.25));
-}
-
-function clampOffset() {
-  offset.value = clampOffsetValue(offset.value);
-}
-
-function clampOffsetValue(nextOffset: { x: number; y: number }) {
-  const stage = stageRef.value;
-  const image = imageRef.value;
-  if (!stage || !image || scale.value <= 1) return { x: 0, y: 0 };
-  const stageRect = stage.getBoundingClientRect();
-  const imageRect = image.getBoundingClientRect();
-  const unscaledWidth = imageRect.width / scale.value;
-  const unscaledHeight = imageRect.height / scale.value;
-  const maxX = Math.max(0, (unscaledWidth * scale.value - stageRect.width) / 2);
-  const maxY = Math.max(0, (unscaledHeight * scale.value - stageRect.height) / 2);
-  return {
-    x: Math.min(maxX, Math.max(-maxX, nextOffset.x)),
-    y: Math.min(maxY, Math.max(-maxY, nextOffset.y))
-  };
+function deleteCurrentImage() {
+  if (props.image) emit("delete", props.image);
 }
 
 /** 全局监听：仅在有当前图时响应，避免其它页面抢键 */
@@ -218,151 +130,71 @@ function formatBytes(bytes: number) {
 </script>
 
 <template>
-  <div
-    v-if="image"
-    class="image-viewer w-full fixed flex flex-col inset-0 z-50 bg-black/90 text-white"
-    @click.self="closeFromBackdrop"
-  >
-    <header
-      class="flex w-full min-h-14 items-center justify-between gap-3 border-b border-white/10 py-2"
-    >
-      <div class="min-w-0 px-3 sm:px-4">
-        <p class="truncate text-sm font-semibold">{{ displayTitle }}</p>
-        <p class="truncate text-xs text-white/65">{{ metadata }}</p>
-      </div>
-      <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 sm:px-4">
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.zoomOut')"
-          @click="setScale(scale - 0.25)"
-        >
-          <ZoomOut class="h-4 w-4" />
-        </button>
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.resetZoom')"
-          @click="resetView"
-        >
-          <RotateCcw class="h-4 w-4" />
-        </button>
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.zoomIn')"
-          @click="setScale(scale + 0.25)"
-        >
-          <ZoomIn class="h-4 w-4" />
-        </button>
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.copyPrompt')"
-          :disabled="!image.prompt"
-          @click="copyPrompt"
-        >
-          <Copy class="h-4 w-4" />
-        </button>
-        <a
-          class="viewer-button"
-          :href="image.url"
-          :download="fileName"
-          :title="t('viewer.download')"
-        >
-          <Download class="h-4 w-4" />
-        </a>
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.deleteMessage')"
-          :disabled="!canDelete || !image.messageId"
-          @click="emit('delete', image)"
-        >
-          <Trash2 class="h-4 w-4" />
-        </button>
-        <button
-          class="viewer-button"
-          type="button"
-          :title="t('viewer.close')"
-          @click="emit('close')"
-        >
-          <X class="h-4 w-4" />
-        </button>
-      </div>
-    </header>
-
-    <main
-      class="viewer-main relative min-h-0 overflow-hidden p-2 sm:p-4 justify-center items-center flex-1"
+  <Teleport to="body">
+    <div
+      v-if="image"
+      class="image-viewer w-full fixed flex flex-col inset-0 z-[70] bg-black/90 text-white"
       @click.self="closeFromBackdrop"
     >
-      <div
-        ref="stageRef"
-        class="viewer-stage"
-        :class="{ 'viewer-stage--draggable': canDrag, 'viewer-stage--dragging': dragState }"
-        @pointerdown="onStagePointerDown"
-        @pointermove="onStagePointerMove"
-        @pointerup="onStagePointerEnd"
-        @pointercancel="onStagePointerEnd"
-        @wheel="onStageWheel"
+      <header
+        class="flex w-full min-h-14 items-center justify-between gap-3 border-b border-white/10 py-2"
+      >
+        <div class="min-w-0 px-3 sm:px-4">
+          <p class="truncate text-sm font-semibold">{{ displayTitle }}</p>
+          <p class="truncate text-xs text-white/65">{{ metadata }}</p>
+        </div>
+        <ImageViewerToolbar
+          :can-copy-prompt="Boolean(image.prompt)"
+          :can-delete="canDelete && Boolean(image.messageId)"
+          :download-file-name="fileName"
+          :download-url="image.url"
+          @close="emit('close')"
+          @copy-prompt="copyPrompt"
+          @delete="deleteCurrentImage"
+          @reset-zoom="resetView"
+          @zoom-in="setScale(scale + zoomStep)"
+          @zoom-out="setScale(scale - zoomStep)"
+        />
+      </header>
+
+      <main
+        class="viewer-main relative min-h-0 overflow-hidden p-2 sm:p-4 justify-center items-center flex-1"
         @click.self="closeFromBackdrop"
       >
-        <img
-          ref="imageRef"
-          class="viewer-image rounded-lg object-contain shadow-2xl shadow-black/50 transition-transform"
-          :src="image.url"
-          alt=""
-          draggable="false"
-          :style="{
-            transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`
-          }"
-          @load="clampOffset"
-        />
-
-        <button
-          v-if="hasPrevious"
-          class="viewer-nav viewer-nav--desktop viewer-nav--previous"
-          type="button"
-          :title="t('viewer.previousImage')"
-          @click="move(-1)"
+        <div
+          ref="stageRef"
+          class="viewer-stage"
+          :class="{ 'viewer-stage--draggable': canDrag, 'viewer-stage--dragging': dragState }"
+          @pointerdown="onStagePointerDown"
+          @pointermove="onStagePointerMove"
+          @pointerup="onStagePointerEnd"
+          @pointercancel="onStagePointerEnd"
+          @wheel="onStageWheel"
+          @click.self="closeFromBackdrop"
         >
-          <ChevronLeft class="h-6 w-6" />
-        </button>
-        <button
-          v-if="hasNext"
-          class="viewer-nav viewer-nav--desktop viewer-nav--next"
-          type="button"
-          :title="t('viewer.nextImage')"
-          @click="move(1)"
-        >
-          <ChevronRight class="h-6 w-6" />
-        </button>
-      </div>
-    </main>
+          <img
+            ref="imageRef"
+            class="viewer-image rounded-lg object-contain shadow-2xl shadow-black/50"
+            :style="imageStyle"
+            :src="image.url"
+            alt=""
+            draggable="false"
+            @load="onImageLoad"
+          />
 
-    <button
-      v-if="hasPrevious"
-      class="viewer-nav viewer-nav--mobile viewer-nav--previous"
-      type="button"
-      :title="t('viewer.previousImage')"
-      @click="move(-1)"
-    >
-      <ChevronLeft class="h-6 w-6" />
-    </button>
-    <button
-      v-if="hasNext"
-      class="viewer-nav viewer-nav--mobile viewer-nav--next"
-      type="button"
-      :title="t('viewer.nextImage')"
-      @click="move(1)"
-    >
-      <ChevronRight class="h-6 w-6" />
-    </button>
+          <ImageViewerNavButton v-if="hasPrevious" direction="previous" @move="move(-1)" />
+          <ImageViewerNavButton v-if="hasNext" direction="next" @move="move(1)" />
+        </div>
+      </main>
 
-    <footer class="border-t border-white/10 px-3 py-2 sm:px-4 sm:py-3">
-      <p class="line-clamp-2 text-xs text-white/70">{{ image.prompt }}</p>
-    </footer>
-  </div>
+      <ImageViewerNavButton v-if="hasPrevious" direction="previous" mobile @move="move(-1)" />
+      <ImageViewerNavButton v-if="hasNext" direction="next" mobile @move="move(1)" />
+
+      <footer class="border-t border-white/10 px-3 py-2 sm:px-4 sm:py-3">
+        <p class="line-clamp-2 text-xs text-white/70">{{ image.prompt }}</p>
+      </footer>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -373,24 +205,27 @@ function formatBytes(bytes: number) {
 
 .viewer-image {
   display: block;
-  margin: auto;
+  width: auto;
+  height: auto;
   max-width: min(100%, 92vw);
   max-height: min(100%, 78vh);
+  transform-origin: center center;
   user-select: none;
-  transform-origin: center;
+  will-change: transform;
 }
 
 .viewer-main {
-  display: grid;
-  place-items: center;
+  display: block;
 }
 
 .viewer-stage {
   display: flex;
-  width: 100%;
+  position: absolute;
+  inset: 0;
+  width: auto;
   min-width: 0;
-  height: 100%;
-  min-height: 100%;
+  height: auto;
+  min-height: 0;
   padding: 0;
   box-sizing: border-box;
   align-items: center;
@@ -407,55 +242,9 @@ function formatBytes(bytes: number) {
   cursor: grabbing;
 }
 
-.viewer-button {
-  display: inline-flex;
-  height: 2.25rem;
-  width: 2.25rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.5rem;
-  background: rgb(255 255 255 / 0.1);
-  color: white;
-}
-
-.viewer-button:hover {
-  background: rgb(255 255 255 / 0.18);
-}
-
-.viewer-nav {
-  position: absolute;
-  z-index: 1;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  height: 3rem;
-  width: 3rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgb(255 255 255 / 0.12);
-  color: white;
-}
-
-.viewer-nav--previous {
-  left: 1rem;
-}
-
-.viewer-nav--next {
-  right: 1rem;
-}
-
-.viewer-nav--mobile {
-  display: none;
-}
-
 @media (max-width: 640px) {
   header {
     align-items: flex-start;
-  }
-
-  header > div:last-child {
-    max-width: 8.75rem;
   }
 
   .image-viewer {
@@ -473,37 +262,6 @@ function formatBytes(bytes: number) {
   .viewer-image {
     max-width: 100%;
     max-height: 100%;
-  }
-
-  .viewer-button {
-    height: 2rem;
-    width: 2rem;
-  }
-
-  .viewer-nav {
-    position: fixed;
-    top: calc(50dvh + 1.25rem);
-    z-index: 60;
-    height: 2.5rem;
-    width: 2.5rem;
-    background: rgb(255 255 255 / 0.2);
-    box-shadow: 0 10px 28px rgb(0 0 0 / 0.32);
-  }
-
-  .viewer-nav--desktop {
-    display: none;
-  }
-
-  .viewer-nav--mobile {
-    display: inline-flex;
-  }
-
-  .viewer-nav--previous {
-    left: max(0.75rem, env(safe-area-inset-left));
-  }
-
-  .viewer-nav--next {
-    right: max(0.75rem, env(safe-area-inset-right));
   }
 
   footer {

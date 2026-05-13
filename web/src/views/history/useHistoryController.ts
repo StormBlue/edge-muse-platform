@@ -9,8 +9,21 @@ import {
   queryString,
   type StringQuery
 } from "@/lib/routeQuery";
-import type { ImageAttachment, SessionMode } from "@/stores/session";
-import type { GenerationStats, HistoryMessage, HistorySession } from "./historyTypes";
+import type { ImageAttachment } from "@/stores/session";
+import {
+  errorMessage,
+  formatDateTime as formatHistoryDateTime,
+  isLongPrompt as isLongHistoryPrompt,
+  messagePromptText as historyMessagePromptText,
+  sanitizePage,
+  taskFailureMessage,
+  taskGenerationStats as historyTaskGenerationStats,
+  taskParameters as historyTaskParameters,
+  taskStatusTone,
+  taskStatusValue,
+  toViewerImage
+} from "./historyControllerHelpers";
+import type { HistoryMessage, HistorySession } from "./historyTypes";
 
 type HistoryOrder = "recent" | "oldest" | "task_count";
 
@@ -246,46 +259,16 @@ export function useHistoryController() {
     }
   }
 
-  function toViewerImage(image: ImageAttachment): ImageAttachment {
-    return { ...image, messageId: null };
-  }
-
   function openImage(image: ImageAttachment) {
     selectedImage.value = toViewerImage(image);
   }
 
-  function errorMessage(error: unknown) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "error" in error &&
-      error.error &&
-      typeof error.error === "object" &&
-      "message" in error.error
-    ) {
-      const message = error.error.message;
-      return typeof message === "string" ? message : "";
-    }
-    return "";
-  }
-
   function formatDateTime(value?: number | null) {
-    if (!value) return "-";
-    return new Intl.DateTimeFormat(locale.value, {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit"
-    }).format(value);
+    return formatHistoryDateTime(value, locale.value);
   }
 
-  function modeLabel(mode?: SessionMode | null) {
+  function modeLabel(mode?: string | null) {
     return mode ? t(`workspace.${mode}`) : "-";
-  }
-
-  function taskStatusValue(message: HistoryMessage) {
-    return message.task?.status ?? (message.taskId ? message.status : null);
   }
 
   function taskStatusLabel(status?: string | null) {
@@ -300,52 +283,17 @@ export function useHistoryController() {
     return status ? taskStatusLabel(status) : t("history.noTaskStatus");
   }
 
-  function taskStatusTone(status?: string | null) {
-    if (status === "succeeded") {
-      return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300";
-    }
-    if (status === "failed" || status === "cancelled") {
-      return "border-destructive/25 bg-destructive/10 text-destructive";
-    }
-    if (status === "running") return "border-accent/30 bg-accent/10 text-accent";
-    if (status === "queued") return "border-primary/25 bg-primary/10 text-primary";
-    return "border-border bg-muted/35 text-muted-foreground";
-  }
-
-  function taskFailureMessage(message: HistoryMessage) {
-    return message.task?.errorMsg || message.error?.message || "";
-  }
-
   function messagePromptText(message: HistoryMessage) {
-    return message.prompt || message.task?.params?.prompt || selectedSession.value?.title || "-";
+    return historyMessagePromptText(message, selectedSession.value);
   }
 
   function isLongPrompt(message: HistoryMessage) {
-    const prompt = messagePromptText(message);
-    return prompt.length > 260 || prompt.split("\n").length > 5;
+    return isLongHistoryPrompt(message, selectedSession.value);
   }
 
   /** 多图任务：用请求张数、成功附件数、终态推失败张数，算进度条。 */
-  function taskGenerationStats(message: HistoryMessage): GenerationStats {
-    const totalImages = requestedImageCount(message);
-    const success = message.attachments.length;
-    const status = taskStatusValue(message);
-    const failed =
-      status === "failed" || status === "cancelled" ? Math.max(totalImages - success, 0) : 0;
-    const completed = Math.min(totalImages, success + failed);
-    return {
-      total: totalImages,
-      success,
-      failed,
-      completed,
-      percent: totalImages > 0 ? Math.round((completed / totalImages) * 100) : 0
-    };
-  }
-
-  function requestedImageCount(message: HistoryMessage) {
-    const configured = message.task?.params?.n ?? selectedSession.value?.settings?.n;
-    const count = typeof configured === "number" && Number.isFinite(configured) ? configured : 0;
-    return Math.max(Math.floor(count), message.attachments.length);
+  function taskGenerationStats(message: HistoryMessage) {
+    return historyTaskGenerationStats(message, selectedSession.value);
   }
 
   function sessionImageCountLabel(session: HistorySession) {
@@ -357,10 +305,6 @@ export function useHistoryController() {
     return t("history.imageCount", { count: success });
   }
 
-  function sanitizePage(value: number) {
-    return Number.isFinite(value) ? Math.max(Math.floor(value), 1) : 1;
-  }
-
   function clampPageInput(value: string) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return page.value;
@@ -368,16 +312,7 @@ export function useHistoryController() {
   }
 
   function taskParameters(message: HistoryMessage) {
-    const params = message.task?.params ?? {};
-    return {
-      mode: message.task?.mode ?? params.mode ?? selectedSession.value?.mode ?? null,
-      size: params.size ?? selectedSession.value?.settings?.size ?? "-",
-      model: params.model ?? selectedSession.value?.settings?.model ?? "",
-      referenceCount:
-        message.referenceImages?.length ??
-        params.referenceImageIds?.length ??
-        message.referenceImageIds.length
-    };
+    return historyTaskParameters(message, selectedSession.value);
   }
 
   function previousResult() {

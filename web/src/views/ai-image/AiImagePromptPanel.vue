@@ -6,11 +6,9 @@
  * 外层页面只负责案例选择和实验事件，避免页面组件继续膨胀。
  */
 import { computed, ref } from "vue";
-import { RotateCcw, X } from "lucide-vue-next";
-import { useI18n } from "vue-i18n";
+import AiImageAssistantShell from "./AiImageAssistantShell.vue";
 import AiImagePromptComposer from "./AiImagePromptComposer.vue";
 import AiImageResultPanel from "./AiImageResultPanel.vue";
-import PromptAssistantPanel from "./PromptAssistantPanel.vue";
 import { getAiImageSubmitBlockReason } from "./aiImageSubmitValidation";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { ImageAttachment } from "@/stores/session";
@@ -68,12 +66,8 @@ const emit = defineEmits<{
   submit: [];
 }>();
 
-const { t } = useI18n();
-const assistantAnchor = ref<HTMLElement | null>(null);
-const assistantPanelRef = ref<{ reset: () => void } | null>(null);
-const assistantDialogOpen = ref(false);
+const assistantShellRef = ref<{ openAssistantView: () => void } | null>(null);
 const referenceDescription = ref("");
-const assistantOpenTrackedKeys = new Set<string>();
 
 const hasPrompt = computed(() => props.prompt.trim().length > 0);
 const interactionLocked = computed(() => props.submitting || props.hasRunningTask);
@@ -94,17 +88,6 @@ const submitDisabled = computed(() =>
     })
   )
 );
-const referenceContextKey = computed(() =>
-  [
-    props.previews
-      .map(({ file }) => `${file.name}:${file.type}:${file.size}:${file.lastModified}`)
-      .join("|"),
-    referenceDescription.value.trim()
-  ].join("::")
-);
-const assistantOpenKey = computed(() =>
-  [props.caseItem?.id ?? "", props.mode, referenceContextKey.value].join("::")
-);
 
 function onPaste(event: ClipboardEvent) {
   if (!canAcceptReferenceFiles.value) return;
@@ -119,23 +102,6 @@ function addReferenceFiles(files: File[]) {
   emit("addFiles", files);
 }
 
-function openAssistantView() {
-  if (!props.assistantEnabled || interactionLocked.value) return;
-  trackAssistantOpen();
-  if (!props.workflowExpanded || isMobileAssistantViewport()) {
-    assistantDialogOpen.value = true;
-    return;
-  }
-  assistantAnchor.value?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function trackAssistantOpen() {
-  const key = assistantOpenKey.value;
-  if (assistantOpenTrackedKeys.has(key)) return;
-  assistantOpenTrackedKeys.add(key);
-  emit("openAssistant");
-}
-
 function fillAssistantPrompt(value: {
   prompt: string;
   recommendedSize: string;
@@ -143,11 +109,6 @@ function fillAssistantPrompt(value: {
   auto?: boolean;
 }) {
   emit("fillAssistant", value);
-  if (!value.auto) assistantDialogOpen.value = false;
-}
-
-function isMobileAssistantViewport() {
-  return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 }
 </script>
 
@@ -160,53 +121,20 @@ function isMobileAssistantViewport() {
     }"
     @paste="onPaste"
   >
-    <div
+    <AiImageAssistantShell
       v-if="assistantEnabled"
-      ref="assistantAnchor"
-      class="assistant-shell"
-      :class="{ 'assistant-shell--dialog': assistantDialogOpen }"
-    >
-      <div class="assistant-dialog-card">
-        <div class="assistant-dialog-header">
-          <div class="min-w-0">
-            <h3 class="truncate text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
-          </div>
-          <div class="flex shrink-0 items-center gap-2">
-            <button
-              class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
-              type="button"
-              :disabled="interactionLocked"
-              @click="assistantPanelRef?.reset()"
-            >
-              <RotateCcw class="h-3.5 w-3.5" />
-              {{ t("aiImage.restartAssistant") }}
-            </button>
-            <button
-              class="ui-button ui-button-secondary h-8 w-8 p-0"
-              type="button"
-              :aria-label="t('viewer.close')"
-              :disabled="interactionLocked"
-              @click="assistantDialogOpen = false"
-            >
-              <X class="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-        <PromptAssistantPanel
-          ref="assistantPanelRef"
-          :case-item="caseItem"
-          :chrome="assistantDialogOpen ? 'embedded' : 'panel'"
-          :mode="mode"
-          :provider="provider"
-          :reference-count="referenceCount"
-          :reference-description="referenceDescription"
-          :reference-context-key="referenceContextKey"
-          :disabled="interactionLocked"
-          @fill="fillAssistantPrompt"
-          @open="trackAssistantOpen"
-        />
-      </div>
-    </div>
+      ref="assistantShellRef"
+      :case-item="caseItem"
+      :disabled="interactionLocked"
+      :mode="mode"
+      :previews="previews"
+      :provider="provider"
+      :reference-count="referenceCount"
+      :reference-description="referenceDescription"
+      :workflow-expanded="workflowExpanded"
+      @fill="fillAssistantPrompt"
+      @open="emit('openAssistant')"
+    />
 
     <AiImagePromptComposer
       v-model:reference-description="referenceDescription"
@@ -229,7 +157,7 @@ function isMobileAssistantViewport() {
       @add-files="addReferenceFiles"
       @clear-prompt="emit('clearPrompt')"
       @copy-prompt="emit('copyPrompt')"
-      @open-assistant="openAssistantView"
+      @open-assistant="assistantShellRef?.openAssistantView()"
       @remove-file="emit('removeFile', $event)"
       @reset-prompt="emit('resetPrompt')"
       @submit="emit('submit')"
@@ -257,10 +185,6 @@ function isMobileAssistantViewport() {
 </template>
 
 <style scoped>
-.assistant-dialog-header {
-  display: none;
-}
-
 .ai-prompt-workspace {
   display: grid;
   min-width: 0;
@@ -272,34 +196,15 @@ function isMobileAssistantViewport() {
   gap: 0.75rem;
 }
 
-.assistant-shell,
 :deep(.prompt-compose-panel),
 :deep(.ai-output-panel) {
   min-width: 0;
-}
-
-.assistant-shell {
-  grid-area: assistant;
-  min-height: 0;
-}
-
-.assistant-dialog-card {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.ai-prompt-workspace:not(.ai-prompt-workspace--expanded) .assistant-shell {
-  display: none;
 }
 
 .ai-prompt-workspace--expanded {
   min-height: min(56rem, calc(100dvh - 7rem));
 }
 
-.ai-prompt-workspace--expanded .assistant-shell,
 .ai-prompt-workspace--expanded :deep(.ai-output-panel) {
   height: 100%;
   min-height: 0;
@@ -307,69 +212,6 @@ function isMobileAssistantViewport() {
 
 .ai-prompt-workspace--expanded :deep(.prompt-compose-panel) {
   min-height: 0;
-}
-
-.ai-prompt-workspace--expanded .assistant-shell {
-  display: flex;
-  overflow: hidden;
-}
-
-.ai-prompt-workspace--expanded .assistant-shell :deep(.prompt-assistant-panel) {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.ai-prompt-workspace--expanded .assistant-shell :deep(.prompt-assistant-messages) {
-  max-height: none;
-  min-height: 0;
-  flex: 1;
-}
-
-.assistant-shell--dialog {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: grid !important;
-  min-width: 0;
-  min-height: 0;
-  place-items: center;
-  padding: clamp(0.75rem, 3vw, 2rem);
-  background: rgb(0 0 0 / 0.52);
-}
-
-.assistant-shell--dialog .assistant-dialog-card {
-  height: min(42rem, calc(100dvh - 2rem));
-  width: min(56rem, calc(100vw - 2rem));
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  background: var(--card);
-  box-shadow: 0 24px 80px rgb(0 0 0 / 0.34);
-}
-
-.assistant-shell--dialog .assistant-dialog-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  padding: 0.75rem;
-}
-
-.assistant-shell--dialog :deep(.prompt-assistant-panel) {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  border-radius: 0;
-}
-
-.assistant-shell--dialog :deep(.prompt-assistant-messages) {
-  max-height: none;
-  min-height: 0;
-  flex: 1;
 }
 
 @container (min-width: 50rem) {
@@ -418,12 +260,6 @@ function isMobileAssistantViewport() {
 @container (min-width: 96rem) {
   .ai-prompt-workspace--expanded {
     grid-template-columns: minmax(20rem, 26rem) minmax(24rem, 30rem) minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 767px) {
-  .assistant-shell:not(.assistant-shell--dialog) {
-    display: none;
   }
 }
 </style>

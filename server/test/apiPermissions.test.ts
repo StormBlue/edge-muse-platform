@@ -145,6 +145,80 @@ describe("provider key group API permissions", () => {
     expect(body.error.message).toContain("grouped key");
   });
 
+  it("rejects deleting a provider key that belongs to a key group", async () => {
+    const response = await app.request(
+      "/api/sysadmin/provider-keys/key_perm",
+      { method: "DELETE", headers: await jsonHeaders("sys_owner") },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toContain("belongs to a key group");
+    expect(body.error.details).toMatchObject({
+      reason: "PROVIDER_KEY_IN_GROUP",
+      groupId: "grp_perm",
+      groupName: "Permission Group"
+    });
+    const key = await context.env.DB.prepare(
+      "SELECT enabled, deleted_at FROM provider_keys WHERE id = 'key_perm'"
+    ).first<{ enabled: number; deleted_at: number | null }>();
+    expect(key).toEqual({ enabled: 1, deleted_at: null });
+  });
+
+  it("rejects disabling the last enabled provider key in a key group", async () => {
+    const response = await app.request(
+      "/api/sysadmin/provider-keys/key_perm",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({ enabled: false })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toContain("at least one enabled key");
+    expect(body.error.details).toMatchObject({
+      reason: "LAST_ENABLED_PROVIDER_KEY_IN_GROUP",
+      groupId: "grp_perm",
+      groupName: "Permission Group"
+    });
+    const key = await context.env.DB.prepare(
+      "SELECT enabled FROM provider_keys WHERE id = 'key_perm'"
+    ).first<{ enabled: number }>();
+    expect(key?.enabled).toBe(1);
+  });
+
+  it("allows disabling a grouped provider key when another group member remains enabled", async () => {
+    await context.env.DB.prepare(
+      `INSERT INTO provider_key_group_members (
+         group_id, provider_key_id, sort_order, created_at, updated_at
+       ) VALUES ('grp_perm', 'key_perm_extra', 1, ?1, ?1)`
+    )
+      .bind(1_778_000_000_100)
+      .run();
+
+    const response = await app.request(
+      "/api/sysadmin/provider-keys/key_perm",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({ enabled: false })
+      },
+      context.env
+    );
+
+    expect(response.status).toBe(200);
+    const key = await context.env.DB.prepare(
+      "SELECT enabled FROM provider_keys WHERE id = 'key_perm'"
+    ).first<{ enabled: number }>();
+    expect(key?.enabled).toBe(0);
+  });
+
   it("allows an admin to update only a managed user max concurrent task limit", async () => {
     const response = await app.request(
       "/api/admin/users/usr_managed",

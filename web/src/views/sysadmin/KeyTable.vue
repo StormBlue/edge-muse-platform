@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Loader2, PlugZap } from "lucide-vue-next";
+import { Loader2, Pencil, PlugZap, Power, PowerOff, Trash2 } from "lucide-vue-next";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { KeyRow } from "./useSysadminKeysController";
 
 defineProps<{
@@ -7,7 +8,6 @@ defineProps<{
   testingKeyId: string | null;
   t: (key: string, params?: Record<string, unknown>) => string;
   providerLabel: (providerId: string) => string;
-  tableRowNumber: (index: number) => number;
 }>();
 
 defineEmits<{
@@ -19,55 +19,51 @@ defineEmits<{
 </script>
 
 <template>
-  <section class="panel overflow-hidden">
+  <section class="panel flex min-h-0 flex-col overflow-hidden">
     <div class="border-b border-border px-4 py-3">
-      <h2 class="text-sm font-semibold">{{ t("sysadmin.keyList") }}</h2>
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold">{{ t("sysadmin.keyList") }}</h2>
+          <p class="mt-0.5 text-xs text-muted-foreground">
+            {{ t("sysadmin.keyCount", { count: keys.length }) }}
+          </p>
+        </div>
+      </div>
     </div>
-    <div class="thin-scrollbar max-h-[calc(100vh-12rem)] overflow-auto">
-      <table class="w-full min-w-[72rem] text-sm">
-        <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
-          <tr>
-            <th class="w-16 p-3">{{ t("common.sequence") }}</th>
-            <th class="p-3">{{ t("sysadmin.label") }}</th>
-            <th class="p-3">{{ t("sysadmin.provider") }}</th>
-            <th class="p-3">{{ t("sysadmin.keyModel") }}</th>
-            <th class="p-3">{{ t("sysadmin.keyHint") }}</th>
-            <th class="p-3">{{ t("sysadmin.maxConcurrency") }}</th>
-            <th class="p-3">{{ t("common.quota") }}</th>
-            <th class="p-3">{{ t("adminUsers.status") }}</th>
-            <th class="p-3 text-right">{{ t("sysadmin.actions") }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="!keys.length" class="border-t border-border">
-            <td class="p-4 text-center text-muted-foreground" colspan="9">
-              {{ t("sysadmin.noKeys") }}
-            </td>
-          </tr>
-          <tr v-for="(key, index) in keys" :key="key.id" class="border-t border-border">
-            <td class="p-3 font-mono text-muted-foreground">{{ tableRowNumber(index) }}</td>
-            <td class="p-3">
-              <p class="font-medium">{{ key.label }}</p>
-              <p class="text-xs text-muted-foreground">{{ key.id }}</p>
-            </td>
-            <td class="p-3">{{ providerLabel(key.providerId) }}</td>
-            <td class="p-3">{{ key.model || "-" }}</td>
-            <td class="p-3 font-mono">{{ key.keyHint }}</td>
-            <td class="p-3">{{ key.activeSlots }} / {{ key.maxConcurrency }}</td>
-            <td class="p-3">{{ key.usedQuota }} / {{ key.allocatedQuota ?? "∞" }}</td>
-            <td class="p-3">
-              <span
-                class="rounded-full px-2 py-1 text-xs"
-                :class="
-                  key.enabled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                "
-              >
-                {{ key.enabled ? t("common.enabled") : t("common.disabled") }}
-              </span>
-            </td>
-            <td class="space-x-2 p-3 text-right">
+
+    <ScrollArea class="min-h-0 flex-1">
+      <div class="space-y-3 p-3">
+        <div
+          v-if="!keys.length"
+          class="rounded border border-dashed border-border p-6 text-center text-sm text-muted-foreground"
+        >
+          {{ t("sysadmin.noKeys") }}
+        </div>
+
+        <article
+          v-for="key in keys"
+          :key="key.id"
+          class="rounded border border-border bg-background p-3"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="truncate text-sm font-semibold">{{ key.label }}</h3>
+                <span
+                  class="rounded-full px-2 py-0.5 text-xs"
+                  :class="
+                    key.enabled ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                  "
+                >
+                  {{ key.enabled ? t("common.enabled") : t("common.disabled") }}
+                </span>
+              </div>
+              <p class="mt-1 truncate font-mono text-xs text-muted-foreground">{{ key.id }}</p>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap justify-end gap-2">
               <button
-                class="ui-button ui-button-secondary h-8 text-xs"
+                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
                 type="button"
                 :disabled="testingKeyId === key.id"
                 @click="$emit('testKey', key)"
@@ -77,30 +73,63 @@ defineEmits<{
                 {{ t("sysadmin.testKey") }}
               </button>
               <button
-                class="ui-button ui-button-secondary h-8 text-xs"
+                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
                 type="button"
                 @click="$emit('openEdit', key)"
               >
+                <Pencil class="h-3.5 w-3.5" />
                 {{ t("sysadmin.edit") }}
               </button>
               <button
-                class="ui-button ui-button-secondary h-8 text-xs"
+                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
                 type="button"
                 @click="$emit('toggleKey', key)"
               >
+                <PowerOff v-if="key.enabled" class="h-3.5 w-3.5" />
+                <Power v-else class="h-3.5 w-3.5" />
                 {{ key.enabled ? t("common.disabled") : t("common.enabled") }}
               </button>
               <button
-                class="ui-button ui-button-secondary h-8 text-xs text-destructive"
+                class="ui-button ui-button-secondary h-8 px-2.5 text-xs text-destructive"
                 type="button"
                 @click="$emit('deleteKey', key)"
               >
+                <Trash2 class="h-3.5 w-3.5" />
                 {{ t("common.delete") }}
               </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </div>
+          </div>
+
+          <dl class="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+            <div>
+              <dt>{{ t("sysadmin.provider") }}</dt>
+              <dd class="mt-0.5 truncate font-medium text-foreground">
+                {{ providerLabel(key.providerId) }}
+              </dd>
+            </div>
+            <div>
+              <dt>{{ t("sysadmin.keyModel") }}</dt>
+              <dd class="mt-0.5 truncate font-medium text-foreground">{{ key.model || "-" }}</dd>
+            </div>
+            <div>
+              <dt>{{ t("sysadmin.keyHint") }}</dt>
+              <dd class="mt-0.5 font-mono font-medium text-foreground">{{ key.keyHint }}</dd>
+            </div>
+            <div>
+              <dt>{{ t("sysadmin.maxConcurrency") }}</dt>
+              <dd class="mt-0.5 font-medium text-foreground">
+                {{ key.activeSlots }} / {{ key.maxConcurrency }}
+              </dd>
+            </div>
+            <div>
+              <dt>{{ t("common.quota") }}</dt>
+              <dd class="mt-0.5 font-medium text-foreground">
+                {{ key.usedQuota }} / {{ key.allocatedQuota ?? t("common.unlimited") }}
+              </dd>
+            </div>
+          </dl>
+        </article>
+      </div>
+    </ScrollArea>
   </section>
 </template>

@@ -6,14 +6,24 @@
 import { computed, onScopeDispose, ref, watch, type ComputedRef, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { getPublishedPromptCase, listPublishedPromptCasePage } from "@/api/promptCases";
+import { listPublishedPromptCasePage } from "@/api/promptCases";
 import { useUiStore } from "@/stores/ui";
+import {
+  EMPTY_FACETS,
+  EMPTY_PAGE_INFO,
+  errorMessage,
+  isFullPromptCase,
+  promptCaseListParams,
+  validPromptCaseModes
+} from "./aiImageCasesHelpers";
 import {
   filterPromptCases,
   promptCaseApplyResult,
   promptCaseModeResult,
   sortPromptCaseCategories
 } from "./promptCaseSelection";
+import { useAiImagePromptState } from "./useAiImagePromptState";
+import { usePromptCaseDetails } from "./usePromptCaseDetails";
 import {
   PROMPT_CASE_MODES,
   type PromptCase,
@@ -22,24 +32,10 @@ import {
   type PromptCaseMode,
   type PromptCasePageInfo
 } from "@/types/promptCases";
-import type { ApiError } from "@/api/client";
-
-export type AiImagePromptSource = "case" | "assistant" | "user" | null;
+export type { AiImagePromptSource } from "./useAiImagePromptState";
 
 export type UseAiImageCasesOptions = {
   supportedModes?: Ref<PromptCaseMode[]> | ComputedRef<PromptCaseMode[]>;
-};
-
-const CASE_PAGE_LIMIT = 60;
-const EMPTY_PAGE_INFO: PromptCasePageInfo = {
-  nextCursor: null,
-  hasMore: false,
-  limit: CASE_PAGE_LIMIT
-};
-const EMPTY_FACETS: PromptCaseFacets = {
-  categories: [],
-  sizes: [],
-  modes: []
 };
 
 export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
@@ -48,32 +44,47 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   const items = ref<PromptCaseListItem[]>([]);
   const pageInfo = ref<PromptCasePageInfo>({ ...EMPTY_PAGE_INFO });
   const facets = ref<PromptCaseFacets>({ ...EMPTY_FACETS });
-  const detailsById = ref<Record<string, PromptCase>>({});
-  const detailLoadingById = ref<Record<string, boolean>>({});
-  const detailErrorById = ref<Record<string, string>>({});
   const selectedId = ref<string | null>(null);
   const category = ref("");
   const filterMode = ref<"" | PromptCaseMode>("");
   const selectedMode = ref<PromptCaseMode>("image2image");
   const size = ref("");
   const search = ref("");
-  const finalPrompt = ref("");
-  const finalPromptSource = ref<AiImagePromptSource>(null);
-  const resettablePrompt = ref("");
-  const resettablePromptSource = ref<Exclude<AiImagePromptSource, "user"> | null>(null);
   const caseContextId = ref<string | null>(null);
   const loadingInitial = ref(false);
   const loadingMore = ref(false);
   const loaded = ref(false);
   const loadMoreError = ref<string | null>(null);
   const applyingCaseId = ref<string | null>(null);
-  const detailPromises = new Map<string, Promise<PromptCase>>();
+  const {
+    canResetPrompt,
+    finalPrompt,
+    finalPromptSource,
+    resettablePromptSource,
+    clearPrompt,
+    discardResetTarget,
+    resetPrompt,
+    setPrompt,
+    setResettablePrompt
+  } = useAiImagePromptState();
+  const {
+    cacheDetail,
+    contextDetail,
+    detailError,
+    detailLoading,
+    detailsById,
+    ensureCaseDetail,
+    selectedDetail
+  } = usePromptCaseDetails({
+    detailErrorFallback: () => t("aiImage.caseDetailLoadFailed"),
+    locale: computed(() => ui.locale)
+  });
   let loadSeq = 0;
   let filterReloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   const supportedModes = computed(() => {
     const modes = options.supportedModes?.value ?? [...PROMPT_CASE_MODES];
-    return modes.filter((mode): mode is PromptCaseMode => PROMPT_CASE_MODES.includes(mode));
+    return validPromptCaseModes(modes);
   });
   const availableItems = computed(() =>
     filterPromptCases(items.value, {
@@ -101,9 +112,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     if (listItem) return detailsById.value[listItem.id] ?? listItem;
     return filteredItems.value[0] ?? null;
   });
-  const selectedDetail = computed(() =>
-    selectedId.value ? (detailsById.value[selectedId.value] ?? null) : null
-  );
+  const selectedDetailValue = selectedDetail(selectedId);
   const caseContext = computed(() => {
     if (!caseContextId.value) return null;
     return (
@@ -113,9 +122,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
       null
     );
   });
-  const caseContextDetail = computed(() =>
-    caseContextId.value ? (detailsById.value[caseContextId.value] ?? null) : null
-  );
+  const caseContextDetail = contextDetail(caseContextId);
   const categories = computed(() =>
     supportedModes.value.length
       ? sortPromptCaseCategories(facets.value.categories.map((item) => item.value))
@@ -124,17 +131,10 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
   const sizes = computed(() =>
     supportedModes.value.length ? facets.value.sizes.map((item) => item.value).sort() : []
   );
-  const canResetPrompt = computed(
-    () => Boolean(resettablePromptSource.value) && finalPrompt.value !== resettablePrompt.value
-  );
   const loading = computed(() => loadingInitial.value);
   const hasMore = computed(() => pageInfo.value.hasMore);
-  const detailLoading = computed(() =>
-    selectedId.value ? Boolean(detailLoadingById.value[selectedId.value]) : false
-  );
-  const detailError = computed(() =>
-    selectedId.value ? (detailErrorById.value[selectedId.value] ?? null) : null
-  );
+  const selectedDetailLoading = detailLoading(selectedId);
+  const selectedDetailError = detailError(selectedId);
   const applying = computed(() =>
     selectedId.value ? applyingCaseId.value === selectedId.value : Boolean(applyingCaseId.value)
   );
@@ -264,21 +264,6 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     clearPrompt({ discardResetTarget: true });
   }
 
-  function setPrompt(value: string, source: Exclude<AiImagePromptSource, null>) {
-    finalPrompt.value = value;
-    finalPromptSource.value = source;
-    if (source === "case" || source === "assistant") {
-      resettablePrompt.value = value;
-      resettablePromptSource.value = source;
-    }
-  }
-
-  function resetPrompt() {
-    if (!resettablePromptSource.value) return;
-    finalPrompt.value = resettablePrompt.value;
-    finalPromptSource.value = resettablePromptSource.value;
-  }
-
   function ensureAvailableSelection() {
     const available = availableItems.value;
     const visible = filteredItems.value;
@@ -340,39 +325,15 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     });
   }
 
-  function setResettablePrompt(value: string, source: Exclude<AiImagePromptSource, "user" | null>) {
-    finalPrompt.value = value;
-    finalPromptSource.value = source;
-    resettablePrompt.value = value;
-    resettablePromptSource.value = source;
-  }
-
-  function clearPrompt(options: { discardResetTarget?: boolean } = {}) {
-    finalPrompt.value = "";
-    finalPromptSource.value = resettablePromptSource.value ? "user" : null;
-    if (options.discardResetTarget) discardResetTarget();
-  }
-
-  function discardResetTarget() {
-    resettablePrompt.value = "";
-    resettablePromptSource.value = null;
-    if (!finalPrompt.value.trim()) finalPromptSource.value = null;
-  }
-
   function currentListParams(locale: string) {
-    return {
+    return promptCaseListParams({
       category: category.value,
-      mode: effectiveServerMode(),
+      filterMode: filterMode.value,
       size: size.value,
       locale,
-      limit: CASE_PAGE_LIMIT,
-      search: search.value
-    };
-  }
-
-  function effectiveServerMode() {
-    if (filterMode.value) return filterMode.value;
-    return supportedModes.value.length === 1 ? supportedModes.value[0] : undefined;
+      search: search.value,
+      supportedModes: supportedModes.value
+    });
   }
 
   function scheduleReload(delay = 0) {
@@ -389,44 +350,6 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     filterReloadTimer = null;
   }
 
-  async function ensureCaseDetail(itemOrId: PromptCaseListItem | PromptCase | string) {
-    if (typeof itemOrId !== "string" && isFullPromptCase(itemOrId)) {
-      cacheDetail(itemOrId);
-      return itemOrId;
-    }
-    const id = typeof itemOrId === "string" ? itemOrId : itemOrId.id;
-    const cached = detailsById.value[id];
-    if (cached) return cached;
-    const existingPromise = detailPromises.get(id);
-    if (existingPromise) return existingPromise;
-
-    detailLoadingById.value = { ...detailLoadingById.value, [id]: true };
-    detailErrorById.value = omitKey(detailErrorById.value, id);
-    const promise = getPublishedPromptCase(id, { locale: ui.locale })
-      .then((detail) => {
-        cacheDetail(detail);
-        detailErrorById.value = omitKey(detailErrorById.value, id);
-        return detail;
-      })
-      .catch((error) => {
-        detailErrorById.value = {
-          ...detailErrorById.value,
-          [id]: errorMessage(error, t("aiImage.caseDetailLoadFailed"))
-        };
-        throw error;
-      })
-      .finally(() => {
-        detailPromises.delete(id);
-        detailLoadingById.value = { ...detailLoadingById.value, [id]: false };
-      });
-    detailPromises.set(id, promise);
-    return promise;
-  }
-
-  function cacheDetail(item: PromptCase) {
-    detailsById.value = { ...detailsById.value, [item.id]: item };
-  }
-
   return {
     availableItems,
     applying,
@@ -436,8 +359,8 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     caseContextId,
     categories,
     category,
-    detailError,
-    detailLoading,
+    detailError: selectedDetailError,
+    detailLoading: selectedDetailLoading,
     detailsById,
     facets,
     filteredItems,
@@ -453,7 +376,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     pageInfo,
     search,
     selected,
-    selectedDetail,
+    selectedDetail: selectedDetailValue,
     selectedId,
     selectedMode,
     size,
@@ -469,19 +392,4 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     setPrompt,
     startBlankCase
   };
-}
-
-function isFullPromptCase(item: PromptCaseListItem | PromptCase): item is PromptCase {
-  return "promptTemplate" in item;
-}
-
-function omitKey<T>(record: Record<string, T>, key: string) {
-  const next = { ...record };
-  delete next[key];
-  return next;
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  const maybeApiError = error as Partial<ApiError>;
-  return maybeApiError.error?.message || fallback;
 }
