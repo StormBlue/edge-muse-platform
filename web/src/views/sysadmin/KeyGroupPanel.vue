@@ -161,12 +161,12 @@ function handleSelectGroup(event: Event) {
         >
           <button
             :data-member-id="member.id"
-            class="ui-button ui-button-secondary h-9 w-9 p-0"
+            class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
             type="button"
             :aria-label="t('sysadmin.dragSort')"
             :title="t('sysadmin.dragSort')"
           >
-            <GripVertical class="h-4 w-4" />
+            <GripVertical class="h-5 w-5" :stroke-width="2.25" />
           </button>
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium">{{ member.label }}</p>
@@ -175,36 +175,36 @@ function handleSelectGroup(event: Event) {
               {{ member.maxConcurrency }}
             </p>
           </div>
-          <div class="flex gap-1">
+          <div class="flex shrink-0 gap-2">
             <button
-              class="ui-button ui-button-secondary h-8 w-8 p-0"
+              class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
               type="button"
               :disabled="index === 0 || memberSaving"
               :aria-label="t('common.previous')"
               :title="t('common.previous')"
               @click="$emit('moveMember', index, index - 1)"
             >
-              <ArrowUp class="h-4 w-4" />
+              <ArrowUp class="h-5 w-5" :stroke-width="2.25" />
             </button>
             <button
-              class="ui-button ui-button-secondary h-8 w-8 p-0"
+              class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
               type="button"
               :disabled="index === groupMembers.length - 1 || memberSaving"
               :aria-label="t('common.next')"
               :title="t('common.next')"
               @click="$emit('moveMember', index, index + 1)"
             >
-              <ArrowDown class="h-4 w-4" />
+              <ArrowDown class="h-5 w-5" :stroke-width="2.25" />
             </button>
             <button
-              class="ui-button ui-button-secondary h-8 w-8 p-0 text-destructive"
+              class="key-group-member-button key-group-member-button--danger ui-button ui-button-secondary ui-icon-button"
               type="button"
               :disabled="memberSaving"
               :aria-label="t('common.delete')"
               :title="t('common.delete')"
               @click="$emit('removeMember', member)"
             >
-              <Trash2 class="h-4 w-4" />
+              <Trash2 class="h-5 w-5" :stroke-width="2.25" />
             </button>
           </div>
         </div>
@@ -212,3 +212,30 @@ function handleSelectGroup(event: Event) {
     </div>
   </section>
 </template>
+
+<style scoped>
+.key-group-member-button {
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--border), var(--foreground) 12%);
+  background: color-mix(in oklch, var(--card), transparent 4%);
+}
+
+.key-group-member-button:hover:not(:disabled) {
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--primary), var(--border) 55%);
+  background: color-mix(in oklch, var(--muted), var(--card) 35%);
+}
+
+.key-group-member-button:disabled {
+  color: color-mix(in oklch, var(--muted-foreground), transparent 20%);
+}
+
+.key-group-member-button--danger {
+  color: var(--destructive);
+}
+
+.key-group-member-button--danger:hover:not(:disabled) {
+  color: var(--destructive);
+  border-color: color-mix(in oklch, var(--destructive), var(--border) 55%);
+}
+</style>
