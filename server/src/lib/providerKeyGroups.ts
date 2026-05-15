@@ -222,7 +222,11 @@ async function resolveLegacyProviderKeyAsGroup(
   };
 }
 
-async function ensureLegacyProviderKeyGroup(
+/**
+ * 确保存在与单把密钥对应的兼容分组 `pkg_<keyId>`（含成员行）。
+ * 个人偏好像 `preferred_provider_key_id` 更新时需与生图用的 `provider_key_group_id` 对齐。
+ */
+export async function ensureLegacyProviderKeyGroup(
   env: AppBindings,
   key: ProviderKey
 ): Promise<ProviderKeyGroup> {

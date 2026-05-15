@@ -18,6 +18,7 @@ import {
   saveCaptchaSettings
 } from "../../lib/captcha";
 import { now } from "../../lib/id";
+import { ensureLegacyProviderKeyGroup } from "../../lib/providerKeyGroups";
 import { getAssignableProviderKey } from "../../lib/providerKeys";
 import { optionalPreferredProviderKeySchema, type SysadminRouter } from "./common";
 
@@ -69,13 +70,28 @@ export function registerSysadminPreferenceRoutes(sysadminRoutes: SysadminRouter)
 
       if ("preferredProviderKeyId" in input) {
         preferredProviderKeyId = input.preferredProviderKeyId ?? null;
+        const timestamp = now();
         if (preferredProviderKeyId) {
-          await getAssignableProviderKey(c.env, preferredProviderKeyId);
+          const key = await getAssignableProviderKey(c.env, preferredProviderKeyId);
+          const group = await ensureLegacyProviderKeyGroup(c.env, key);
+          await getDb(c.env)
+            .update(users)
+            .set({
+              preferredProviderKeyId,
+              providerKeyGroupId: group.id,
+              updatedAt: timestamp
+            })
+            .where(eq(users.id, user.id));
+        } else {
+          await getDb(c.env)
+            .update(users)
+            .set({
+              preferredProviderKeyId: null,
+              providerKeyGroupId: null,
+              updatedAt: timestamp
+            })
+            .where(eq(users.id, user.id));
         }
-        await getDb(c.env)
-          .update(users)
-          .set({ preferredProviderKeyId, updatedAt: now() })
-          .where(eq(users.id, user.id));
         auditPayload.preferredProviderKeyId = preferredProviderKeyId;
       }
 
