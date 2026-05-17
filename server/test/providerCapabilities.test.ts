@@ -20,7 +20,7 @@ const cubenceProvider: Provider = {
 const micuProvider: Provider = {
   id: "prv_micu",
   name: "Micu",
-  baseUrl: "https://www.openclaudecode.cn",
+  baseUrl: "https://www.micuapi.ai",
   defaultModel: "gpt-image-2",
   requestFormat: "micu_images",
   supportedSizes: JSON.stringify(["1024x1024", "2048x2048"]),

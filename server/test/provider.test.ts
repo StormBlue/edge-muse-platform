@@ -113,7 +113,7 @@ describe("provider response parsing", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
-        expect(url).toBe("https://www.openclaudecode.cn/v1/images/generations");
+        expect(url).toBe("https://www.micuapi.ai/v1/images/generations");
         expect(init.method).toBe("POST");
         const body = JSON.parse(String(init.body)) as {
           model: string;
@@ -142,7 +142,7 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "1280x720",
       apiKey: "key",
-      baseUrl: "https://www.openclaudecode.cn"
+      baseUrl: "https://www.micuapi.ai"
     });
 
     expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
@@ -174,7 +174,7 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "2048x2048",
       apiKey: "key",
-      baseUrl: "https://www.openclaudecode.cn"
+      baseUrl: "https://www.micuapi.ai"
     });
 
     expect(response.images).toHaveLength(1);
@@ -185,7 +185,7 @@ describe("provider response parsing", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string, init: RequestInit) => {
-        expect(url).toBe("https://www.openclaudecode.cn/v1/images/edits");
+        expect(url).toBe("https://www.micuapi.ai/v1/images/edits");
         expect(init.method).toBe("POST");
         const headers = new Headers(init.headers);
         expect(headers.get("Content-Type")).toBeNull();
@@ -207,7 +207,7 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "1024x1024",
       apiKey: "key",
-      baseUrl: "https://www.openclaudecode.cn",
+      baseUrl: "https://www.micuapi.ai",
       referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
     });
 
@@ -225,7 +225,7 @@ describe("provider response parsing", () => {
         })
       )
       .mockImplementationOnce(async (url: string, init: RequestInit) => {
-        expect(url).toBe("https://www.openclaudecode.cn/v1/chat/completions");
+        expect(url).toBe("https://www.micuapi.ai/v1/chat/completions");
         const body = JSON.parse(String(init.body)) as {
           model: string;
           messages: Array<{ content: unknown }>;
@@ -247,7 +247,7 @@ describe("provider response parsing", () => {
       model: "gpt-image-2",
       size: "1024x1024",
       apiKey: "key",
-      baseUrl: "https://www.openclaudecode.cn",
+      baseUrl: "https://www.micuapi.ai",
       referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
     });
 

@@ -9,6 +9,7 @@ import {
   ensureBuiltInProviders,
   isBuiltInProviderId,
   isProviderKeyAssignable,
+  MICU_BASE_URL,
   MICU_PROVIDER_ID
 } from "../src/providers/catalog";
 
@@ -75,6 +76,7 @@ describe("Cubence integration regressions", () => {
         expect.objectContaining({
           id: MICU_PROVIDER_ID,
           name: "米醋API",
+          baseUrl: MICU_BASE_URL,
           requestFormat: "micu_images"
         }),
         expect.objectContaining({

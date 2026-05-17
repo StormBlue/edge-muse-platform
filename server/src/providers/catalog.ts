@@ -10,12 +10,13 @@ import type { AppBindings } from "../types";
 
 export const MICU_PROVIDER_ID = "prv_micu";
 export const CUBENCE_PROVIDER_ID = "prv_cubence";
+export const MICU_BASE_URL = "https://www.micuapi.ai";
 
 export const BUILT_IN_PROVIDERS = [
   {
     id: MICU_PROVIDER_ID,
     name: "米醋API",
-    baseUrl: "https://www.openclaudecode.cn",
+    baseUrl: MICU_BASE_URL,
     defaultModel: "gpt-image-2",
     requestFormat: "micu_images",
     supportedSizes: [
