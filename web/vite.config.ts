@@ -6,7 +6,14 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      template: {
+        compilerOptions: {
+          /** ALTCHA ships `<altcha-widget>` as a native custom element (`altcha/external`). */
+          isCustomElement: (tag) => tag === "altcha-widget"
+        }
+      }
+    }),
     tailwindcss(),
     VueI18nPlugin({
       include: path.resolve(__dirname, "./src/locales/**")
