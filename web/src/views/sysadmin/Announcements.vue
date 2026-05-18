@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
-import { Archive, Edit3, Megaphone, RefreshCw, Send, Trash2 } from "lucide-vue-next";
+import { Archive, Edit3, Megaphone, RefreshCw, Send, Trash2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import {

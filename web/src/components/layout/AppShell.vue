@@ -8,7 +8,7 @@
  */
 import { RouterLink } from "vue-router";
 import type { HTMLAttributes } from "vue";
-import { LogOut, Menu, Settings } from "lucide-vue-next";
+import { LogOut, Menu, Settings } from "@lucide/vue";
 import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { AuditSession } from "./userSessionsTypes";
 

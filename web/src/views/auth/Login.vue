@@ -10,7 +10,7 @@ import { computed, onMounted, ref, toRef } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "lucide-vue-next";
+import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "@lucide/vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuthStore } from "@/stores/auth";

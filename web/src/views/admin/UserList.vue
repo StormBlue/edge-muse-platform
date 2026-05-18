@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2 } from "lucide-vue-next";
+import { Loader2 } from "@lucide/vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import {

@@ -3,7 +3,7 @@
  * 服务商 API 密钥与 key group 调度配置：key 保存密文，group 决定生成请求调度优先级。
  */
 import { onBeforeUnmount, watch } from "vue";
-import { Plus, RefreshCw } from "lucide-vue-next";
+import { Plus, RefreshCw } from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import KeyDialogs from "./KeyDialogs.vue";
 import KeyGroupPanel from "./KeyGroupPanel.vue";

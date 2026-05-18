@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, Download, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from "lucide-vue-next";
+import { Copy, Download, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 
 defineProps<{

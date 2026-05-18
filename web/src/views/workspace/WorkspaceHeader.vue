@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Plus, Sparkles, Wifi } from "lucide-vue-next";
+import { Loader2, Plus, Sparkles, Wifi } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 
 defineProps<{

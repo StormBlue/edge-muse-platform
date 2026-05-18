@@ -3,7 +3,7 @@
  * 工作台底部输入：prompt、尺寸/张数（受角色限制）、图生图时本地上传参考图（最多 5）。
  * `readOnly` 用于仅展示历史参数。
  */
-import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "lucide-vue-next";
+import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "@lucide/vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
 import type { ImageAttachment } from "@/stores/session";
 import {

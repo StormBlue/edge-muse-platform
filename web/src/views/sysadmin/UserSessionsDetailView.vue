@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2 } from "lucide-vue-next";
+import { Loader2 } from "@lucide/vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import UserSessionsDetailHeader from "./UserSessionsDetailHeader.vue";

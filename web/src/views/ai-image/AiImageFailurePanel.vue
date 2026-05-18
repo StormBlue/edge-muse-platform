@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ImageOff, RotateCw } from "lucide-vue-next";
+import { ImageOff, RotateCw } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 
 defineProps<{

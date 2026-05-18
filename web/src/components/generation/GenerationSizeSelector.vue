@@ -3,7 +3,7 @@
  * 三段式画布尺寸选择：Auto、推荐 3:2、更多尺寸下拉。
  */
 import { computed } from "vue";
-import { ChevronDown } from "lucide-vue-next";
+import { ChevronDown } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { generationSizeChoices } from "@/views/ai-image/generationSizeChoices";
 import type { SizeOption } from "@/views/workspace/workspaceOptions";

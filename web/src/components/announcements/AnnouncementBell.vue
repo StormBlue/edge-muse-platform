@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
-import { ChevronLeft, ChevronRight, Megaphone, X } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight, Megaphone, X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import {
   getAnnouncementDetail,

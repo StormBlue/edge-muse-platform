@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Image as ImageIcon } from "lucide-vue-next";
+import { Image as ImageIcon } from "@lucide/vue";
 import type { AuditSession, UserOption } from "./userSessionsTypes";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;

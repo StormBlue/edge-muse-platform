@@ -4,7 +4,7 @@
  *
  * 助手整理出的最终 prompt 会自动同步到生成面板，这里只负责确认和复制。
  */
-import { Copy } from "lucide-vue-next";
+import { Copy } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 
 const editablePrompt = defineModel<string>({ required: true });

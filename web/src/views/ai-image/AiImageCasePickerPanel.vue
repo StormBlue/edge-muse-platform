@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, WandSparkles } from "lucide-vue-next";
+import { Search, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { PromptCaseMode } from "@/types/promptCases";
 

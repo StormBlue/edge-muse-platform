@@ -4,7 +4,7 @@
  *
  * 这里不暴露 draft/hidden 状态，数据源已由后端限制为 published。
  */
-import { Star } from "lucide-vue-next";
+import { Star } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import type { PromptCaseListItem } from "@/types/promptCases";

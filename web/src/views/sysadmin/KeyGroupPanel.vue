@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { useDraggable } from "@vueuse/core";
-import { ArrowDown, ArrowUp, GripVertical, Pencil, Plus, Trash2 } from "lucide-vue-next";
+import { ArrowDown, ArrowUp, GripVertical, Pencil, Plus, Trash2 } from "@lucide/vue";
 import {
   Dialog,
   DialogContent,

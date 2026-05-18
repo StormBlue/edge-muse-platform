@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Image as ImageIcon, Loader2 } from "lucide-vue-next";
+import { Image as ImageIcon, Loader2 } from "@lucide/vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
 import type { HistorySession } from "./historyTypes";
 

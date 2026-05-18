@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Image as ImageIcon, ImageOff, Loader2, RotateCw } from "lucide-vue-next";
+import { Image as ImageIcon, ImageOff, Loader2, RotateCw } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { ImageAttachment } from "@/stores/session";
 

@@ -3,7 +3,7 @@
  * 案例详情：展示用户决策所需信息，并明确来源归因。
  */
 import { computed, ref, watch } from "vue";
-import { ExternalLink, Loader2, Maximize2, WandSparkles } from "lucide-vue-next";
+import { ExternalLink, Loader2, Maximize2, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import ImageViewer from "@/components/image/ImageViewer.vue";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";

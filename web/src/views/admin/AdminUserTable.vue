@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2 } from "lucide-vue-next";
+import { Loader2 } from "@lucide/vue";
 import type { AdminUser } from "./adminUserTypes";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Image as ImageIcon, Loader2, Maximize2 } from "lucide-vue-next";
+import { Image as ImageIcon, Loader2, Maximize2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import AiImageFailurePanel from "./AiImageFailurePanel.vue";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";

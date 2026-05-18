@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { RotateCcw, X } from "lucide-vue-next";
+import { RotateCcw, X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import PromptAssistantPanel from "./PromptAssistantPanel.vue";
 import type { ProviderCapabilities } from "@/stores/auth";

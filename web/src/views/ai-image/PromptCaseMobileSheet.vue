@@ -5,7 +5,7 @@
  * 桌面端继续使用中间栏；移动端通过 sheet 展示详情，避免案例内容把生成面板挤到很远。
  */
 import { computed, onBeforeUnmount, watch } from "vue";
-import { X } from "lucide-vue-next";
+import { X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import PromptCaseDetail from "./PromptCaseDetail.vue";
 import type { PromptCase, PromptCaseListItem } from "@/types/promptCases";

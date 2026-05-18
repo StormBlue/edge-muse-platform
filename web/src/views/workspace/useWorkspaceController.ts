@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { Image as ImageIcon, Type } from "lucide-vue-next";
+import { Image as ImageIcon, Type } from "@lucide/vue";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import {

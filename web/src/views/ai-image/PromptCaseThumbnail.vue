@@ -5,7 +5,7 @@
  * 远程素材可能过期或本地无法访问，组件内统一处理加载失败，避免卡片出现浏览器破图。
  */
 import { ref, watch } from "vue";
-import { ImageOff } from "lucide-vue-next";
+import { ImageOff } from "@lucide/vue";
 
 const props = withDefaults(
   defineProps<{

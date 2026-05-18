@@ -4,7 +4,7 @@
  *
  * 这里故意只展示会出现在用户端案例详情里的字段，帮助管理员在发布前检查归因和回填文案。
  */
-import { Copy, ExternalLink, ImageOff } from "lucide-vue-next";
+import { Copy, ExternalLink, ImageOff } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { PromptCase } from "@/types/promptCases";
 

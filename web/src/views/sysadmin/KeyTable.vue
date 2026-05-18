@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Pencil, PlugZap, Power, PowerOff, Trash2 } from "lucide-vue-next";
+import { Loader2, Pencil, PlugZap, Power, PowerOff, Trash2 } from "@lucide/vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { KeyRow } from "./useSysadminKeysController";
 

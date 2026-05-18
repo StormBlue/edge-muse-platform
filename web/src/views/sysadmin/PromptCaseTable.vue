@@ -5,7 +5,7 @@
  * 表格只负责展示与行级动作派发；实际保存、状态流转和错误处理仍由 usePromptCasesAdmin 统一收口。
  */
 import { computed } from "vue";
-import { Archive, EyeOff, Star, WandSparkles } from "lucide-vue-next";
+import { Archive, EyeOff, Star, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import type { PromptCase, PromptCaseStatus } from "@/types/promptCases";
 

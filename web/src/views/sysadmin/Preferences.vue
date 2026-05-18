@@ -5,7 +5,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Loader2, Save } from "lucide-vue-next";
+import { Loader2, Save } from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import {
   Select,

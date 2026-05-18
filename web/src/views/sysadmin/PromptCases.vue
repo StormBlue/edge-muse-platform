@@ -16,7 +16,7 @@ import {
   Upload,
   WandSparkles,
   X
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import PromptCaseEditor from "./PromptCaseEditor.vue";
 import PromptCaseImportDialog from "./PromptCaseImportDialog.vue";

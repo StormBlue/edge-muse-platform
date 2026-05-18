@@ -5,7 +5,7 @@
  * 助手只负责生成最终 prompt；回填后仍需要用户点击“生成”，不会直接消耗生图配额。
  */
 import { computed, ref, watch } from "vue";
-import { RotateCcw, Send, WandSparkles } from "lucide-vue-next";
+import { RotateCcw, Send, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ChevronLeft, ChevronRight, Trash2 } from "lucide-vue-next";
+import { ArrowLeft, ChevronLeft, ChevronRight, Trash2 } from "@lucide/vue";
 import type { HistorySession } from "./historyTypes";
 
 defineProps<{

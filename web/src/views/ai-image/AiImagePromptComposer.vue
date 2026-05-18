@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles } from "lucide-vue-next";
+import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";

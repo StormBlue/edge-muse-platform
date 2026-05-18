@@ -16,7 +16,7 @@ import {
   Sparkles,
   Sun,
   Users
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { trackGenerationEvent } from "@/api/generation";
 import {
   buildGenerationEntryExposureEvents,

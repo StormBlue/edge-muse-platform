@@ -2,7 +2,7 @@
 /**
  * 运维巡查：按路由 userId 拉取指定用户的会话/消息/任务与图（sysadmin 只读全量数据）。
  */
-import { Loader2 } from "lucide-vue-next";
+import { Loader2 } from "@lucide/vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import UserSessionsDetailView from "./UserSessionsDetailView.vue";

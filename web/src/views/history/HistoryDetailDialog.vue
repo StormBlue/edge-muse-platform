@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Image as ImageIcon, Loader2 } from "lucide-vue-next";
+import { Image as ImageIcon, Loader2 } from "@lucide/vue";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import HistoryDetailHeader from "./HistoryDetailHeader.vue";
 import type { ImageAttachment, SessionMode } from "@/stores/session";

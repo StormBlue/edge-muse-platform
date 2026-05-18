@@ -7,7 +7,7 @@
  */
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { ImageOff, Loader2, RotateCw } from "lucide-vue-next";
+import { ImageOff, Loader2, RotateCw } from "@lucide/vue";
 import ImageMessage from "./ImageMessage.vue";
 import type { ImageAttachment, Message } from "@/stores/session";
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { ImagePlus, X } from "lucide-vue-next";
+import { ImagePlus, X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { imageFilesFromDataTransfer, imageFilesFromFileList } from "@/utils/referenceImageFiles";
 
