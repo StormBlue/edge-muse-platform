@@ -23,15 +23,15 @@
     "@hono/zod-validator": "0.8.0",
     "@scalar/hono-api-reference": "0.10.16",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.19",
+    "hono": "4.12.21",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260518.1",
+    "@cloudflare/workers-types": "4.20260519.1",
     "drizzle-kit": "0.31.10",
-    "miniflare": "4.20260515.0",
+    "miniflare": "4.20260518.0",
     "typescript": "6.0.3",
     "vitest": "4.1.6",
-    "wrangler": "4.92.0"
+    "wrangler": "4.93.0"
   }
 }
