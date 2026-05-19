@@ -14,9 +14,17 @@ function hasWaitUntil(ctx: unknown): ctx is WaitUntilContext {
  *
  * 有 provider key group 时交给 GenerateQueue Durable Object 串行调度；无 group 或未绑定 DO 时保留旧点火兜底。
  */
-export function enqueueGenerateTask(env: AppBindings, ctx: WaitUntilContext, taskId: string): void {
+export function enqueueGenerateTask(
+  env: AppBindings,
+  ctx: WaitUntilContext | null | undefined,
+  taskId: string
+): void {
   logInfo("task.queue.enqueue_requested", { taskId });
-  ctx.waitUntil(enqueueGenerateTaskAsync(env, ctx, taskId));
+  if (hasWaitUntil(ctx)) {
+    ctx.waitUntil(enqueueGenerateTaskAsync(env, ctx, taskId));
+    return;
+  }
+  logInfo("task.queue.dispatch_skipped_without_execution_context", { taskId });
 }
 
 export function enqueueGenerateTaskGroup(
@@ -45,7 +53,7 @@ export function releaseGenerateTaskSlot(
     ctx.waitUntil(release);
     return;
   }
-  void release.catch(() => undefined);
+  logInfo("task.queue.release_skipped_without_execution_context", input);
 }
 
 export async function releaseGenerateTaskSlotNow(

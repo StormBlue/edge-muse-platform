@@ -6,7 +6,11 @@ import { generateRoutes } from "../src/routes/generate";
 import { sysadminRoutes } from "../src/routes/sysadmin";
 import { signJwt } from "../src/lib/jwt";
 import { cancelQueuedGenerateTask } from "../src/lib/tasks/state";
-import { CUBENCE_PROVIDER_ID, MICU_PROVIDER_ID } from "../src/providers/catalog";
+import {
+  CUBENCE_PROVIDER_ID,
+  MICU_GROK_PROVIDER_ID,
+  MICU_PROVIDER_ID
+} from "../src/providers/catalog";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
 import type { ApiErrorBody, AppBindings, AppEnv, UserRole } from "../src/types";
 
@@ -269,6 +273,108 @@ describe("provider key group API permissions", () => {
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
+  it("lets sysadmin grant Grok image access only to selected admins", async () => {
+    const update = await app.request(
+      "/api/sysadmin/generation-features",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({ micuGrokAdminIds: ["adm_other"] })
+      },
+      context.env
+    );
+    expect(update.status).toBe(200);
+
+    const list = await app.request(
+      "/api/sysadmin/generation-features",
+      { method: "GET", headers: await jsonHeaders("sys_owner") },
+      context.env
+    );
+    const body = (await list.json()) as {
+      micuGrok: { admins: Array<{ id: string; granted: boolean }> };
+    };
+    expect(body.micuGrok.admins.find((admin) => admin.id === "adm_other")?.granted).toBe(true);
+    expect(body.micuGrok.admins.find((admin) => admin.id === "adm_owner")?.granted).toBe(false);
+  });
+
+  it("rejects non-sysadmin writes to generation feature grants", async () => {
+    const response = await app.request(
+      "/api/sysadmin/generation-features",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("adm_owner"),
+        body: JSON.stringify({ micuGrokAdminIds: ["adm_owner"] })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects ungranted admins using the Grok generation target", async () => {
+    const response = await app.request(
+      "/api/generate",
+      {
+        method: "POST",
+        headers: await jsonHeaders("adm_owner"),
+        body: JSON.stringify({
+          generationTargetId: "micu_grok",
+          prompt: "blocked grok",
+          mode: "text2image",
+          size: "1024x1024",
+          n: 1
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("uses the Grok provider group for granted admin generation", async () => {
+    await context.env.DB.prepare(
+      `INSERT INTO generation_feature_grants (
+         feature, user_id, enabled, created_by, updated_by, created_at, updated_at
+       ) VALUES ('micu_grok_image', 'adm_owner', 1, 'sys_owner', 'sys_owner', ?1, ?1)`
+    )
+      .bind(1_778_000_000_100)
+      .run();
+
+    const response = await app.request(
+      "/api/generate",
+      {
+        method: "POST",
+        headers: await jsonHeaders("adm_owner"),
+        body: JSON.stringify({
+          generationTargetId: "micu_grok",
+          prompt: "grok cat",
+          mode: "text2image",
+          size: "1024x1024",
+          n: 1
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as { taskId: string };
+
+    expect(response.status).toBe(202);
+    const task = await context.env.DB.prepare(
+      "SELECT provider_key_group_id, provider_key_id, params FROM tasks WHERE id = ?1"
+    )
+      .bind(body.taskId)
+      .first<{ provider_key_group_id: string; provider_key_id: string; params: string }>();
+    expect(task?.provider_key_group_id).toBe("grp_grok_perm");
+    expect(task?.provider_key_id).toBe("key_grok_perm");
+    expect(JSON.parse(task?.params ?? "{}")).toMatchObject({
+      generationTargetId: "micu_grok",
+      model: "grok-imagine-image-pro"
+    });
+  });
+
   it("returns a clear provider error when a generating user has no key group", async () => {
     const response = await app.request(
       "/api/generate",
@@ -437,6 +543,21 @@ async function seedPermissionFixture(env: AppBindings) {
     .run();
   await seedProviderKey(env, "key_other_provider", timestamp + 4, CUBENCE_PROVIDER_ID);
   await env.DB.prepare(
+    `INSERT INTO providers (
+       id, name, base_url, default_model, request_format, supported_sizes,
+       enabled, created_at, updated_at, deleted_at
+     ) VALUES (?1, '米醋 Grok 图像', 'mock:', 'grok-imagine-image-pro', 'micu_grok_images', ?2, 1, ?3, ?3, NULL)`
+  )
+    .bind(MICU_GROK_PROVIDER_ID, JSON.stringify(["1024x1024"]), timestamp)
+    .run();
+  await seedProviderKey(
+    env,
+    "key_grok_perm",
+    timestamp + 5,
+    MICU_GROK_PROVIDER_ID,
+    "grok-imagine-image-pro"
+  );
+  await env.DB.prepare(
     `INSERT INTO provider_key_groups (
        id, provider_id, name, description, enabled, created_by, updated_by,
        created_at, updated_at, deleted_at
@@ -448,6 +569,21 @@ async function seedPermissionFixture(env: AppBindings) {
     `INSERT INTO provider_key_group_members (
        group_id, provider_key_id, sort_order, created_at, updated_at
      ) VALUES ('grp_perm', 'key_perm', 0, ?1, ?1)`
+  )
+    .bind(timestamp)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO provider_key_groups (
+       id, provider_id, name, description, enabled, created_by, updated_by,
+       created_at, updated_at, deleted_at
+     ) VALUES ('grp_grok_perm', ?1, 'Grok Permission Group', NULL, 1, NULL, NULL, ?2, ?2, NULL)`
+  )
+    .bind(MICU_GROK_PROVIDER_ID, timestamp)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO provider_key_group_members (
+       group_id, provider_key_id, sort_order, created_at, updated_at
+     ) VALUES ('grp_grok_perm', 'key_grok_perm', 0, ?1, ?1)`
   )
     .bind(timestamp)
     .run();
@@ -499,16 +635,17 @@ async function seedProviderKey(
   env: AppBindings,
   id: string,
   timestamp: number,
-  providerId = MICU_PROVIDER_ID
+  providerId = MICU_PROVIDER_ID,
+  model = "gpt-image-2"
 ) {
   await env.DB.prepare(
     `INSERT INTO provider_keys (
        id, provider_id, label, model, encrypted_key, key_hint,
        allocated_quota, used_quota, max_concurrency, owner_admin_id,
        enabled, created_at, updated_at, deleted_at
-     ) VALUES (?1, ?2, ?3, 'gpt-image-2', 'encrypted', 'test', NULL, 0, 1, NULL, 1, ?4, ?4, NULL)`
+     ) VALUES (?1, ?2, ?3, ?4, 'encrypted', 'test', NULL, 0, 1, NULL, 1, ?5, ?5, NULL)`
   )
-    .bind(id, providerId, id, timestamp)
+    .bind(id, providerId, id, model, timestamp)
     .run();
 }
 

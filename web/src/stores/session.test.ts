@@ -92,6 +92,7 @@ describe("session store task events", () => {
     await sessions.generate({
       title: "AI image",
       prompt: "生成一张产品图",
+      generationTargetId: "micu_grok",
       mode: "text2image",
       size: "1024x1024",
       n: 1,
@@ -104,6 +105,7 @@ describe("session store task events", () => {
 
     const request = mockedApiFetch.mock.calls[0]?.[1] as { body: string };
     expect(JSON.parse(request.body)).toMatchObject({
+      generationTargetId: "micu_grok",
       generationEvent: {
         route: "/ai-image",
         caseId: "case_1",

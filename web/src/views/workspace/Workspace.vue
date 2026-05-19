@@ -31,6 +31,7 @@ const {
   failedMessage,
   inputLoading,
   oneShotTaskLocked,
+  generationTargetId,
   taskInputMode,
   currentGenerationSettings,
   latestReferenceCount,
@@ -39,6 +40,7 @@ const {
   canEditTitle,
   modeSelectionDisabled,
   modeOptions,
+  generationTargets,
   providerSizeOptions,
   limitHighResolutionCount,
   maxReferenceFiles,
@@ -81,9 +83,12 @@ const {
 
       <div class="workspace-grid workspace-grid--task">
         <ChatInput
+          v-model:generation-target-id="generationTargetId"
           class="workspace-task-input-panel"
           :mode="taskInputMode"
+          :generation-targets="generationTargets"
           :initial-count="currentGenerationSettings.n"
+          :initial-generation-target-id="currentGenerationSettings.generationTargetId"
           :initial-size="currentGenerationSettings.size"
           :generating="hasRunningTask"
           :loading="inputLoading"

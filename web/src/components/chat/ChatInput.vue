@@ -16,6 +16,7 @@ const props = defineProps<ChatInputProps>();
 
 const emit = defineEmits<{
   submit: [value: ChatInputSubmitValue];
+  "update:generationTargetId": [value: string];
   "open-reference": [image: ImageAttachment];
 }>();
 
@@ -23,6 +24,7 @@ const {
   t,
   prompt,
   size,
+  generationTargetId,
   n,
   dragging,
   isReadOnly,
@@ -34,6 +36,8 @@ const {
   countSelectionDisabled,
   submitLabel,
   effectiveMaxReferenceFiles,
+  effectiveGenerationTargets,
+  showGenerationTargetSelector,
   visibleSizeOptions,
   visibleCountOptions,
   readonlyReferenceImages,
@@ -145,6 +149,30 @@ const {
             {{ t("workspace.parameters") }}
           </h2>
           <span class="task-current-size">{{ size }}</span>
+        </div>
+
+        <div v-if="showGenerationTargetSelector" class="task-setting-block">
+          <label class="task-setting-inline-label" for="task-generation-target">
+            {{ t("workspace.generationTarget") }}
+          </label>
+          <select
+            id="task-generation-target"
+            v-model="generationTargetId"
+            class="ui-field h-9 px-3 text-sm"
+            :disabled="isBusy"
+          >
+            <option
+              v-for="target in effectiveGenerationTargets"
+              :key="target.id"
+              :value="target.id"
+            >
+              {{
+                target.experimental
+                  ? t("workspace.experimentalGenerationTarget", { label: target.label })
+                  : target.label
+              }}
+            </option>
+          </select>
         </div>
 
         <div class="task-setting-block">

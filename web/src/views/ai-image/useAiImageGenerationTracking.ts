@@ -7,6 +7,7 @@ type AiImageSubmitGenerationInput = {
   mode: string;
   size: string;
   n: number;
+  generationTargetId?: string;
   referenceImageCount: number;
 };
 
@@ -102,6 +103,7 @@ export function buildAiImageSubmitGenerationEvent(input: AiImageSubmitGeneration
       mode: input.mode,
       size: input.size,
       n: input.n,
+      generationTargetId: input.generationTargetId ?? "default",
       referenceImageCount: input.referenceImageCount,
       promptSource: input.promptSource,
       caseContextId: input.promptSource === "case" ? undefined : input.selectedCaseId

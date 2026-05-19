@@ -103,5 +103,6 @@ export type GenerateParams = {
   size: string;
   n: number;
   model?: string;
+  generationTargetId?: string;
   referenceImageIds?: string[];
 };

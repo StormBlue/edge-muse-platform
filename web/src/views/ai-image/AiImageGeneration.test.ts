@@ -65,6 +65,7 @@ vi.mock("./AiImagePromptPanel.vue", () => ({
       "resetPrompt",
       "retryFailed",
       "submit",
+      "update:generationTargetId",
       "update:mode",
       "update:prompt",
       "update:size"
@@ -249,6 +250,7 @@ describe("AiImageGeneration", () => {
         mode: "image2image",
         size: "1024x1024",
         n: 1,
+        generationTargetId: "default",
         referenceImageCount: 0,
         promptSource: "user",
         caseContextId: "case_user_context"
@@ -338,7 +340,10 @@ function generationState() {
     hasRunningTask: ref(false),
     maxReferenceFiles: ref(5),
     mode: ref<PromptCaseMode>("text2image"),
+    generationTargetId: ref("default"),
+    generationTargets: ref([]),
     previews: ref([]),
+    providerCapabilities: ref(null),
     resultImages: ref([]),
     sessions: {},
     size: ref("1024x1024"),
@@ -433,6 +438,7 @@ function authStore(overrides: Record<string, unknown> = {}) {
   return {
     quota: { allocatedQuota: null, usedQuota: 0, remainingQuota: null },
     providerCapabilities: null,
+    generationTargets: [],
     generationEntry: { navTarget: "/workspace", showWorkspace: true, showAiImage: true },
     promptAssistantEnabled: true,
     isSysadmin: false,

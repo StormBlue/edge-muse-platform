@@ -22,6 +22,7 @@ import { apiFetch } from "@/api/client";
 
 /** 生图模式：与 server GenerateParams.mode 一致 */
 export type SessionMode = "text2image" | "image2image";
+export type GenerationTargetId = "default" | "micu_grok" | (string & {});
 /** 单张图片在消息中的展示元数据（来自 API 或 WS 推送） */
 export type ImageAttachment = {
   id: string;
@@ -59,7 +60,7 @@ export type Session = {
   id: string;
   title: string;
   mode: SessionMode;
-  settings: { size: string; n: number; model?: string };
+  settings: { size: string; n: number; model?: string; generationTargetId?: string };
   lastMessageAt: number;
 };
 /**
@@ -207,6 +208,7 @@ export const useSessionStore = defineStore("sessions", {
     async generate(input: {
       title?: string;
       prompt: string;
+      generationTargetId?: GenerationTargetId;
       mode: SessionMode;
       size: string;
       n: number;
@@ -239,7 +241,8 @@ export const useSessionStore = defineStore("sessions", {
           currentSession.settings = {
             ...currentSession.settings,
             size: input.size,
-            n: input.n
+            n: input.n,
+            generationTargetId: input.generationTargetId
           };
           currentSession.lastMessageAt = createdAt;
         } else {
@@ -248,7 +251,11 @@ export const useSessionStore = defineStore("sessions", {
             id: body.sessionId,
             title: body.title ?? input.title ?? input.prompt.trim().slice(0, 20),
             mode: input.mode,
-            settings: { size: input.size, n: input.n },
+            settings: {
+              size: input.size,
+              n: input.n,
+              generationTargetId: input.generationTargetId
+            },
             lastMessageAt: createdAt
           });
         }

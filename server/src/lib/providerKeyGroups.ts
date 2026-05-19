@@ -72,6 +72,13 @@ export async function resolveProviderKeyGroupForUser(
   return resolveLegacyProviderKeyAsGroup(env, userId);
 }
 
+export async function resolveDefaultProviderKeyGroupForUser(
+  env: AppBindings,
+  userId: string
+): Promise<ResolvedProviderKeyGroup> {
+  return resolveProviderKeyGroupForUser(env, userId);
+}
+
 export async function resolveProviderKeyGroup(
   env: AppBindings,
   groupId: string

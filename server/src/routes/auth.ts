@@ -24,6 +24,7 @@ import {
 import { appError } from "../lib/errors";
 import { randomBytes, base64UrlEncode } from "../lib/encoding";
 import { getGenerationEntryForUser } from "../lib/generationEntry";
+import { getGenerationTargetsForUser } from "../lib/generationTargets";
 import { now } from "../lib/id";
 import { signJwt, verifyJwt } from "../lib/jwt";
 import { logWarn } from "../lib/log";
@@ -126,6 +127,7 @@ authRoutes.post("/login", zValidator("json", loginSchema), async (c) => {
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationTargets: await getGenerationTargetsForUser(c.env, publicUser(user)),
     generationEntry: await getGenerationEntryForUser(c.env, publicUser(user)),
     promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
@@ -187,6 +189,7 @@ authRoutes.post("/refresh", async (c) => {
     csrfToken: csrf,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationTargets: await getGenerationTargetsForUser(c.env, publicUser(user)),
     generationEntry: await getGenerationEntryForUser(c.env, publicUser(user)),
     promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });

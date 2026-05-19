@@ -62,6 +62,21 @@ type CaptchaProviderOption = {
   description: string;
 };
 
+type GenerationFeatureAdmin = {
+  id: string;
+  email: string;
+  username: string;
+  nickname: string;
+  status: string;
+  granted: boolean;
+};
+
+type GenerationFeaturesBody = {
+  micuGrok: {
+    admins: GenerationFeatureAdmin[];
+  };
+};
+
 type PreferencesBody = {
   preferredProviderKeyId: string | null;
   promptAssistantModel: PromptAssistantModelSettings;
@@ -81,6 +96,8 @@ const promptAssistantModelSettings = ref<PromptAssistantModelSettings | null>(nu
 const promptAssistantModelOptions = ref<PromptAssistantModelOption[]>([]);
 const captchaSettings = ref<CaptchaSettings | null>(null);
 const captchaProviderOptions = ref<CaptchaProviderOption[]>([]);
+const micuGrokAdmins = ref<GenerationFeatureAdmin[]>([]);
+const micuGrokAdminIds = ref<string[]>([]);
 const domesticCaptchaProvider = ref<CaptchaProvider>("tencent");
 const overseasCaptchaProvider = ref<CaptchaProvider>("turnstile");
 const domesticAltchaDifficulty = ref(50_000);
@@ -129,14 +146,16 @@ const captchaUpdatedAt = computed(() => {
 });
 const showDomesticAltchaDifficulty = computed(() => domesticCaptchaProvider.value === "altcha");
 const showOverseasAltchaDifficulty = computed(() => overseasCaptchaProvider.value === "altcha");
+const micuGrokGrantedAdminCount = computed(() => micuGrokAdminIds.value.length);
 
 /** 拉密钥列表并同步当前用户已保存的偏好 */
 async function load() {
   loading.value = true;
   try {
-    const [keysBody, preferencesBody] = await Promise.all([
+    const [keysBody, preferencesBody, generationFeaturesBody] = await Promise.all([
       apiFetch<{ items: ProviderKeyRow[] }>("/sysadmin/provider-keys"),
-      apiFetch<PreferencesBody>("/sysadmin/preferences")
+      apiFetch<PreferencesBody>("/sysadmin/preferences"),
+      apiFetch<GenerationFeaturesBody>("/sysadmin/generation-features")
     ]);
     keys.value = keysBody.items.filter((key) => key.enabled);
     preferredProviderKeyId.value =
@@ -152,6 +171,10 @@ async function load() {
       preferencesBody.captcha.domesticAltchaDifficulty ?? preferencesBody.captcha.altchaDifficulty;
     overseasAltchaDifficulty.value =
       preferencesBody.captcha.overseasAltchaDifficulty ?? preferencesBody.captcha.altchaDifficulty;
+    micuGrokAdmins.value = generationFeaturesBody.micuGrok.admins;
+    micuGrokAdminIds.value = generationFeaturesBody.micuGrok.admins
+      .filter((admin) => admin.granted)
+      .map((admin) => admin.id);
   } finally {
     loading.value = false;
   }
@@ -161,23 +184,29 @@ async function load() {
 async function save() {
   saving.value = true;
   try {
-    const body = await apiFetch<{
-      preferredProviderKeyId: string | null;
-      promptAssistantModel: PromptAssistantModelSettings;
-      captcha: CaptchaSettings;
-    }>("/sysadmin/preferences", {
-      method: "PATCH",
-      body: JSON.stringify({
-        preferredProviderKeyId: preferredProviderKeyId.value,
-        promptAssistantModel: promptAssistantModel.value,
-        captcha: {
-          domesticProvider: domesticCaptchaProvider.value,
-          overseasProvider: overseasCaptchaProvider.value,
-          domesticAltchaDifficulty: domesticAltchaDifficulty.value,
-          overseasAltchaDifficulty: overseasAltchaDifficulty.value
-        }
+    const [body, generationFeaturesBody] = await Promise.all([
+      apiFetch<{
+        preferredProviderKeyId: string | null;
+        promptAssistantModel: PromptAssistantModelSettings;
+        captcha: CaptchaSettings;
+      }>("/sysadmin/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({
+          preferredProviderKeyId: preferredProviderKeyId.value,
+          promptAssistantModel: promptAssistantModel.value,
+          captcha: {
+            domesticProvider: domesticCaptchaProvider.value,
+            overseasProvider: overseasCaptchaProvider.value,
+            domesticAltchaDifficulty: domesticAltchaDifficulty.value,
+            overseasAltchaDifficulty: overseasAltchaDifficulty.value
+          }
+        })
+      }),
+      apiFetch<GenerationFeaturesBody>("/sysadmin/generation-features", {
+        method: "PATCH",
+        body: JSON.stringify({ micuGrokAdminIds: micuGrokAdminIds.value })
       })
-    });
+    ]);
     preferredProviderKeyId.value = body.preferredProviderKeyId ?? "";
     promptAssistantModelSettings.value = body.promptAssistantModel;
     promptAssistantModel.value = body.promptAssistantModel.model;
@@ -188,6 +217,10 @@ async function save() {
       body.captcha.domesticAltchaDifficulty ?? body.captcha.altchaDifficulty;
     overseasAltchaDifficulty.value =
       body.captcha.overseasAltchaDifficulty ?? body.captcha.altchaDifficulty;
+    micuGrokAdmins.value = generationFeaturesBody.micuGrok.admins;
+    micuGrokAdminIds.value = generationFeaturesBody.micuGrok.admins
+      .filter((admin) => admin.granted)
+      .map((admin) => admin.id);
     await auth.bootstrap();
     toast.success(t("sysadmin.preferencesSaved"));
   } finally {
@@ -399,6 +432,55 @@ onMounted(load);
               </div>
             </dl>
           </div>
+        </section>
+
+        <section class="panel space-y-4 p-5 lg:col-span-2">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="font-semibold">{{ t("sysadmin.micuGrokFeatureTitle") }}</h2>
+              <p class="mt-1 text-sm leading-6 text-muted-foreground">
+                {{ t("sysadmin.micuGrokFeatureDescription") }}
+              </p>
+            </div>
+            <span class="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+              {{ t("sysadmin.micuGrokGrantedAdmins", { count: micuGrokGrantedAdminCount }) }}
+            </span>
+          </div>
+          <div v-if="micuGrokAdmins.length" class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            <label
+              v-for="admin in micuGrokAdmins"
+              :key="admin.id"
+              class="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-muted/20 p-3"
+            >
+              <input
+                v-model="micuGrokAdminIds"
+                class="mt-1 h-4 w-4"
+                type="checkbox"
+                :value="admin.id"
+                :disabled="loading || saving || admin.status !== 'active'"
+              />
+              <span class="min-w-0">
+                <span class="block truncate text-sm font-medium">
+                  {{ admin.nickname || admin.username }}
+                </span>
+                <span class="mt-1 block truncate text-xs text-muted-foreground">
+                  {{ admin.email }}
+                </span>
+                <span
+                  v-if="admin.status !== 'active'"
+                  class="mt-1 block text-xs text-muted-foreground"
+                >
+                  {{ t("common.disabled") }}
+                </span>
+              </span>
+            </label>
+          </div>
+          <p
+            v-else
+            class="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground"
+          >
+            {{ t("sysadmin.micuGrokNoAdmins") }}
+          </p>
         </section>
       </div>
     </form>

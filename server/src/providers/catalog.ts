@@ -10,6 +10,7 @@ import type { AppBindings } from "../types";
 
 export const MICU_PROVIDER_ID = "prv_micu";
 export const CUBENCE_PROVIDER_ID = "prv_cubence";
+export const MICU_GROK_PROVIDER_ID = "prv_micu_grok";
 export const MICU_BASE_URL = "https://www.micuapi.ai";
 
 export const BUILT_IN_PROVIDERS = [
@@ -50,6 +51,14 @@ export const BUILT_IN_PROVIDERS = [
       "2160x3840",
       "auto"
     ]
+  },
+  {
+    id: MICU_GROK_PROVIDER_ID,
+    name: "米醋 Grok 图像",
+    baseUrl: MICU_BASE_URL,
+    defaultModel: "grok-imagine-image-pro",
+    requestFormat: "micu_grok_images",
+    supportedSizes: ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "1152x2048"]
   }
 ] as const;
 

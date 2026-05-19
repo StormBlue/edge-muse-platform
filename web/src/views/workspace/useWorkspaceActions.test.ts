@@ -28,6 +28,7 @@ describe("useWorkspaceActions", () => {
 
     await actions.submit({
       prompt: "生成一张产品广告图",
+      generationTargetId: "micu_grok",
       mode: "text2image",
       size: "1024x1024",
       n: 2,
@@ -37,6 +38,7 @@ describe("useWorkspaceActions", () => {
     expect(sessions.generate).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: "生成一张产品广告图",
+        generationTargetId: "micu_grok",
         mode: "text2image",
         size: "1024x1024",
         n: 2,
@@ -46,6 +48,7 @@ describe("useWorkspaceActions", () => {
             mode: "text2image",
             size: "1024x1024",
             n: 2,
+            generationTargetId: "micu_grok",
             referenceImageCount: 0,
             promptSource: "user"
           }
@@ -61,6 +64,7 @@ describe("useWorkspaceActions", () => {
 
     await actions.submit({
       prompt: "继续优化上一轮结果",
+      generationTargetId: "default",
       mode: "text2image",
       size: "1024x1024",
       n: 1,

@@ -11,6 +11,7 @@ import { getDb } from "../db/client";
 import { users } from "../db/schema";
 import { audit } from "../lib/audit";
 import { getGenerationEntryForUser } from "../lib/generationEntry";
+import { getGenerationTargetsForUser } from "../lib/generationTargets";
 import { now } from "../lib/id";
 import { isPromptAssistantEnabled } from "../lib/promptAssistant";
 import { getProviderCapabilitiesForUser } from "../lib/providerKeys";
@@ -27,6 +28,7 @@ meRoutes.get("/", requireAuth, async (c) => {
     user,
     quota: await getQuota(c.env, user.id),
     providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+    generationTargets: await getGenerationTargetsForUser(c.env, user),
     generationEntry: await getGenerationEntryForUser(c.env, user),
     promptAssistantEnabled: isPromptAssistantEnabled(c.env)
   });
@@ -55,6 +57,7 @@ meRoutes.patch(
       user: { ...user, nickname: body.nickname },
       quota: await getQuota(c.env, user.id),
       providerCapabilities: await getProviderCapabilitiesForUser(c.env, user.id),
+      generationTargets: await getGenerationTargetsForUser(c.env, user),
       generationEntry: await getGenerationEntryForUser(c.env, user),
       promptAssistantEnabled: isPromptAssistantEnabled(c.env)
     });

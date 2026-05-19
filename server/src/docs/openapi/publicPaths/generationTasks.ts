@@ -39,6 +39,13 @@ export const generationTaskPaths = {
             description: "新会话标题；省略时服务端自动生成。"
           },
           prompt: { type: "string", minLength: 1, maxLength: 4000 },
+          generationTargetId: {
+            type: "string",
+            enum: ["default", "micu_grok"],
+            default: "default",
+            description:
+              "生成目标。`default` 使用账号当前 provider key group；`micu_grok` 为米醋 Grok 图像实验能力，仅 sysadmin 或获授权 admin 可用。"
+          },
           mode: { $ref: "#/components/schemas/GenerationMode", default: "image2image" },
           size: {
             type: "string",

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acceptImagesForGenerationSlot } from "../src/lib/tasks/runGenerations";
+import {
+  MicuGrokImagesProvider,
+  grokAspectRatio,
+  grokResolution
+} from "../src/providers/micu-grok-images";
 import { MicuImagesProvider, parseProviderImages } from "../src/providers/openai-compatible";
 import { OpenAIImagesProvider } from "../src/providers/openai-images";
 
@@ -146,6 +151,82 @@ describe("provider response parsing", () => {
     });
 
     expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
+  });
+
+  it("maps Grok sizes to resolution and aspect ratio", () => {
+    expect(grokResolution("1024x1024")).toBe("1k");
+    expect(grokResolution("2048x1152")).toBe("2k");
+    expect(grokAspectRatio("2048x1152")).toBe("16:9");
+    expect(grokAspectRatio("1024x1536")).toBe("2:3");
+  });
+
+  it("calls Micu Grok generations with resolution and aspect ratio", async () => {
+    const provider = new MicuGrokImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        expect(url).toBe("https://www.micuapi.ai/v1/images/generations");
+        expect(init.method).toBe("POST");
+        const body = JSON.parse(String(init.body)) as {
+          model: string;
+          prompt: string;
+          n: number;
+          resolution: string;
+          aspect_ratio: string;
+          response_format: string;
+        };
+        expect(body).toEqual({
+          model: "grok-imagine-image-pro",
+          prompt: "a cat",
+          n: 1,
+          resolution: "2k",
+          aspect_ratio: "16:9",
+          response_format: "b64_json"
+        });
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    const response = await provider.generate({
+      prompt: "a cat",
+      mode: "text2image",
+      model: "grok-imagine-image-pro",
+      size: "2048x1152",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai"
+    });
+
+    expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
+  });
+
+  it("sends Micu Grok reference image as data URL", async () => {
+    const provider = new MicuGrokImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { reference_image?: string };
+        expect(body.reference_image).toMatch(/^data:image\/png;base64,/);
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    const response = await provider.generate({
+      prompt: "replace background",
+      mode: "image2image",
+      model: "grok-imagine-image-pro",
+      size: "1024x1024",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai",
+      referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
+    });
+
+    expect(response.images).toHaveLength(1);
   });
 
   it("upgrades Micu high-resolution requests to the pro model", async () => {

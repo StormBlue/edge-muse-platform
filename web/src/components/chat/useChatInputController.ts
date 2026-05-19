@@ -13,8 +13,15 @@ export type ChatInputSizeOption = {
   label: string;
 };
 
+export type ChatInputGenerationTargetOption = {
+  id: string;
+  label: string;
+  experimental: boolean;
+};
+
 export type ChatInputSubmitValue = {
   prompt: string;
+  generationTargetId: string;
   mode: SessionMode;
   size: string;
   n: number;
@@ -26,6 +33,9 @@ export type ChatInputProps = {
   generating?: boolean;
   mode: SessionMode;
   readOnly?: boolean;
+  generationTargetId?: string;
+  generationTargets?: ChatInputGenerationTargetOption[];
+  initialGenerationTargetId?: string;
   initialSize?: string;
   initialCount?: number;
   allowCustomCount?: boolean;
@@ -36,7 +46,10 @@ export type ChatInputProps = {
   limitHighResolutionCount?: boolean;
 };
 
-type SubmitEmit = (event: "submit", value: ChatInputSubmitValue) => void;
+type ChatInputEmit = {
+  (event: "submit", value: ChatInputSubmitValue): void;
+  (event: "update:generationTargetId", value: string): void;
+};
 
 const DEFAULT_SIZE_OPTIONS: ChatInputSizeOption[] = [
   { value: "auto", ratio: "Auto", label: "Auto" },
@@ -48,9 +61,10 @@ const DEFAULT_SIZE_OPTIONS: ChatInputSizeOption[] = [
 const defaultMaxReferenceFiles = 5;
 const maxCustomCount = 200;
 
-export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) {
+export function useChatInputController(props: ChatInputProps, emit: ChatInputEmit) {
   const { t } = useI18n();
   const prompt = ref("");
+  const generationTargetId = ref("default");
   const size = ref("auto");
   const n = ref(1);
   const files = ref<File[]>([]);
@@ -82,6 +96,14 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
   const effectiveSizeOptions = computed(() =>
     props.sizeOptions?.length ? props.sizeOptions : DEFAULT_SIZE_OPTIONS
   );
+  const effectiveGenerationTargets = computed<ChatInputGenerationTargetOption[]>(() =>
+    props.generationTargets?.length
+      ? props.generationTargets
+      : [{ id: "default", label: t("workspace.defaultGenerationTarget"), experimental: false }]
+  );
+  const showGenerationTargetSelector = computed(
+    () => !isReadOnly.value && effectiveGenerationTargets.value.length > 1
+  );
   const effectiveMaxReferenceFiles = computed(() => {
     const value = props.maxReferenceFiles ?? defaultMaxReferenceFiles;
     return Math.max(1, Math.min(defaultMaxReferenceFiles, Math.floor(value)));
@@ -112,6 +134,31 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     if (files.value.length) return t("workspace.referenceImages", { count: files.value.length });
     return t("workspace.addReferenceImage");
   });
+
+  watch(
+    () => props.generationTargetId ?? props.initialGenerationTargetId,
+    (next) => {
+      if (next) generationTargetId.value = next;
+    },
+    { immediate: true }
+  );
+
+  watch(generationTargetId, (next) => {
+    if (props.generationTargetId !== next) emit("update:generationTargetId", next);
+  });
+
+  watch(
+    () => effectiveGenerationTargets.value.map((target) => target.id).join("|"),
+    () => {
+      if (
+        effectiveGenerationTargets.value.some((target) => target.id === generationTargetId.value)
+      ) {
+        return;
+      }
+      generationTargetId.value = effectiveGenerationTargets.value[0]?.id ?? "default";
+    },
+    { immediate: true }
+  );
 
   watch(
     () => props.initialSize,
@@ -184,6 +231,7 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     if (submitDisabled.value) return;
     emit("submit", {
       prompt: prompt.value.trim(),
+      generationTargetId: generationTargetId.value,
       mode: props.mode,
       size: size.value,
       n: props.allowCustomCount && !highResolutionCountLocked.value ? clampImageCount(n.value) : 1,
@@ -255,6 +303,7 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
   return {
     t,
     prompt,
+    generationTargetId,
     size,
     n,
     dragging,
@@ -267,6 +316,8 @@ export function useChatInputController(props: ChatInputProps, emit: SubmitEmit) 
     countSelectionDisabled,
     submitLabel,
     effectiveMaxReferenceFiles,
+    effectiveGenerationTargets,
+    showGenerationTargetSelector,
     visibleSizeOptions,
     selectedSizeOption,
     visibleCountOptions,

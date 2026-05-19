@@ -122,6 +122,25 @@ describe("useAiImageGenerationSubmit", () => {
     });
   });
 
+  it("uses the selected generation target for AI image submissions", async () => {
+    const generation = useAiImageGenerationSubmit();
+    generation.mode.value = "text2image";
+    generation.generationTargetId.value = "micu_grok";
+
+    await generation.submit("Grok 实验图", undefined, {
+      route: "/ai-image",
+      metadata: { mode: "text2image", generationTargetId: "micu_grok" }
+    });
+
+    const request = mockedApiFetch.mock.calls.find(([path]) => path === "/generate")?.[1] as {
+      body: string;
+    };
+    expect(JSON.parse(request.body)).toMatchObject({
+      prompt: "Grok 实验图",
+      generationTargetId: "micu_grok"
+    });
+  });
+
   it("clears only the current AI image result scope when starting a new flow", async () => {
     const generation = useAiImageGenerationSubmit();
     const sessions = useSessionStore();

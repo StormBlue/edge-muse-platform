@@ -10,6 +10,11 @@ import { apiFetch } from "@/api/client";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import { useSessionStore, type ImageAttachment, type Message } from "@/stores/session";
+import {
+  activeGenerationTarget,
+  generationTargetDisplayLabel,
+  generationTargetsWithFallback
+} from "@/utils/generationTargets";
 import { imageFilesFromFileList, prepareReferenceImageFiles } from "@/utils/referenceImageFiles";
 import { imagesForAiImageActiveResult } from "./aiImageResultScope";
 import {
@@ -34,6 +39,7 @@ export function useAiImageGenerationSubmit() {
   const auth = useAuthStore();
   const sessions = useSessionStore();
   const mode = ref<PromptCaseMode>("image2image");
+  const generationTargetId = ref("default");
   const size = ref("auto");
   const files = ref<File[]>([]);
   const previews = ref<Array<{ file: File; url: string }>>([]);
@@ -41,10 +47,24 @@ export function useAiImageGenerationSubmit() {
   const activeTaskId = ref<string | null>(null);
   const activeSessionId = ref<string | null>(null);
 
+  const generationTargets = computed(() =>
+    generationTargetsWithFallback(auth.generationTargets, auth.providerCapabilities).map(
+      (target) => ({
+        ...target,
+        label: generationTargetDisplayLabel(target, t)
+      })
+    )
+  );
+  const activeTarget = computed(() =>
+    activeGenerationTarget(generationTargets.value, generationTargetId.value)
+  );
+  const providerCapabilities = computed(
+    () => activeTarget.value?.providerCapabilities ?? auth.providerCapabilities
+  );
   const sizeOptions = computed(() => {
-    const options = sizeOptionsForProvider(auth.providerCapabilities);
+    const options = sizeOptionsForProvider(providerCapabilities.value);
     if (
-      auth.providerCapabilities?.requestFormat === "micu_images" &&
+      providerCapabilities.value?.requestFormat === "micu_images" &&
       mode.value === "image2image"
     ) {
       return options.filter((option) => !isHighResolutionSize(option.value));
@@ -52,11 +72,11 @@ export function useAiImageGenerationSubmit() {
     return options;
   });
   const supportedModes = computed(() =>
-    (auth.providerCapabilities?.supportedModes ?? ["image2image", "text2image"]).filter(
+    (providerCapabilities.value?.supportedModes ?? ["image2image", "text2image"]).filter(
       (item): item is PromptCaseMode => item === "text2image" || item === "image2image"
     )
   );
-  const maxReferenceFiles = computed(() => auth.providerCapabilities?.maxReferenceImages ?? 5);
+  const maxReferenceFiles = computed(() => providerCapabilities.value?.maxReferenceImages ?? 5);
   const runningMessages = computed(() =>
     sessions.messages.filter(
       (message) => message.status === "queued" || message.status === "running"
@@ -122,6 +142,22 @@ export function useAiImageGenerationSubmit() {
   });
 
   watch(
+    () => generationTargets.value.map((target) => target.id).join("|"),
+    () => {
+      if (generationTargets.value.some((target) => target.id === generationTargetId.value)) return;
+      generationTargetId.value =
+        generationTargets.value.find((target) => target.id === "default")?.id ??
+        generationTargets.value[0]?.id ??
+        "default";
+    },
+    { immediate: true }
+  );
+
+  watch(generationTargetId, () => {
+    normalizeMode();
+  });
+
+  watch(
     () => sizeOptions.value.map((option) => option.value).join("|"),
     () => {
       if (sizeOptions.value.some((option) => option.value === size.value)) return;
@@ -133,6 +169,12 @@ export function useAiImageGenerationSubmit() {
   watch(mode, (next) => {
     if (next === "text2image") clearFiles();
   });
+
+  watch(
+    () => supportedModes.value.join("|"),
+    () => normalizeMode(),
+    { immediate: true }
+  );
 
   watch(files, (next) => {
     for (const preview of previews.value) URL.revokeObjectURL(preview.url);
@@ -192,6 +234,7 @@ export function useAiImageGenerationSubmit() {
       const task = await sessions.generate({
         title: title || defaultSessionTitle(),
         prompt: trimmed,
+        generationTargetId: generationTargetId.value,
         mode: mode.value,
         size: size.value,
         n: 1,
@@ -302,6 +345,11 @@ export function useAiImageGenerationSubmit() {
     return t("workspace.generationRunning");
   }
 
+  function normalizeMode() {
+    if (supportedModes.value.includes(mode.value)) return;
+    mode.value = supportedModes.value[0] ?? "image2image";
+  }
+
   function findSourceReferenceImageIds(message: Message) {
     return findSourceUserMessage(message)?.referenceImageIds ?? [];
   }
@@ -326,6 +374,8 @@ export function useAiImageGenerationSubmit() {
     failedMessage,
     failedTitle,
     files,
+    generationTargetId,
+    generationTargets,
     generationProgress,
     generationPrompt,
     generationStatusLabel,
@@ -340,6 +390,7 @@ export function useAiImageGenerationSubmit() {
     status,
     submitting,
     supportedModes,
+    providerCapabilities,
     addFiles,
     clearFiles,
     clearActiveResult,

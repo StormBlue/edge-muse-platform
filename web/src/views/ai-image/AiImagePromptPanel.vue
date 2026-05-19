@@ -10,7 +10,7 @@ import AiImageAssistantShell from "./AiImageAssistantShell.vue";
 import AiImagePromptComposer from "./AiImagePromptComposer.vue";
 import AiImageResultPanel from "./AiImageResultPanel.vue";
 import { getAiImageSubmitBlockReason } from "./aiImageSubmitValidation";
-import type { ProviderCapabilities } from "@/stores/auth";
+import type { GenerationTarget, ProviderCapabilities } from "@/stores/auth";
 import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
 import { imageFilesFromDataTransfer } from "@/utils/referenceImageFiles";
@@ -28,6 +28,8 @@ const props = defineProps<{
   selectedCaseTitle: string;
   prompt: string;
   mode: PromptCaseMode;
+  generationTargetId: string;
+  generationTargets: GenerationTarget[];
   supportedModes: PromptCaseMode[];
   size: string;
   sizeFallbackNotice: string;
@@ -50,6 +52,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:prompt": [value: string];
   "update:mode": [value: PromptCaseMode];
+  "update:generationTargetId": [value: string];
   "update:size": [value: string];
   addFiles: [files: File[]];
   removeFile: [index: number];
@@ -145,6 +148,8 @@ function fillAssistantPrompt(value: {
       :has-running-task="hasRunningTask"
       :interaction-locked="interactionLocked"
       :mode="mode"
+      :generation-target-id="generationTargetId"
+      :generation-targets="generationTargets"
       :prompt="prompt"
       :previews="previews"
       :selected-case-title="selectedCaseTitle"
@@ -162,6 +167,7 @@ function fillAssistantPrompt(value: {
       @reset-prompt="emit('resetPrompt')"
       @submit="emit('submit')"
       @update:mode="emit('update:mode', $event)"
+      @update:generation-target-id="emit('update:generationTargetId', $event)"
       @update:prompt="emit('update:prompt', $event)"
       @update:size="emit('update:size', $event)"
     />

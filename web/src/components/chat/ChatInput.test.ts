@@ -53,6 +53,7 @@ describe("ChatInput", () => {
       [
         {
           prompt: "不要在失败时丢掉这个提示词",
+          generationTargetId: "default",
           mode: "text2image",
           size: "1024x1024",
           n: 1,
@@ -83,6 +84,7 @@ describe("ChatInput", () => {
       [
         {
           prompt: "生成一张现代产品海报",
+          generationTargetId: "default",
           mode: "text2image",
           size: "2048x2048",
           n: 1,
@@ -91,5 +93,27 @@ describe("ChatInput", () => {
       ]
     ]);
     expect((textarea.element as HTMLTextAreaElement).value).toBe("生成一张现代产品海报");
+  });
+
+  it("submits the selected generation target", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        generationTargets: [
+          { id: "default", label: "默认生成", experimental: false },
+          { id: "micu_grok", label: "米醋 Grok 图像", experimental: true }
+        ],
+        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+      }
+    });
+
+    await wrapper.get("select#task-generation-target").setValue("micu_grok");
+    await wrapper.get("textarea").setValue("实验目标生图");
+    await wrapper.get("form").trigger("submit");
+
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      prompt: "实验目标生图",
+      generationTargetId: "micu_grok"
+    });
   });
 });

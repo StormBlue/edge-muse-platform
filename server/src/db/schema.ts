@@ -450,6 +450,33 @@ export const generationEntrySettings = sqliteTable("generation_entry_settings", 
 });
 
 /**
+ * 实验生成能力授权：sysadmin 永远拥有所有系统实验能力，本表只记录需要额外开放的账号。
+ * 第一版 `micu_grok_image` 只授权 admin 本人，不隐式扩散给其创建的普通用户。
+ */
+export const generationFeatureGrants = sqliteTable(
+  "generation_feature_grants",
+  {
+    feature: text("feature", { enum: ["micu_grok_image"] }).notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdBy: text("created_by").references(() => users.id),
+    updatedBy: text("updated_by").references(() => users.id),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull()
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.feature, table.userId] }),
+    featureEnabledIdx: index("idx_generation_feature_grants_feature_enabled").on(
+      table.feature,
+      table.enabled
+    ),
+    userIdx: index("idx_generation_feature_grants_user").on(table.userId)
+  })
+);
+
+/**
  * AI 大模型运行配置：目前 key 固定为 `prompt_assistant`，用于系统管理员动态切换
  * AI Prompt 助手所调用的 Workers AI 文本模型。
  */
@@ -627,6 +654,7 @@ export type ImageObject = InferSelectModel<typeof imageObjects>;
 export type PromptCase = InferSelectModel<typeof promptCases>;
 export type PromptCaseImport = InferSelectModel<typeof promptCaseImports>;
 export type GenerationEntrySettings = InferSelectModel<typeof generationEntrySettings>;
+export type GenerationFeatureGrant = InferSelectModel<typeof generationFeatureGrants>;
 export type AiModelSettings = InferSelectModel<typeof aiModelSettings>;
 export type CaptchaSettings = InferSelectModel<typeof captchaSettings>;
 export type GenerationEvent = InferSelectModel<typeof generationEvents>;

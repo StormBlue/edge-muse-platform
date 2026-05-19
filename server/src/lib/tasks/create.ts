@@ -3,10 +3,10 @@ import { getDb } from "../../db/client";
 import { messages, sessions, tasks, users, type Session as SessionRow } from "../../db/schema";
 import { appError } from "../errors";
 import { resolveImageCountForRole, resolveMaxConcurrentTasksForRole } from "../generationPolicy";
+import { resolveGenerationTargetForUser } from "../generationTargets";
 import { newId, now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logInfo, logWarn, promptSummary } from "../log";
-import { resolveProviderKeyGroupForUser } from "../providerKeyGroups";
 import { refundQuota, tryConsumeQuota } from "../quota";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
@@ -115,6 +115,7 @@ export async function createGenerateTask(
     size: input.params.size,
     requestedImageCount: input.params.n,
     referenceImageCount: input.params.referenceImageIds?.length ?? 0,
+    generationTargetId: input.params.generationTargetId ?? "default",
     ...promptSummary(input.params.prompt)
   });
   const user = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
@@ -134,16 +135,23 @@ export async function createGenerateTask(
     n: resolveImageCountForRole(user.role, input.params.mode, input.params.n),
     referenceImageIds
   };
-  const keyGroup = await resolveProviderKeyGroupForUser(env, input.userId);
+  const generationTarget = await resolveGenerationTargetForUser(env, {
+    user,
+    targetId: params.generationTargetId
+  });
+  params.generationTargetId = generationTarget.target.id;
+  const keyGroup = generationTarget.resolved;
   const provider = keyGroup.provider;
   const initialProviderKeyId = keyGroup.members[0]?.providerKeyId;
   if (!initialProviderKeyId) throw appError("PROVIDER_ERROR", "No provider key configured");
+  params.model = keyGroup.members[0]?.key.model ?? provider.defaultModel;
   const providerImpl = getProvider(provider.requestFormat);
   assertProviderSupportsGenerateParams(provider, providerImpl, params);
   const settings = stringifyJson({
     size: params.size,
     n: params.n,
-    model: params.model
+    model: params.model,
+    generationTargetId: params.generationTargetId
   });
   const sessionId = input.sessionId ?? newId("ses");
   const title = params.title?.trim().slice(0, 80) || defaultSessionTitle(timestamp);
@@ -191,7 +199,8 @@ export async function createGenerateTask(
         sessionId,
         providerKeyId: initialProviderKeyId,
         providerKeyGroupId: keyGroup.group.id,
-        mode: params.mode
+        mode: params.mode,
+        generationTargetId: params.generationTargetId
       });
     } else {
       logInfo("task.create.session_reused", {
@@ -199,7 +208,8 @@ export async function createGenerateTask(
         sessionId,
         providerKeyId: initialProviderKeyId,
         providerKeyGroupId: keyGroup.group.id,
-        mode: params.mode
+        mode: params.mode,
+        generationTargetId: params.generationTargetId
       });
     }
 
@@ -248,7 +258,8 @@ export async function createGenerateTask(
       sessionId,
       providerKeyId: initialProviderKeyId,
       providerKeyGroupId: keyGroup.group.id,
-      mode: params.mode
+      mode: params.mode,
+      generationTargetId: params.generationTargetId
     });
 
     await db.insert(tasks).values({
@@ -282,7 +293,8 @@ export async function createGenerateTask(
       retryOf: input.retryOf ?? null,
       mode: params.mode,
       size: params.size,
-      imageCount: params.n
+      imageCount: params.n,
+      generationTargetId: params.generationTargetId
     });
   } catch (error) {
     if (messagesInserted) {

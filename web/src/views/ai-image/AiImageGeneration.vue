@@ -98,10 +98,12 @@ const {
           :generation-progress="generation.generationProgress.value"
           :generation-prompt="generation.generationPrompt.value"
           :generation-status-label="generation.generationStatusLabel.value"
+          :generation-target-id="generation.generationTargetId.value"
+          :generation-targets="generation.generationTargets.value"
           :has-running-task="generation.hasRunningTask.value"
           :prompt="cases.finalPrompt.value"
           :previews="generation.previews.value"
-          :provider="auth.providerCapabilities"
+          :provider="generation.providerCapabilities.value"
           :reference-count="generation.files.value.length"
           :result-images="generation.resultImages.value"
           :selected-case-title="selectedCaseTitle"
@@ -124,6 +126,7 @@ const {
           @open-image="openGeneratedImage"
           @open-case-preview="openSelectedCasePreview"
           @submit="submitGeneration"
+          @update:generation-target-id="generation.generationTargetId.value = $event"
         />
       </div>
 

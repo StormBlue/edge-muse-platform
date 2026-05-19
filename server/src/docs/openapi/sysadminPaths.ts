@@ -420,6 +420,88 @@ export const sysadminPaths = {
       }
     }
   },
+  "/api/sysadmin/generation-features": {
+    get: {
+      tags: ["Sysadmin"],
+      operationId: "getGenerationFeatureGrants",
+      summary: "读取实验生成能力授权",
+      description:
+        "要求 sysadmin 登录。返回米醋 Grok 图像实验能力的管理员授权列表；sysadmin 本人不需要授权且始终可用。",
+      security: sysadminSecurity,
+      responses: {
+        "200": jsonResponse("实验能力授权列表。", {
+          type: "object",
+          required: ["micuGrok"],
+          properties: {
+            micuGrok: {
+              type: "object",
+              required: ["admins"],
+              properties: {
+                admins: arrayOf({
+                  type: "object",
+                  required: ["id", "email", "username", "nickname", "status", "granted"],
+                  properties: {
+                    id: { type: "string" },
+                    email: { type: "string" },
+                    username: { type: "string" },
+                    nickname: { type: "string" },
+                    status: { type: "string" },
+                    granted: { type: "boolean" }
+                  },
+                  additionalProperties: false
+                })
+              },
+              additionalProperties: false
+            }
+          },
+          additionalProperties: false
+        }),
+        ...forbiddenError,
+        ...commonErrors
+      }
+    },
+    patch: {
+      tags: ["Sysadmin"],
+      operationId: "updateGenerationFeatureGrants",
+      summary: "更新实验生成能力授权",
+      description:
+        "要求 sysadmin 登录和 CSRF。请求体中的 `micuGrokAdminIds` 会替换当前获授权 admin 列表，只接受 role=admin 的用户 ID。",
+      security: csrfSecurity,
+      requestBody: requestJson("实验能力授权补丁。", {
+        type: "object",
+        required: ["micuGrokAdminIds"],
+        properties: {
+          micuGrokAdminIds: {
+            type: "array",
+            items: { type: "string" },
+            description: "允许使用米醋 Grok 图像目标的管理员用户 ID。"
+          }
+        },
+        additionalProperties: false
+      }),
+      responses: {
+        "200": jsonResponse("实验能力授权已更新。", {
+          type: "object",
+          required: ["ok", "micuGrok"],
+          properties: {
+            ok: { type: "boolean", const: true },
+            micuGrok: {
+              type: "object",
+              required: ["admins"],
+              properties: {
+                admins: arrayOf({ type: "object", additionalProperties: true })
+              },
+              additionalProperties: false
+            }
+          },
+          additionalProperties: false
+        }),
+        ...validationError,
+        ...forbiddenError,
+        ...commonErrors
+      }
+    }
+  },
   "/api/sysadmin/prompt-cases": {
     get: {
       tags: ["Sysadmin"],

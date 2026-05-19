@@ -2,7 +2,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import AiImagePromptPanel from "./AiImagePromptPanel.vue";
-import type { ProviderCapabilities } from "@/stores/auth";
+import type { GenerationTarget, ProviderCapabilities } from "@/stores/auth";
 import type { ImageAttachment } from "@/stores/session";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
 import type { SizeOption } from "@/views/workspace/workspaceOptions";
@@ -14,6 +14,8 @@ type PanelProps = {
   selectedCaseTitle: string;
   prompt: string;
   mode: PromptCaseMode;
+  generationTargetId: string;
+  generationTargets: GenerationTarget[];
   supportedModes: PromptCaseMode[];
   size: string;
   sizeFallbackNotice: string;
@@ -46,6 +48,10 @@ vi.mock("./AiImageFailurePanel.vue", () => ({
 
 vi.mock("./AiImageReferenceInput.vue", () => ({
   default: { template: '<section data-testid="reference-input"><slot /></section>' }
+}));
+
+vi.mock("./AiImageAssistantShell.vue", () => ({
+  default: { template: '<section data-testid="assistant-shell"></section>' }
 }));
 
 vi.mock("./PromptAssistantPanel.vue", () => ({
@@ -126,6 +132,8 @@ function panelProps(overrides: Partial<PanelProps> = {}): PanelProps {
     generationStatusLabel: "排队中",
     hasRunningTask: false,
     mode: "image2image" as PromptCaseMode,
+    generationTargetId: "default",
+    generationTargets: [] as GenerationTarget[],
     previews: [],
     prompt: "prompt",
     provider: null as ProviderCapabilities | null,

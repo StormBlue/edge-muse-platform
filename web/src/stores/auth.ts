@@ -27,6 +27,12 @@ export type ProviderCapabilities = {
   supportedSizes: string[];
   maxReferenceImages: number | null;
 };
+export type GenerationTarget = {
+  id: "default" | "micu_grok" | (string & {});
+  label: string;
+  experimental: boolean;
+  providerCapabilities: ProviderCapabilities;
+};
 /** 与 GET /api/me 中 user 段一致；勿信任仅存本地持久化的字段作权限边界 */
 export type User = {
   id: string;
@@ -69,6 +75,8 @@ export const useAuthStore = defineStore("auth", {
     quota: null as Quota | null,
     /** 当前用户实际 provider/key 的能力快照；为空时前端保留通用能力，后端仍会校验 */
     providerCapabilities: null as ProviderCapabilities | null,
+    /** 当前用户可用的生成目标；实验能力在这里按授权下发。 */
+    generationTargets: [] as GenerationTarget[],
     /** 当前用户可见的生成入口；sysadmin 固定同时展示两个入口 */
     generationEntry: null as GenerationEntry | null,
     /** Prompt 助手运维开关；默认 true，真实状态以 /me 响应为准 */
@@ -91,18 +99,21 @@ export const useAuthStore = defineStore("auth", {
           user: User;
           quota: Quota;
           providerCapabilities: ProviderCapabilities | null;
+          generationTargets?: GenerationTarget[];
           generationEntry: GenerationEntry;
           promptAssistantEnabled: boolean;
         }>("/me");
         this.user = body.user;
         this.quota = body.quota;
         this.providerCapabilities = body.providerCapabilities;
+        this.generationTargets = body.generationTargets ?? [];
         this.generationEntry = body.generationEntry;
         this.promptAssistantEnabled = body.promptAssistantEnabled;
       } catch {
         this.user = null;
         this.quota = null;
         this.providerCapabilities = null;
+        this.generationTargets = [];
         this.generationEntry = null;
         this.promptAssistantEnabled = true;
       } finally {
@@ -118,6 +129,7 @@ export const useAuthStore = defineStore("auth", {
         user: User;
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
+        generationTargets?: GenerationTarget[];
         generationEntry: GenerationEntry;
         promptAssistantEnabled: boolean;
       }>("/auth/login", {
@@ -127,6 +139,7 @@ export const useAuthStore = defineStore("auth", {
       this.user = body.user;
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
+      this.generationTargets = body.generationTargets ?? [];
       this.generationEntry = body.generationEntry;
       this.promptAssistantEnabled = body.promptAssistantEnabled;
     },
@@ -136,6 +149,7 @@ export const useAuthStore = defineStore("auth", {
       this.user = null;
       this.quota = null;
       this.providerCapabilities = null;
+      this.generationTargets = [];
       this.generationEntry = null;
       this.promptAssistantEnabled = true;
     },
@@ -145,6 +159,7 @@ export const useAuthStore = defineStore("auth", {
         user: User;
         quota: Quota;
         providerCapabilities: ProviderCapabilities | null;
+        generationTargets?: GenerationTarget[];
         generationEntry: GenerationEntry;
         promptAssistantEnabled: boolean;
       }>("/me", {
@@ -154,12 +169,20 @@ export const useAuthStore = defineStore("auth", {
       this.user = body.user;
       this.quota = body.quota;
       this.providerCapabilities = body.providerCapabilities;
+      this.generationTargets = body.generationTargets ?? [];
       this.generationEntry = body.generationEntry;
       this.promptAssistantEnabled = body.promptAssistantEnabled;
     }
   },
   // 仅持久化展示快照减轻首屏闪烁；真正鉴权和权限边界以 Cookie + 服务端为准
   persist: {
-    pick: ["user", "quota", "providerCapabilities", "generationEntry", "promptAssistantEnabled"]
+    pick: [
+      "user",
+      "quota",
+      "providerCapabilities",
+      "generationTargets",
+      "generationEntry",
+      "promptAssistantEnabled"
+    ]
   }
 });

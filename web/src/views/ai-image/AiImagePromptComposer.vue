@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { GenerationTarget } from "@/stores/auth";
 import type { PromptCaseMode } from "@/types/promptCases";
 import type { SizeOption } from "@/views/workspace/workspaceOptions";
 
@@ -19,6 +20,8 @@ defineProps<{
   hasRunningTask: boolean;
   interactionLocked: boolean;
   mode: PromptCaseMode;
+  generationTargetId: string;
+  generationTargets: GenerationTarget[];
   prompt: string;
   previews: PreviewImage[];
   selectedCaseTitle: string;
@@ -40,6 +43,7 @@ const emit = defineEmits<{
   removeFile: [index: number];
   resetPrompt: [];
   submit: [];
+  "update:generationTargetId": [value: string];
   "update:mode": [value: PromptCaseMode];
   "update:prompt": [value: string];
   "update:size": [value: string];
@@ -80,6 +84,30 @@ function updateMode(value: string | number) {
       >
         {{ sizeFallbackNotice }}
       </p>
+
+      <div v-if="generationTargets.length > 1">
+        <label
+          class="mb-2 block text-xs font-medium text-muted-foreground"
+          for="ai-generation-target"
+        >
+          {{ t("workspace.generationTarget") }}
+        </label>
+        <select
+          id="ai-generation-target"
+          class="ui-field h-9 px-3 text-sm"
+          :value="generationTargetId"
+          :disabled="interactionLocked"
+          @change="emit('update:generationTargetId', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="target in generationTargets" :key="target.id" :value="target.id">
+            {{
+              target.experimental
+                ? t("workspace.experimentalGenerationTarget", { label: target.label })
+                : target.label
+            }}
+          </option>
+        </select>
+      </div>
 
       <div>
         <p class="mb-2 text-xs font-medium text-muted-foreground">

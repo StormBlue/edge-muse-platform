@@ -59,6 +59,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
    */
   async function submit(input: {
     prompt: string;
+    generationTargetId: string;
     mode: SessionMode;
     size: string;
     n: number;
@@ -99,6 +100,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       const task = await sessions.generate({
         title: draftTitle.value.trim() || defaultSessionTitle(),
         prompt: input.prompt,
+        generationTargetId: input.generationTargetId,
         mode: input.mode,
         size: input.size,
         n: input.n,
@@ -226,7 +228,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
   }
 
   function workspaceGenerationEvent(
-    input: { mode: SessionMode; size: string; n: number },
+    input: { generationTargetId: string; mode: SessionMode; size: string; n: number },
     referenceImageCount: number
   ) {
     return {
@@ -236,6 +238,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           mode: input.mode,
           size: input.size,
           n: input.n,
+          generationTargetId: input.generationTargetId,
           referenceImageCount,
           promptSource: "user"
         }

@@ -6,6 +6,11 @@ import { Image as ImageIcon, Type } from "@lucide/vue";
 import { useTaskWebSocket } from "@/composables/useTaskWebSocket";
 import { useAuthStore } from "@/stores/auth";
 import {
+  activeGenerationTarget,
+  generationTargetDisplayLabel,
+  generationTargetsWithFallback
+} from "@/utils/generationTargets";
+import {
   useSessionStore,
   type ActiveGeneration,
   type ImageAttachment,
@@ -35,6 +40,7 @@ export function useWorkspaceController() {
   const selectedImage = ref<ImageAttachment | null>(null);
   const activePreviewImageId = ref<string | null>(null);
   const activeMode = ref<SessionMode>("image2image");
+  const generationTargetId = ref("default");
   const draftTitle = ref(defaultSessionTitle());
   const submitting = ref(false);
 
@@ -113,7 +119,9 @@ export function useWorkspaceController() {
   });
   const currentGenerationSettings = computed(() => ({
     size: sessions.currentSession?.settings?.size ?? "auto",
-    n: sessions.currentSession?.settings?.n ?? 1
+    n: sessions.currentSession?.settings?.n ?? 1,
+    generationTargetId:
+      sessions.currentSession?.settings?.generationTargetId ?? generationTargetId.value
   }));
   const latestReferenceCount = computed(
     () => latestUserMessage.value?.referenceImageIds.length ?? 0
@@ -128,7 +136,20 @@ export function useWorkspaceController() {
     { value: "image2image", label: t("workspace.image2image"), icon: ImageIcon },
     { value: "text2image", label: t("workspace.text2image"), icon: Type }
   ]);
-  const providerCapabilities = computed(() => auth.providerCapabilities);
+  const generationTargets = computed(() =>
+    generationTargetsWithFallback(auth.generationTargets, auth.providerCapabilities).map(
+      (target) => ({
+        ...target,
+        label: generationTargetDisplayLabel(target, t)
+      })
+    )
+  );
+  const activeTarget = computed(() =>
+    activeGenerationTarget(generationTargets.value, generationTargetId.value)
+  );
+  const providerCapabilities = computed(
+    () => activeTarget.value?.providerCapabilities ?? auth.providerCapabilities
+  );
   const supportedModes = computed<SessionMode[]>(
     () => providerCapabilities.value?.supportedModes ?? ["image2image", "text2image"]
   );
@@ -207,12 +228,38 @@ export function useWorkspaceController() {
     { immediate: true }
   );
 
+  watch(
+    () => sessions.currentSession?.settings?.generationTargetId,
+    (targetId) => {
+      if (targetId && generationTargets.value.some((target) => target.id === targetId)) {
+        generationTargetId.value = targetId;
+      }
+    },
+    { immediate: true }
+  );
+
   // 当前用户 key 切换为 Cubence 等受限 provider 后，主动落到可用模式，避免提交后才报错。
   watch(
     () => [supportedModes.value.join("|"), activeMode.value, modeSelectionDisabled.value] as const,
     () => normalizeActiveMode(),
     { immediate: true }
   );
+
+  watch(
+    () => generationTargets.value.map((target) => target.id).join("|"),
+    () => {
+      if (generationTargets.value.some((target) => target.id === generationTargetId.value)) return;
+      generationTargetId.value =
+        generationTargets.value.find((target) => target.id === "default")?.id ??
+        generationTargets.value[0]?.id ??
+        "default";
+    },
+    { immediate: true }
+  );
+
+  watch(generationTargetId, () => {
+    normalizeActiveMode();
+  });
 
   watch(
     resultImages,
@@ -280,6 +327,10 @@ export function useWorkspaceController() {
     activePreviewImageId.value = null;
     selectedImage.value = null;
     activeMode.value = "image2image";
+    generationTargetId.value =
+      generationTargets.value.find((target) => target.id === "default")?.id ??
+      generationTargets.value[0]?.id ??
+      "default";
     normalizeActiveMode();
     draftTitle.value = defaultSessionTitle();
   }
@@ -349,6 +400,8 @@ export function useWorkspaceController() {
     canEditTitle,
     modeSelectionDisabled,
     modeOptions,
+    generationTargetId,
+    generationTargets,
     providerSizeOptions,
     limitHighResolutionCount,
     maxReferenceFiles,

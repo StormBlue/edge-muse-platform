@@ -256,6 +256,7 @@ export function useAiImageGenerationPage() {
       mode: generation.mode.value,
       size: generation.size.value,
       n: 1,
+      generationTargetId: generation.generationTargetId.value,
       referenceImageCount: generation.files.value.length
     });
   }

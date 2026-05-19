@@ -138,6 +138,19 @@ export const components = {
       },
       additionalProperties: true
     },
+    GenerationTarget: {
+      type: "object",
+      description:
+        "当前用户可选择的生成目标。默认目标沿用账号 provider key group；实验目标按服务端授权下发。",
+      required: ["id", "label", "experimental", "providerCapabilities"],
+      properties: {
+        id: { type: "string", enum: ["default", "micu_grok"] },
+        label: { type: "string" },
+        experimental: { type: "boolean" },
+        providerCapabilities: ref("ProviderCapabilities")
+      },
+      additionalProperties: false
+    },
     GenerationEntry: {
       type: "object",
       required: ["navTarget", "showWorkspace", "showAiImage"],
@@ -155,6 +168,7 @@ export const components = {
         "user",
         "quota",
         "providerCapabilities",
+        "generationTargets",
         "generationEntry",
         "promptAssistantEnabled"
       ],
@@ -166,6 +180,7 @@ export const components = {
         },
         quota: ref("QuotaSnapshot"),
         providerCapabilities: ref("ProviderCapabilities"),
+        generationTargets: arrayOf(ref("GenerationTarget")),
         generationEntry: ref("GenerationEntry"),
         promptAssistantEnabled: { type: "boolean" }
       },
@@ -228,6 +243,12 @@ export const components = {
           minimum: 1,
           maximum: 4,
           description: "请求生成张数；非 sysadmin 会按策略压到 1。"
+        },
+        model: { type: "string", description: "任务创建时解析出的最终模型。" },
+        generationTargetId: {
+          type: "string",
+          enum: ["default", "micu_grok"],
+          description: "生成目标；用于区分默认链路与实验 provider 能力。"
         }
       },
       additionalProperties: true

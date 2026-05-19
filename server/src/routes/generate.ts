@@ -36,6 +36,7 @@ import {
 import { cancelQueuedGenerateTask } from "../lib/tasks/state";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
+import type { WaitUntilContext } from "../lib/tasks/types";
 import type { AppContext, AppEnv } from "../types";
 
 /** 预设与「宽x高」自定义尺寸白名单；具体能力还受 provider supportedSizes 约束 */
@@ -75,6 +76,7 @@ const generateSchema = z.object({
   sessionId: optionalSessionIdSchema,
   title: z.string().trim().min(1).max(80).optional(),
   prompt: z.string().min(1).max(4000),
+  generationTargetId: z.enum(["default", "micu_grok"]).default("default"),
   mode: z.enum(["image2image", "text2image"]).default("image2image"),
   size: z
     .string()
@@ -114,6 +116,7 @@ generateRoutes.post(
       size: generateBody.size,
       requestedImageCount: generateBody.n,
       model: generateBody.model ?? null,
+      generationTargetId: generateBody.generationTargetId,
       referenceImageCount: generateBody.referenceImageIds?.length ?? 0,
       ...promptSummary(generateBody.prompt)
     });
@@ -143,6 +146,7 @@ generateRoutes.post(
       size: body.size,
       requestedImageCount: rawBody.n,
       resolvedImageCount: body.n,
+      generationTargetId: body.generationTargetId,
       referenceImageCount: body.referenceImageIds.length
     });
     await assertGenerationRouteEnabledForUser(c.env, user, generationEvent?.route);
@@ -159,7 +163,8 @@ generateRoutes.post(
       messageId: result.messageId,
       mode: body.mode,
       size: body.size,
-      imageCount: body.n
+      imageCount: body.n,
+      generationTargetId: body.generationTargetId
     });
     try {
       await audit(c.env, {
@@ -167,7 +172,12 @@ generateRoutes.post(
         action: "task.create",
         targetType: "task",
         targetId: result.taskId,
-        payload: { mode: body.mode, size: body.size, n: body.n }
+        payload: {
+          mode: body.mode,
+          size: body.size,
+          n: body.n,
+          generationTargetId: body.generationTargetId
+        }
       });
       logInfo("generate.task.audit_written", {
         traceId,
@@ -189,7 +199,10 @@ generateRoutes.post(
           route: generationEvent.route,
           caseId: generationEvent.caseId,
           taskId: result.taskId,
-          metadata: generationEvent.metadata
+          metadata: {
+            ...generationEvent.metadata,
+            generationTargetId: body.generationTargetId
+          }
         });
         logInfo("generate.event_submitted_written", {
           traceId,
@@ -207,7 +220,7 @@ generateRoutes.post(
       }
     }
     // `enqueueGenerateTask` 仅调度后台子任务，不延长 HTTP 响应；浏览器用 wsUrl 收 DO 广播
-    enqueueGenerateTask(c.env, c.executionCtx, result.taskId);
+    enqueueGenerateTask(c.env, executionContextFromHono(c), result.taskId);
     const wsProtocol = new URL(c.req.url).protocol === "https:" ? "wss:" : "ws:";
     // 与 `index` 中注册的 `GET /ws/task/:id` 同 host，**无** `/api` 前缀
     const wsUrl = `${wsProtocol}//${new URL(c.req.url).host}/ws/task/${result.taskId}`;
@@ -242,16 +255,7 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
   if (!cancelled) {
     throw appError("VALIDATION_ERROR", "Only queued tasks can be cancelled");
   }
-  const executionCtx =
-    "executionCtx" in c
-      ? (() => {
-          try {
-            return c.executionCtx;
-          } catch {
-            return null;
-          }
-        })()
-      : null;
+  const executionCtx = executionContextFromHono(c);
   releaseGenerateTaskSlot(c.env, executionCtx, {
     taskId: task.id,
     providerKeyGroupId: task.providerKeyGroupId
@@ -308,6 +312,7 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
         mode: retryParams.mode,
         size: retryParams.size,
         n: retryParams.n,
+        generationTargetId: retryParams.generationTargetId ?? "default",
         referenceImageCount: retryParams.referenceImageIds?.length ?? 0
       }
     });
@@ -327,7 +332,7 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
       message: error instanceof Error ? error.message : "unknown"
     });
   }
-  enqueueGenerateTask(c.env, c.executionCtx, result.taskId);
+  enqueueGenerateTask(c.env, executionContextFromHono(c), result.taskId);
   logInfo("task.retry.created", {
     traceId: c.get("traceId"),
     userId: user.id,
@@ -361,4 +366,13 @@ export async function handleTaskWebSocket(c: AppContext) {
     path: new URL(c.req.url).pathname
   });
   return stub.fetch(c.req.raw);
+}
+
+function executionContextFromHono(c: AppContext): WaitUntilContext | null {
+  if (!("executionCtx" in c)) return null;
+  try {
+    return c.executionCtx;
+  } catch {
+    return null;
+  }
 }

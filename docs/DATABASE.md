@@ -21,6 +21,7 @@ Edge Muse 使用 **Cloudflare D1**（SQLite）存储平台状态；Schema 以 **
 | 会话/消息 | `sessions`, `messages`                              | 工作台上下文与附件 JSON                                                                                                                            |
 | 任务      | `tasks`                                             | 异步生图状态、provider 原始响应、`provider_key_group_id` 与调度器分配的最终 `provider_key_id`                                                      |
 | 生成入口  | `generation_entry_settings`, `generation_events`    | 普通用户可见工作台/AI 图像页开关、漏斗与任务归因事件（最近 30 天用量摘要）                                                                         |
+| 实验能力  | `generation_feature_grants`                         | 按 admin 用户授权实验生成目标；当前用于米醋 Grok 图像，sysadmin 永远不受该表限制                                                                   |
 | 系统设置  | `ai_model_settings`, `captcha_settings`             | Prompt Assistant 模型、国内/国外登录验证码 provider 与 ALTCHA 难度                                                                                 |
 | 图片      | `image_objects`                                     | R2 对象元数据                                                                                                                                      |
 | 审计      | `audit_logs`                                        | 管理类写操作                                                                                                                                       |
@@ -38,6 +39,8 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 `captcha_settings` 当前保存一行 `key=login` 的全局登录验证码设置：`domestic_provider`、`overseas_provider` 可选 `tencent` / `turnstile` / `altcha` / `disabled`；`domestic_altcha_difficulty`、`overseas_altcha_difficulty` 分别控制国内/国外 ALTCHA 浏览器端 PoW 难度。`altcha_difficulty` 保留为旧字段兼容来源。新增字段迁移见 `server/migrations/0009_altcha_captcha.sql` 与 `0010_regional_altcha_difficulty.sql`。
 
 `provider_key_groups` 是 0011 后的生成密钥分配权威模型。迁移会为每把旧 `provider_keys` 创建一个默认 group，并按旧 `user_provider_keys` / `preferred_provider_key_id` 回填 `users.provider_key_group_id`、`sessions.provider_key_group_id` 和 `tasks.provider_key_group_id`。这样不会把同一 provider 下的多把历史 key 自动合并给同一个管理员，避免扩大使用权限。旧 `user_provider_keys` 和 `users.preferred_provider_key_id` 暂不删除，供兼容、审计和回滚使用。
+
+`generation_feature_grants` 由迁移 `0013_generation_feature_grants.sql` 创建，主键为 `(feature, user_id)`。当前唯一 feature 为 `micu_grok_image`，仅控制 admin 是否能看到和使用 `generationTargetId=micu_grok`；sysadmin 在业务逻辑中始终允许。
 
 ## 备份与清理
 
