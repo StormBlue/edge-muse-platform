@@ -546,7 +546,7 @@ async function seedPermissionFixture(env: AppBindings) {
     `INSERT INTO providers (
        id, name, base_url, default_model, request_format, supported_sizes,
        enabled, created_at, updated_at, deleted_at
-     ) VALUES (?1, '米醋 Grok 图像', 'mock:', 'grok-imagine-image-pro', 'micu_grok_images', ?2, 1, ?3, ?3, NULL)`
+     ) VALUES (?1, '米醋 Grok 图像', 'mock:', 'grok-imagine-image-lite', 'micu_grok_images', ?2, 1, ?3, ?3, NULL)`
   )
     .bind(MICU_GROK_PROVIDER_ID, JSON.stringify(["1024x1024"]), timestamp)
     .run();

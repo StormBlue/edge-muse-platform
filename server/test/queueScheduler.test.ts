@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assertNoActiveGenerationTask } from "../src/lib/tasks";
+import { encryptString } from "../src/lib/crypto";
+import { resolveTaskRunContext } from "../src/lib/tasks/runContext";
 import {
   assignQueuedTaskToPlaceholderProviderKey,
   assignQueuedTaskToProviderKey,
@@ -10,6 +12,7 @@ import {
 import { claimGenerateTask } from "../src/lib/tasks/state";
 import { MICU_PROVIDER_ID } from "../src/providers/catalog";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
+import type { Task } from "../src/db/schema";
 import type { AppBindings, TaskStatus, UserRole } from "../src/types";
 
 describe("provider key queue scheduler", () => {
@@ -89,6 +92,52 @@ describe("provider key queue scheduler", () => {
       providerKeyId: "key_queue_2",
       assignedAt: 3_000
     });
+  });
+
+  it("resolves the run model from the actually assigned provider key", async () => {
+    const secret = "test-key-encryption-secret";
+    context.env.KEY_ENCRYPTION_KEY = secret;
+    await context.env.DB.batch([
+      context.env.DB.prepare(
+        "UPDATE provider_keys SET encrypted_key = ?1 WHERE id = 'key_queue_1'"
+      ).bind(await encryptString("api-key-1", secret)),
+      context.env.DB.prepare(
+        "UPDATE provider_keys SET model = 'gpt-image-2-pro', encrypted_key = ?1 WHERE id = 'key_queue_2'"
+      ).bind(await encryptString("api-key-2", secret))
+    ]);
+    await seedTask(context.env, {
+      id: "tsk_second_key_model",
+      providerKeyId: "key_queue_1"
+    });
+    await assignQueuedTaskToProviderKey(context.env, {
+      taskId: "tsk_second_key_model",
+      providerKeyId: "key_queue_2",
+      assignedAt: 3_000
+    });
+    const task = await context.env.DB.prepare(
+      `SELECT id,
+              user_id AS userId,
+              provider_key_id AS providerKeyId
+       FROM tasks
+       WHERE id = ?1`
+    )
+      .bind("tsk_second_key_model")
+      .first<Pick<Task, "id" | "userId" | "providerKeyId">>();
+
+    const runContext = await resolveTaskRunContext(context.env, {
+      task: task as Task,
+      params: {
+        prompt: "prompt",
+        mode: "text2image",
+        size: "1024x1024",
+        n: 1,
+        model: "gpt-image-2"
+      },
+      baseLogFields: { taskId: "tsk_second_key_model" }
+    });
+
+    expect(runContext.model).toBe("gpt-image-2-pro");
+    expect(runContext.apiKey).toBe("api-key-2");
   });
 
   it("atomically rejects a second assignment when the selected key is already full", async () => {

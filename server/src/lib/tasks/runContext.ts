@@ -42,7 +42,7 @@ export async function resolveTaskRunContext(
   }
   const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
   const providerImpl = getProvider(provider.requestFormat);
-  const model = params.model ?? key.model ?? provider.defaultModel;
+  const model = key.model ?? provider.defaultModel;
   assertProviderSupportsGenerateParams(provider, providerImpl, params);
   logInfo("task.provider.resolved", {
     ...baseLogFields,

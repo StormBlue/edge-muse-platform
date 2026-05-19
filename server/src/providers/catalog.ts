@@ -56,7 +56,7 @@ export const BUILT_IN_PROVIDERS = [
     id: MICU_GROK_PROVIDER_ID,
     name: "米醋 Grok 图像",
     baseUrl: MICU_BASE_URL,
-    defaultModel: "grok-imagine-image-pro",
+    defaultModel: "grok-imagine-image-lite",
     requestFormat: "micu_grok_images",
     supportedSizes: ["1024x1024", "1536x1024", "1024x1536", "2048x2048", "2048x1152", "1152x2048"]
   }

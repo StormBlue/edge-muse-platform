@@ -30,7 +30,7 @@
 - 关键字段：`model`、`prompt`、`n`、`resolution`、`aspect_ratio`、`response_format`
 - 参考模型：`grok-imagine-image-lite`、`grok-imagine-image`、`grok-imagine-image-pro`、`grok-imagine-image-edit`
 
-本平台第一版使用独立内置 provider `prv_micu_grok`，默认模型 `grok-imagine-image-pro`，request format 为 `micu_grok_images`。
+本平台第一版使用独立内置 provider `prv_micu_grok`，默认模型 `grok-imagine-image-lite`，request format 为 `micu_grok_images`；需要 pro 时由对应 key 行显式配置模型。
 
 ## 功能需求
 
@@ -80,6 +80,6 @@
 
 ## 风险
 
-- 米醋 Grok 真实模型名可能与口头名称不一致；第一版使用 `grok-imagine-image-pro`，也允许 key 行覆盖 model。
+- 米醋 Grok 真实模型名可能与口头名称不一致；第一版默认跟随 MCP 参考使用 `grok-imagine-image-lite`，也允许 key 行覆盖 model。
 - Grok 返回尺寸不稳定；UI 不展示“精确输出”承诺。
 - 若 Grok group 未配置 key，授权用户仍不会看到可用 target，避免提交后才失败。
