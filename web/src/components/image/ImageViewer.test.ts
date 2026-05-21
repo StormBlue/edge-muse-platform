@@ -84,6 +84,50 @@ describe("ImageViewer", () => {
     expect(style).toContain("scale(1.05)");
     wrapper.unmount();
   });
+
+  it("pinch-zooms from two touch pointers", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class ResizeObserver {
+        observe() {}
+        disconnect() {}
+      }
+    );
+    stubPointerCapture();
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: HTMLElement
+    ) {
+      if ((this as HTMLElement).classList.contains("viewer-stage")) {
+        return rect({ width: 1000, height: 500 });
+      }
+      if ((this as HTMLElement).classList.contains("viewer-image")) {
+        return rect({ width: 1000, height: 500 });
+      }
+      return rect({ width: 0, height: 0 });
+    });
+
+    const wrapper = mount(ImageViewer, {
+      attachTo: document.body,
+      props: {
+        image: image({ width: 1000, height: 500 }),
+        images: []
+      }
+    });
+    await nextTick();
+    await nextTick();
+
+    const stage = document.body.querySelector<HTMLElement>(".viewer-stage");
+    expect(stage).toBeTruthy();
+    stage?.dispatchEvent(pointerEvent("pointerdown", { pointerId: 1, clientX: 400, clientY: 250 }));
+    stage?.dispatchEvent(pointerEvent("pointerdown", { pointerId: 2, clientX: 600, clientY: 250 }));
+    stage?.dispatchEvent(pointerEvent("pointermove", { pointerId: 2, clientX: 700, clientY: 250 }));
+    await nextTick();
+
+    const style = document.body.querySelector<HTMLElement>(".viewer-image")?.getAttribute("style");
+    expect(style).toContain("translate3d(-25px, 0px, 0)");
+    expect(style).toContain("scale(1.5)");
+    wrapper.unmount();
+  });
 });
 
 function image(overrides: Partial<ImageAttachment> = {}): ImageAttachment {
@@ -121,4 +165,26 @@ function wheelEvent(input: { clientX: number; clientY: number; deltaY: number })
     deltaY: { value: input.deltaY }
   });
   return event;
+}
+
+function pointerEvent(
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
+  input: { pointerId: number; clientX: number; clientY: number; button?: number }
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperties(event, {
+    button: { value: input.button ?? 0 },
+    clientX: { value: input.clientX },
+    clientY: { value: input.clientY },
+    pointerId: { value: input.pointerId }
+  });
+  return event;
+}
+
+function stubPointerCapture() {
+  Object.defineProperties(HTMLElement.prototype, {
+    hasPointerCapture: { value: vi.fn(() => true), configurable: true },
+    releasePointerCapture: { value: vi.fn(), configurable: true },
+    setPointerCapture: { value: vi.fn(), configurable: true }
+  });
 }

@@ -26,6 +26,11 @@ export function useImageViewerZoom(image: Ref<ImageAttachment | null>) {
     originY: number;
     moved: boolean;
   } | null>(null);
+  const activePointers = new Map<number, Point>();
+  let pinchState: {
+    startDistance: number;
+    startScale: number;
+  } | null = null;
   const ignoreNextBackdropClick = ref(false);
   let stageResizeObserver: ResizeObserver | null = null;
 
@@ -78,12 +83,24 @@ export function useImageViewerZoom(image: Ref<ImageAttachment | null>) {
     scale.value = 1;
     offset.value = { x: 0, y: 0 };
     dragState.value = null;
+    activePointers.clear();
+    pinchState = null;
   }
 
   function onStagePointerDown(event: PointerEvent) {
-    if (!canDrag.value || event.button !== 0) return;
     if (event.target instanceof HTMLElement && event.target.closest("button")) return;
+    if (event.button !== 0) return;
+    activePointers.set(event.pointerId, stageAnchorFromEvent(event));
+    if (activePointers.size >= 2) {
+      event.preventDefault();
+      captureActivePointers();
+      beginPinch();
+      dragState.value = null;
+      return;
+    }
+    if (!canDrag.value) return;
     event.preventDefault();
+    stageRef.value?.setPointerCapture(event.pointerId);
     dragState.value = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -92,10 +109,16 @@ export function useImageViewerZoom(image: Ref<ImageAttachment | null>) {
       originY: offset.value.y,
       moved: false
     };
-    stageRef.value?.setPointerCapture(event.pointerId);
   }
 
   function onStagePointerMove(event: PointerEvent) {
+    if (activePointers.has(event.pointerId)) {
+      activePointers.set(event.pointerId, stageAnchorFromEvent(event));
+    }
+    if (pinchState && activePointers.size >= 2) {
+      updatePinch();
+      return;
+    }
     const drag = dragState.value;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) {
@@ -108,16 +131,22 @@ export function useImageViewerZoom(image: Ref<ImageAttachment | null>) {
   }
 
   function onStagePointerEnd(event: PointerEvent) {
+    const wasPinching = Boolean(pinchState);
+    activePointers.delete(event.pointerId);
+    if (wasPinching) {
+      ignoreBackdropClick();
+    }
+    if (pinchState && activePointers.size < 2) {
+      pinchState = null;
+      clampOffset();
+    }
     const drag = dragState.value;
-    if (!drag || drag.pointerId !== event.pointerId) return;
     if (stageRef.value?.hasPointerCapture(event.pointerId)) {
       stageRef.value.releasePointerCapture(event.pointerId);
     }
+    if (!drag || drag.pointerId !== event.pointerId) return;
     if (drag.moved) {
-      ignoreNextBackdropClick.value = true;
-      window.setTimeout(() => {
-        ignoreNextBackdropClick.value = false;
-      }, 200);
+      ignoreBackdropClick();
     }
     dragState.value = null;
     clampOffset();
@@ -202,6 +231,61 @@ export function useImageViewerZoom(image: Ref<ImageAttachment | null>) {
       x: event.clientX - rect.left,
       y: event.clientY - rect.top
     };
+  }
+
+  function beginPinch() {
+    const pair = activePointerPair();
+    if (!pair) return;
+    const distance = pointerDistance(pair[0], pair[1]);
+    if (distance <= 0) return;
+    pinchState = {
+      startDistance: distance,
+      startScale: scale.value
+    };
+  }
+
+  function updatePinch() {
+    if (!pinchState) return;
+    const pair = activePointerPair();
+    if (!pair) return;
+    const distance = pointerDistance(pair[0], pair[1]);
+    if (distance <= 0) return;
+    setScale(
+      pinchState.startScale * (distance / pinchState.startDistance),
+      midpoint(pair[0], pair[1])
+    );
+  }
+
+  function activePointerPair(): [Point, Point] | null {
+    const pointers = Array.from(activePointers.values());
+    if (pointers.length < 2) return null;
+    return [pointers[0], pointers[1]];
+  }
+
+  function captureActivePointers() {
+    const stage = stageRef.value;
+    if (!stage) return;
+    for (const pointerId of activePointers.keys()) {
+      stage.setPointerCapture(pointerId);
+    }
+  }
+
+  function pointerDistance(first: Point, second: Point) {
+    return Math.hypot(second.x - first.x, second.y - first.y);
+  }
+
+  function midpoint(first: Point, second: Point) {
+    return {
+      x: (first.x + second.x) / 2,
+      y: (first.y + second.y) / 2
+    };
+  }
+
+  function ignoreBackdropClick() {
+    ignoreNextBackdropClick.value = true;
+    window.setTimeout(() => {
+      ignoreNextBackdropClick.value = false;
+    }, 200);
   }
 
   return {
