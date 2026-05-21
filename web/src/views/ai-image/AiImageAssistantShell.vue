@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { RotateCcw, X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import PromptAssistantPanel from "./PromptAssistantPanel.vue";
 import type { ProviderCapabilities } from "@/stores/auth";
 import type { PromptCase, PromptCaseMode } from "@/types/promptCases";
@@ -90,24 +91,27 @@ defineExpose({ openAssistantView });
           <h3 class="truncate text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
         </div>
         <div class="flex shrink-0 items-center gap-2">
-          <button
-            class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
+          <Button
+            class="h-8 shrink-0 whitespace-nowrap text-xs"
+            variant="secondary"
             type="button"
             :disabled="disabled"
             @click="assistantPanelRef?.reset()"
           >
             <RotateCcw class="h-3.5 w-3.5" />
             {{ t("aiImage.restartAssistant") }}
-          </button>
-          <button
-            class="ui-button ui-button-secondary h-8 w-8 p-0"
+          </Button>
+          <Button
+            class="h-8 w-8 p-0"
+            variant="secondary"
+            size="icon-sm"
             type="button"
             :aria-label="t('viewer.close')"
             :disabled="disabled"
             @click="assistantDialogOpen = false"
           >
             <X class="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
       <PromptAssistantPanel

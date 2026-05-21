@@ -12,7 +12,16 @@ import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "@lucide/vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 import { useLoginCaptcha } from "./useLoginCaptcha";
@@ -95,6 +104,11 @@ function handleLoginError(error: unknown) {
 onMounted(() => {
   void initCaptcha();
 });
+
+function updateLocale(value: unknown) {
+  if (!value) return;
+  ui.setLocale(String(value));
+}
 </script>
 
 <template>
@@ -112,14 +126,15 @@ onMounted(() => {
                 <p class="text-sm text-muted-foreground">{{ t("auth.platformSubtitle") }}</p>
               </div>
             </div>
-            <select
-              class="ui-field h-9 !w-28 shrink-0 px-2 text-sm"
-              :value="ui.locale"
-              @change="ui.setLocale(($event.target as HTMLSelectElement).value)"
-            >
-              <option value="zh-CN">中文</option>
-              <option value="en-US">EN</option>
-            </select>
+            <Select :model-value="ui.locale" @update:model-value="updateLocale">
+              <SelectTrigger class="h-9 !w-28 shrink-0 px-2 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zh-CN">中文</SelectItem>
+                <SelectItem value="en-US">EN</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <form class="panel login-card space-y-4 p-5" @submit.prevent="submit">
             <div>
@@ -128,18 +143,13 @@ onMounted(() => {
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium">{{ t("auth.loginIdentifier") }}</label>
-              <input
-                v-model="email"
-                class="ui-field h-11 px-3"
-                type="text"
-                autocomplete="username"
-              />
+              <Input v-model="email" class="h-11 px-3" type="text" autocomplete="username" />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium">{{ t("auth.password") }}</label>
-              <input
+              <Input
                 v-model="password"
-                class="ui-field h-11 px-3"
+                class="h-11 px-3"
                 type="password"
                 autocomplete="current-password"
               />
@@ -170,15 +180,16 @@ onMounted(() => {
                 <div class="min-w-0 flex-1">
                   <div class="flex min-w-0 items-center justify-between gap-3">
                     <p class="min-w-0 text-sm font-semibold">{{ captchaTitle }}</p>
-                    <button
+                    <Button
                       v-if="canRetryCaptcha"
-                      class="ui-button ui-button-secondary h-8 shrink-0 px-2 text-xs"
+                      class="h-8 shrink-0 px-2 text-xs"
+                      variant="secondary"
                       type="button"
                       @click="retryCaptcha"
                     >
                       <RefreshCw class="h-3.5 w-3.5" />
                       {{ t("auth.captchaRetry") }}
-                    </button>
+                    </Button>
                   </div>
                   <p class="mt-1 text-xs leading-5 text-muted-foreground">
                     {{ captchaDescription }}
@@ -188,16 +199,17 @@ onMounted(() => {
                   </p>
                 </div>
               </div>
-              <button
+              <Button
                 v-if="activeCaptchaProvider === 'tencent' && captchaStatus !== 'verified'"
-                class="ui-button ui-button-secondary mt-3 w-full"
+                class="mt-3 w-full"
+                variant="secondary"
                 type="button"
                 :disabled="loading || captchaStatus === 'loading'"
                 @click="openTencentCaptcha"
               >
                 <ShieldCheck class="h-4 w-4" />
                 {{ t("auth.tencentCaptchaAction") }}
-              </button>
+              </Button>
               <div
                 v-show="activeCaptchaProvider === 'turnstile' && captchaStatus !== 'unsupported'"
                 ref="turnstileEl"
@@ -211,10 +223,10 @@ onMounted(() => {
                 @verified="handleAltchaVerified"
               ></altcha-widget>
             </div>
-            <button class="ui-button ui-button-primary w-full" :disabled="!canSubmit" type="submit">
+            <Button class="w-full" :disabled="!canSubmit" type="submit">
               <Loader2 v-if="loading" class="h-4 w-4 animate-spin" />
               {{ submitLabel }}
-            </button>
+            </Button>
           </form>
         </div>
       </section>

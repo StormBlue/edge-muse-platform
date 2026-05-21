@@ -6,6 +6,7 @@
  */
 import { Star } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import type { PromptCaseListItem } from "@/types/promptCases";
 
@@ -102,15 +103,16 @@ const { t } = useI18n();
       </div>
       <div class="border-t border-border p-3" aria-live="polite">
         <p v-if="error" class="mb-2 text-xs leading-5 text-destructive">{{ error }}</p>
-        <button
+        <Button
           v-if="hasMore || error"
-          class="ui-button ui-button-secondary h-10 w-full text-sm"
+          class="h-10 w-full text-sm"
+          variant="secondary"
           type="button"
           :disabled="loadingMore"
           @click="emit('loadMore')"
         >
           {{ loadingMore ? t("common.loading") : t("aiImage.loadMoreCases") }}
-        </button>
+        </Button>
       </div>
     </div>
   </section>

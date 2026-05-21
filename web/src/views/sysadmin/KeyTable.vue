@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Loader2, Pencil, PlugZap, Power, PowerOff, Trash2 } from "@lucide/vue";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { KeyRow } from "./useSysadminKeysController";
 
@@ -62,8 +63,9 @@ defineEmits<{
             </div>
 
             <div class="flex shrink-0 flex-wrap justify-end gap-2">
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
+              <Button
+                class="h-8 px-2.5 text-xs"
+                variant="secondary"
                 type="button"
                 :disabled="testingKeyId === key.id"
                 @click="$emit('testKey', key)"
@@ -71,32 +73,35 @@ defineEmits<{
                 <Loader2 v-if="testingKeyId === key.id" class="h-3.5 w-3.5 animate-spin" />
                 <PlugZap v-else class="h-3.5 w-3.5" />
                 {{ t("sysadmin.testKey") }}
-              </button>
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
+              </Button>
+              <Button
+                class="h-8 px-2.5 text-xs"
+                variant="secondary"
                 type="button"
                 @click="$emit('openEdit', key)"
               >
                 <Pencil class="h-3.5 w-3.5" />
                 {{ t("sysadmin.edit") }}
-              </button>
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
+              </Button>
+              <Button
+                class="h-8 px-2.5 text-xs"
+                variant="secondary"
                 type="button"
                 @click="$emit('toggleKey', key)"
               >
                 <PowerOff v-if="key.enabled" class="h-3.5 w-3.5" />
                 <Power v-else class="h-3.5 w-3.5" />
                 {{ key.enabled ? t("common.disabled") : t("common.enabled") }}
-              </button>
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs text-destructive"
+              </Button>
+              <Button
+                class="h-8 px-2.5 text-xs text-destructive"
+                variant="secondary"
                 type="button"
                 @click="$emit('deleteKey', key)"
               >
                 <Trash2 class="h-3.5 w-3.5" />
                 {{ t("common.delete") }}
-              </button>
+              </Button>
             </div>
           </div>
 

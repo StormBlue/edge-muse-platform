@@ -5,11 +5,13 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import AppShell from "@/components/layout/AppShell.vue";
+import { buttonVariants } from "@/components/ui/button";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
 import StatKPICard from "@/components/stats/StatKPICard.vue";
 import StatLineChart from "@/components/stats/StatLineChart.vue";
 import StatPieChart from "@/components/stats/StatPieChart.vue";
 import { apiFetch } from "@/api/client";
+import { cn } from "@/lib/utils";
 
 /** 按维度聚合的一行 count（用户角色 / 任务状态 / provider 名） */
 type CountRow = { count: number; role?: string; status?: string; name?: string | null };
@@ -110,7 +112,7 @@ onMounted(async () => {
             <td class="p-3 font-mono">{{ user.task_count }}</td>
             <td class="p-3 text-right">
               <RouterLink
-                class="ui-button ui-button-secondary h-8 text-xs"
+                :class="cn(buttonVariants({ variant: 'secondary', size: 'sm' }), 'h-8 text-xs')"
                 :to="`/sysadmin/users/${user.id}/sessions`"
               >
                 {{ t("sysadmin.viewSessions") }}

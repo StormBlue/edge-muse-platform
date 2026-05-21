@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { Loader2 } from "@lucide/vue";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FormDialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { KeyGroupRow, KeyRow, ProviderRow } from "./useSysadminKeysController";
 
 type KeyForm = {
@@ -77,104 +87,98 @@ const groupEditFormModel = computed({
 </script>
 
 <template>
-  <div
-    v-if="createOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+  <FormDialog
+    :open="createOpen"
+    :cancel-label="t('common.cancel')"
+    :saving="createSaving"
+    :submit-label="t('common.create')"
+    :title="t('sysadmin.createKey')"
+    @submit="$emit('create')"
+    @update:open="(open) => !open && $emit('closeCreate')"
   >
-    <form
-      class="panel w-full max-w-md space-y-3 p-5"
-      :aria-busy="createSaving"
-      @submit.prevent="$emit('create')"
-    >
-      <h2 class="font-semibold">{{ t("sysadmin.createKey") }}</h2>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.provider") }}
-        </span>
-        <select
-          v-model="formModel.providerId"
-          class="ui-field h-10 px-3"
-          required
-          @change="$emit('syncCreateModelWithProvider')"
-        >
-          <option value="">{{ t("sysadmin.selectProvider") }}</option>
-          <option v-for="provider in supportedProviders" :key="provider.id" :value="provider.id">
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.provider") }}
+      </span>
+      <Select
+        v-model="formModel.providerId"
+        required
+        @update:model-value="$emit('syncCreateModelWithProvider')"
+      >
+        <SelectTrigger class="h-10">
+          <SelectValue :placeholder="t('sysadmin.selectProvider')" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
+            v-for="provider in supportedProviders"
+            :key="provider.id"
+            :value="provider.id"
+          >
             {{ provider.name }}
-          </option>
-        </select>
-        <span v-if="formModel.providerId" class="mt-1 block text-xs text-muted-foreground">
-          {{ providerMeta(formModel.providerId) }}
-        </span>
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.label") }}
-        </span>
-        <input v-model="formModel.label" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyModel") }}
-        </span>
-        <input v-model="formModel.model" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.maxConcurrency") }}
-        </span>
-        <input
-          v-model.number="formModel.maxConcurrency"
-          class="ui-field h-10 px-3"
-          max="100"
-          min="1"
-          required
-          type="number"
-        />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.apiKey") }}
-        </span>
-        <input v-model="formModel.apiKey" class="ui-field h-10 px-3" required type="password" />
-      </label>
-      <div class="flex justify-end gap-2 pt-2">
-        <button
-          class="ui-button ui-button-secondary"
-          type="button"
-          :disabled="createSaving"
-          @click="$emit('closeCreate')"
-        >
-          {{ t("common.cancel") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
-          <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
-          {{ t("common.create") }}
-        </button>
-      </div>
-    </form>
-  </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <span v-if="formModel.providerId" class="mt-1 block text-xs text-muted-foreground">
+        {{ providerMeta(formModel.providerId) }}
+      </span>
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.label") }}
+      </span>
+      <Input v-model="formModel.label" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyModel") }}
+      </span>
+      <Input v-model="formModel.model" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.maxConcurrency") }}
+      </span>
+      <Input
+        v-model.number="formModel.maxConcurrency"
+        class="h-10"
+        max="100"
+        min="1"
+        required
+        type="number"
+      />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.apiKey") }}
+      </span>
+      <Input v-model="formModel.apiKey" class="h-10" required type="password" />
+    </label>
+  </FormDialog>
 
-  <div
+  <FormDialog
     v-if="editOpen && editing"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    :open="editOpen"
+    :cancel-label="t('common.cancel')"
+    :saving="editSaving"
+    :submit-label="t('common.save')"
+    :title="t('sysadmin.editKey')"
+    @submit="$emit('saveEdit')"
+    @update:open="(open) => !open && $emit('closeEdit')"
   >
-    <form
-      class="panel w-full max-w-md space-y-3 p-5"
-      :aria-busy="editSaving"
-      @submit.prevent="$emit('saveEdit')"
-    >
-      <h2 class="font-semibold">{{ t("sysadmin.editKey") }}</h2>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.provider") }}
-        </span>
-        <select
-          v-model="editFormModel.providerId"
-          class="ui-field h-10 px-3"
-          required
-          @change="$emit('syncEditModelWithProvider')"
-        >
-          <option
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.provider") }}
+      </span>
+      <Select
+        v-model="editFormModel.providerId"
+        required
+        @update:model-value="$emit('syncEditModelWithProvider')"
+      >
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
             v-for="provider in editProviderOptions"
             :key="provider.id"
             :value="provider.id"
@@ -183,167 +187,136 @@ const groupEditFormModel = computed({
             "
           >
             {{ provider.name }}
-          </option>
-        </select>
-        <span v-if="editFormModel.providerId" class="mt-1 block text-xs text-muted-foreground">
-          {{ providerMeta(editFormModel.providerId) }}
-        </span>
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.label") }}
-        </span>
-        <input v-model="editFormModel.label" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyModel") }}
-        </span>
-        <input v-model="editFormModel.model" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.maxConcurrency") }}
-        </span>
-        <input
-          v-model.number="editFormModel.maxConcurrency"
-          class="ui-field h-10 px-3"
-          max="100"
-          min="1"
-          required
-          type="number"
-        />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.apiKeyOptional") }}
-        </span>
-        <input v-model="editFormModel.apiKey" class="ui-field h-10 px-3" type="password" />
-      </label>
-      <div class="flex justify-end gap-2 pt-2">
-        <button
-          class="ui-button ui-button-secondary"
-          type="button"
-          :disabled="editSaving"
-          @click="$emit('closeEdit')"
-        >
-          {{ t("common.cancel") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
-          <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
-          {{ t("common.save") }}
-        </button>
-      </div>
-    </form>
-  </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <span v-if="editFormModel.providerId" class="mt-1 block text-xs text-muted-foreground">
+        {{ providerMeta(editFormModel.providerId) }}
+      </span>
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.label") }}
+      </span>
+      <Input v-model="editFormModel.label" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyModel") }}
+      </span>
+      <Input v-model="editFormModel.model" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.maxConcurrency") }}
+      </span>
+      <Input
+        v-model.number="editFormModel.maxConcurrency"
+        class="h-10"
+        max="100"
+        min="1"
+        required
+        type="number"
+      />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.apiKeyOptional") }}
+      </span>
+      <Input v-model="editFormModel.apiKey" class="h-10" type="password" />
+    </label>
+  </FormDialog>
 
-  <div
-    v-if="groupCreateOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+  <FormDialog
+    :open="groupCreateOpen"
+    :cancel-label="t('common.cancel')"
+    :saving="groupSaving"
+    :submit-label="t('common.create')"
+    :title="t('sysadmin.createKeyGroup')"
+    @submit="$emit('createGroup')"
+    @update:open="(open) => !open && $emit('closeGroupCreate')"
   >
-    <form
-      class="panel w-full max-w-md space-y-3 p-5"
-      :aria-busy="groupSaving"
-      @submit.prevent="$emit('createGroup')"
-    >
-      <h2 class="font-semibold">{{ t("sysadmin.createKeyGroup") }}</h2>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.provider") }}
-        </span>
-        <select v-model="groupFormModel.providerId" class="ui-field h-10 px-3" required>
-          <option v-for="provider in supportedProviders" :key="provider.id" :value="provider.id">
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.provider") }}
+      </span>
+      <Select v-model="groupFormModel.providerId" required>
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
+            v-for="provider in supportedProviders"
+            :key="provider.id"
+            :value="provider.id"
+          >
             {{ provider.name }}
-          </option>
-        </select>
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyGroupName") }}
-        </span>
-        <input v-model="groupFormModel.name" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyGroupDescription") }}
-        </span>
-        <textarea v-model="groupFormModel.description" class="ui-field min-h-20 p-3" />
-      </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="groupFormModel.enabled" type="checkbox" />
-        <span>{{ t("common.enabled") }}</span>
-      </label>
-      <div class="flex justify-end gap-2 pt-2">
-        <button
-          class="ui-button ui-button-secondary"
-          type="button"
-          :disabled="groupSaving"
-          @click="$emit('closeGroupCreate')"
-        >
-          {{ t("common.cancel") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="submit" :disabled="groupSaving">
-          <Loader2 v-if="groupSaving" class="h-4 w-4 animate-spin" />
-          {{ t("common.create") }}
-        </button>
-      </div>
-    </form>
-  </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyGroupName") }}
+      </span>
+      <Input v-model="groupFormModel.name" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyGroupDescription") }}
+      </span>
+      <Textarea v-model="groupFormModel.description" />
+    </label>
+    <label class="flex items-center gap-2 text-sm">
+      <Checkbox v-model:checked="groupFormModel.enabled" />
+      <span>{{ t("common.enabled") }}</span>
+    </label>
+  </FormDialog>
 
-  <div
+  <FormDialog
     v-if="groupEditOpen && editingGroup"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    :open="groupEditOpen"
+    :cancel-label="t('common.cancel')"
+    :saving="groupSaving"
+    :submit-label="t('common.save')"
+    :title="t('sysadmin.editKeyGroup')"
+    @submit="$emit('saveGroupEdit')"
+    @update:open="(open) => !open && $emit('closeGroupEdit')"
   >
-    <form
-      class="panel w-full max-w-md space-y-3 p-5"
-      :aria-busy="groupSaving"
-      @submit.prevent="$emit('saveGroupEdit')"
-    >
-      <h2 class="font-semibold">{{ t("sysadmin.editKeyGroup") }}</h2>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.provider") }}
-        </span>
-        <select v-model="groupEditFormModel.providerId" class="ui-field h-10 px-3" required>
-          <option
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.provider") }}
+      </span>
+      <Select v-model="groupEditFormModel.providerId" required>
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem
             v-for="provider in groupEditProviderOptions"
             :key="provider.id"
             :value="provider.id"
           >
             {{ provider.name }}
-          </option>
-        </select>
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyGroupName") }}
-        </span>
-        <input v-model="groupEditFormModel.name" class="ui-field h-10 px-3" required />
-      </label>
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
-          {{ t("sysadmin.keyGroupDescription") }}
-        </span>
-        <textarea v-model="groupEditFormModel.description" class="ui-field min-h-20 p-3" />
-      </label>
-      <label class="flex items-center gap-2 text-sm">
-        <input v-model="groupEditFormModel.enabled" type="checkbox" />
-        <span>{{ t("common.enabled") }}</span>
-      </label>
-      <div class="flex justify-end gap-2 pt-2">
-        <button
-          class="ui-button ui-button-secondary"
-          type="button"
-          :disabled="groupSaving"
-          @click="$emit('closeGroupEdit')"
-        >
-          {{ t("common.cancel") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="submit" :disabled="groupSaving">
-          <Loader2 v-if="groupSaving" class="h-4 w-4 animate-spin" />
-          {{ t("common.save") }}
-        </button>
-      </div>
-    </form>
-  </div>
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyGroupName") }}
+      </span>
+      <Input v-model="groupEditFormModel.name" class="h-10" required />
+    </label>
+    <label class="block">
+      <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {{ t("sysadmin.keyGroupDescription") }}
+      </span>
+      <Textarea v-model="groupEditFormModel.description" />
+    </label>
+    <label class="flex items-center gap-2 text-sm">
+      <Checkbox v-model:checked="groupEditFormModel.enabled" />
+      <span>{{ t("common.enabled") }}</span>
+    </label>
+  </FormDialog>
 </template>

@@ -1,16 +1,21 @@
 <script setup lang="ts">
-import { Loader2 } from "@lucide/vue";
+import { computed } from "vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import AdminUserCreateDialog from "./AdminUserCreateDialog.vue";
 import AdminUserDetailsAside from "./AdminUserDetailsAside.vue";
+import AdminUserEditDialog from "./AdminUserEditDialog.vue";
+import AdminUserPasswordDialog from "./AdminUserPasswordDialog.vue";
+import AdminUserQuotaDialog from "./AdminUserQuotaDialog.vue";
 import AdminUserTable from "./AdminUserTable.vue";
 import { useAdminUsersController } from "./useAdminUsersController";
 
@@ -73,6 +78,21 @@ const {
   groupLabel,
   tableRowNumber
 } = useAdminUsersController();
+
+const ALL_STATUS_VALUE = "__all_status__";
+const ALL_ROLE_VALUE = "__all_role__";
+const statusSelectValue = computed({
+  get: () => status.value || ALL_STATUS_VALUE,
+  set: (value: string) => {
+    status.value = value === ALL_STATUS_VALUE ? "" : (value as "active" | "disabled");
+  }
+});
+const roleSelectValue = computed({
+  get: () => role.value || ALL_ROLE_VALUE,
+  set: (value: string) => {
+    role.value = value === ALL_ROLE_VALUE ? "" : (value as "admin" | "user");
+  }
+});
 </script>
 
 <template>
@@ -83,36 +103,37 @@ const {
         class="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
         @submit.prevent="load(1)"
       >
-        <select
-          v-model="status"
-          class="ui-field h-10 !w-full px-3 text-sm sm:!w-40"
-          @change="load(1)"
-        >
-          <option value="">{{ t("adminUsers.allStatuses") }}</option>
-          <option value="active">{{ t("common.enabled") }}</option>
-          <option value="disabled">{{ t("common.disabled") }}</option>
-        </select>
-        <select
-          v-if="auth.isSysadmin"
-          v-model="role"
-          class="ui-field h-10 !w-full px-3 text-sm sm:!w-40"
-          @change="load(1)"
-        >
-          <option value="">{{ t("adminUsers.allRoles") }}</option>
-          <option value="user">{{ t("adminUsers.roleUser") }}</option>
-          <option value="admin">{{ t("adminUsers.roleAdmin") }}</option>
-        </select>
-        <input
+        <Select v-model="statusSelectValue" @update:model-value="load(1)">
+          <SelectTrigger class="h-10 !w-full sm:!w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="ALL_STATUS_VALUE">{{ t("adminUsers.allStatuses") }}</SelectItem>
+            <SelectItem value="active">{{ t("common.enabled") }}</SelectItem>
+            <SelectItem value="disabled">{{ t("common.disabled") }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select v-if="auth.isSysadmin" v-model="roleSelectValue" @update:model-value="load(1)">
+          <SelectTrigger class="h-10 !w-full sm:!w-40">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="ALL_ROLE_VALUE">{{ t("adminUsers.allRoles") }}</SelectItem>
+            <SelectItem value="user">{{ t("adminUsers.roleUser") }}</SelectItem>
+            <SelectItem value="admin">{{ t("adminUsers.roleAdmin") }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
           v-model="q"
-          class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-72"
+          class="col-span-2 h-10 !w-full sm:col-span-1 sm:!w-72"
           :placeholder="t('adminUsers.searchEmail')"
         />
-        <button class="ui-button ui-button-secondary h-10" type="submit">
+        <Button class="h-10" variant="secondary" type="submit">
           {{ t("common.search") }}
-        </button>
-        <button class="ui-button ui-button-primary h-10" type="button" @click="openCreateDialog">
+        </Button>
+        <Button class="h-10" type="button" @click="openCreateDialog">
           {{ t("adminUsers.createUser") }}
-        </button>
+        </Button>
       </form>
     </div>
 
@@ -168,239 +189,49 @@ const {
       />
     </div>
 
-    <Dialog :open="createOpen" @update:open="setCreateOpen">
-      <DialogContent class="sm:max-w-md" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("adminUsers.createUser") }}</DialogTitle>
-        </DialogHeader>
-        <form class="flex flex-col gap-3" :aria-busy="createSaving" @submit.prevent="createUser">
-          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
-            <span>{{ t("adminUsers.role") }}</span>
-            <select v-model="form.role" class="ui-field mt-1.5 h-10 px-3">
-              <option value="user">{{ t("adminUsers.roleUser") }}</option>
-              <option value="admin">{{ t("adminUsers.roleAdmin") }}</option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.usernameForLogin") }}</span>
-            <input v-model="form.username" class="ui-field mt-1.5 h-10 px-3" required />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.nicknameForDisplay") }}</span>
-            <input v-model="form.nickname" class="ui-field mt-1.5 h-10 px-3" required />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.password") }}</span>
-            <input
-              v-model="form.password"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              required
-              type="password"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.emailOptional") }}</span>
-            <input v-model="form.email" class="ui-field mt-1.5 h-10 px-3" type="email" />
-          </label>
-          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
-            <select v-model="form.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3" required>
-              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
-            <input
-              v-model.number="form.maxConcurrentTasks"
-              class="ui-field mt-1.5 h-10 px-3"
-              :max="form.role === 'admin' ? 15 : 10"
-              min="1"
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.initialQuota") }}</span>
-            <input v-model.number="form.quota" class="ui-field mt-1.5 h-10 px-3" type="number" />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button" :disabled="createSaving">
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
-              <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
-              {{ t("common.create") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <AdminUserCreateDialog
+      v-model:form="form"
+      :open="createOpen"
+      :groups="groups"
+      :is-sysadmin="auth.isSysadmin"
+      :saving="createSaving"
+      :t="t"
+      @submit="createUser"
+      @update:open="setCreateOpen"
+    />
 
-    <Dialog :open="editOpen" @update:open="setEditOpen">
-      <DialogContent v-if="editingUser" class="sm:max-w-md" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("adminUsers.editUser") }}</DialogTitle>
-        </DialogHeader>
-        <form class="flex flex-col gap-3" :aria-busy="editSaving" @submit.prevent="saveEdit">
-          <p class="text-sm text-muted-foreground">
-            {{ editingUser.username }} · {{ roleLabel(editingUser.role) }}
-          </p>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.nicknameForDisplay") }}</span>
-            <input v-model="editForm.nickname" class="ui-field mt-1.5 h-10 px-3" required />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.status") }}</span>
-            <select v-model="editForm.status" class="ui-field mt-1.5 h-10 px-3">
-              <option value="active">{{ t("common.enabled") }}</option>
-              <option value="disabled">{{ t("common.disabled") }}</option>
-            </select>
-          </label>
-          <label v-if="auth.isSysadmin" class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
-            <select v-model="editForm.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3">
-              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
-            <input
-              v-model.number="editForm.maxConcurrentTasks"
-              class="ui-field mt-1.5 h-10 px-3"
-              :max="editingUser?.role === 'admin' ? 15 : 10"
-              min="1"
-              required
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.totalQuota") }}</span>
-            <input
-              v-model.number="editForm.quota"
-              class="ui-field mt-1.5 h-10 px-3"
-              min="0"
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.passwordOptional") }}</span>
-            <input
-              v-model="editForm.password"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              type="password"
-            />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button" :disabled="editSaving">
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
-              <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
-              {{ t("common.save") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <AdminUserEditDialog
+      v-model:edit-form="editForm"
+      :open="editOpen"
+      :editing-user="editingUser"
+      :groups="groups"
+      :is-sysadmin="auth.isSysadmin"
+      :role-label="roleLabel"
+      :saving="editSaving"
+      :t="t"
+      @submit="saveEdit"
+      @update:open="setEditOpen"
+    />
 
-    <Dialog :open="quotaOpen" @update:open="setQuotaOpen">
-      <DialogContent v-if="selectedUser" class="sm:max-w-sm" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("adminUsers.addQuota") }}</DialogTitle>
-        </DialogHeader>
-        <form class="flex flex-col gap-3" :aria-busy="quotaSaving" @submit.prevent="grantQuota">
-          <p class="text-sm text-muted-foreground">
-            {{
-              t("adminUsers.ownRemaining", {
-                value: actorRemaining === null ? t("common.unlimited") : actorRemaining
-              })
-            }}
-          </p>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.addQuotaAmount") }}</span>
-            <input
-              v-model.number="quotaAmount"
-              class="ui-field mt-1.5 h-10 px-3"
-              min="1"
-              type="number"
-            />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button" :disabled="quotaSaving">
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="quotaSaving">
-              <Loader2 v-if="quotaSaving" class="h-4 w-4 animate-spin" />
-              {{ t("adminUsers.confirmAddQuota") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <AdminUserQuotaDialog
+      v-model:quota-amount="quotaAmount"
+      :open="quotaOpen"
+      :actor-remaining="actorRemaining"
+      :saving="quotaSaving"
+      :selected-user="selectedUser"
+      :t="t"
+      @submit="grantQuota"
+      @update:open="setQuotaOpen"
+    />
 
-    <Dialog :open="passwordOpen" @update:open="setPasswordOpen">
-      <DialogContent v-if="passwordUser" class="sm:max-w-sm" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("adminUsers.resetPassword") }}</DialogTitle>
-        </DialogHeader>
-        <form
-          class="flex flex-col gap-3"
-          :aria-busy="passwordSaving"
-          @submit.prevent="resetPassword"
-        >
-          <p class="text-sm text-muted-foreground">
-            {{ passwordUser.nickname }} · {{ passwordUser.username }}
-          </p>
-          <label class="block text-sm font-medium">
-            <span>{{ t("settings.newPassword") }}</span>
-            <input
-              v-model="passwordForm.password"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              required
-              type="password"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.confirmNewPassword") }}</span>
-            <input
-              v-model="passwordForm.confirmPassword"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              required
-              type="password"
-            />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button
-                class="ui-button ui-button-secondary"
-                type="button"
-                :disabled="passwordSaving"
-              >
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="passwordSaving">
-              <Loader2 v-if="passwordSaving" class="h-4 w-4 animate-spin" />
-              {{ t("common.save") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <AdminUserPasswordDialog
+      v-model:password-form="passwordForm"
+      :open="passwordOpen"
+      :password-user="passwordUser"
+      :saving="passwordSaving"
+      :t="t"
+      @submit="resetPassword"
+      @update:open="setPasswordOpen"
+    />
   </AppShell>
 </template>

@@ -2,19 +2,20 @@
 /**
  * 平台级租户管理员维护：sysadmin 分配 key group、配额池和管理员自身最大同时任务数。
  */
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { Loader2 } from "@lucide/vue";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { FormDialog } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { apiFetch } from "@/api/client";
 
 type AdminRow = {
@@ -71,6 +72,19 @@ const editForm = ref({
   maxConcurrentTasks: 10,
   quota: 100 as number | null,
   password: ""
+});
+const NO_PROVIDER_KEY_GROUP_VALUE = "__none__";
+const createProviderKeyGroupSelectValue = computed({
+  get: () => form.value.providerKeyGroupId || NO_PROVIDER_KEY_GROUP_VALUE,
+  set: (value: string) => {
+    form.value.providerKeyGroupId = value === NO_PROVIDER_KEY_GROUP_VALUE ? "" : value;
+  }
+});
+const editProviderKeyGroupSelectValue = computed({
+  get: () => editForm.value.providerKeyGroupId || NO_PROVIDER_KEY_GROUP_VALUE,
+  set: (value: string) => {
+    editForm.value.providerKeyGroupId = value === NO_PROVIDER_KEY_GROUP_VALUE ? "" : value;
+  }
 });
 
 async function load() {
@@ -186,9 +200,9 @@ onMounted(load);
   <AppShell>
     <div class="mb-4 flex items-center justify-between">
       <h1 class="text-xl font-semibold">{{ t("sysadmin.adminsTitle") }}</h1>
-      <button class="ui-button ui-button-primary" type="button" @click="openCreate">
+      <Button type="button" @click="openCreate">
         {{ t("sysadmin.createAdmin") }}
-      </button>
+      </Button>
     </div>
 
     <div class="panel overflow-hidden">
@@ -221,151 +235,132 @@ onMounted(load);
               {{ admin.status === "active" ? t("common.enabled") : t("common.disabled") }}
             </td>
             <td class="p-3 text-right">
-              <button
-                class="ui-button ui-button-secondary h-8 text-xs"
-                type="button"
-                @click="openEdit(admin)"
-              >
+              <Button size="sm" variant="secondary" type="button" @click="openEdit(admin)">
                 {{ t("sysadmin.edit") }}
-              </button>
+              </Button>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <Dialog :open="createOpen" @update:open="setCreateOpen">
-      <DialogContent class="sm:max-w-md" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("sysadmin.createAdmin") }}</DialogTitle>
-        </DialogHeader>
-        <form class="flex flex-col gap-3" :aria-busy="createSaving" @submit.prevent="create">
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.usernameForLogin") }}</span>
-            <input v-model="form.username" class="ui-field mt-1.5 h-10 px-3" required />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.nicknameForDisplay") }}</span>
-            <input v-model="form.nickname" class="ui-field mt-1.5 h-10 px-3" required />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.password") }}</span>
-            <input
-              v-model="form.password"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              required
-              type="password"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.emailOptional") }}</span>
-            <input v-model="form.email" class="ui-field mt-1.5 h-10 px-3" type="email" />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
-            <select v-model="form.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3" required>
-              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
-            <input
-              v-model.number="form.maxConcurrentTasks"
-              class="ui-field mt-1.5 h-10 px-3"
-              max="15"
-              min="1"
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.initialQuota") }}</span>
-            <input v-model.number="form.quota" class="ui-field mt-1.5 h-10 px-3" type="number" />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button" :disabled="createSaving">
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="createSaving">
-              <Loader2 v-if="createSaving" class="h-4 w-4 animate-spin" />
-              {{ t("common.create") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      :open="createOpen"
+      :cancel-label="t('common.cancel')"
+      :saving="createSaving"
+      :submit-label="t('common.create')"
+      :title="t('sysadmin.createAdmin')"
+      @submit="create"
+      @update:open="setCreateOpen"
+    >
+      <label class="block text-sm font-medium">
+        <span>{{ t("auth.usernameForLogin") }}</span>
+        <Input v-model="form.username" class="mt-1.5 h-10" required />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("auth.nicknameForDisplay") }}</span>
+        <Input v-model="form.nickname" class="mt-1.5 h-10" required />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("auth.password") }}</span>
+        <Input v-model="form.password" class="mt-1.5 h-10" minlength="8" required type="password" />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("auth.emailOptional") }}</span>
+        <Input v-model="form.email" class="mt-1.5 h-10" type="email" />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+        <Select v-model="createProviderKeyGroupSelectValue" required>
+          <SelectTrigger class="mt-1.5 h-10">
+            <SelectValue :placeholder="t('sysadmin.selectKeyGroup')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="NO_PROVIDER_KEY_GROUP_VALUE">
+              {{ t("sysadmin.selectKeyGroup") }}
+            </SelectItem>
+            <SelectItem v-for="group in groups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+        <Input
+          v-model.number="form.maxConcurrentTasks"
+          class="mt-1.5 h-10"
+          max="15"
+          min="1"
+          type="number"
+        />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.initialQuota") }}</span>
+        <Input v-model.number="form.quota" class="mt-1.5 h-10" type="number" />
+      </label>
+    </FormDialog>
 
-    <Dialog :open="editOpen" @update:open="setEditOpen">
-      <DialogContent v-if="editing" class="sm:max-w-md" prevent-outside-close>
-        <DialogHeader>
-          <DialogTitle>{{ t("sysadmin.editAdmin") }}</DialogTitle>
-        </DialogHeader>
-        <form class="flex flex-col gap-3" :aria-busy="editSaving" @submit.prevent="saveEdit">
-          <label class="block text-sm font-medium">
-            <span>{{ t("auth.nicknameForDisplay") }}</span>
-            <input v-model="editForm.nickname" class="ui-field mt-1.5 h-10 px-3" />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.status") }}</span>
-            <select v-model="editForm.status" class="ui-field mt-1.5 h-10 px-3">
-              <option value="active">{{ t("common.enabled") }}</option>
-              <option value="disabled">{{ t("common.disabled") }}</option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.providerKeyGroup") }}</span>
-            <select v-model="editForm.providerKeyGroupId" class="ui-field mt-1.5 h-10 px-3">
-              <option value="">{{ t("sysadmin.selectKeyGroup") }}</option>
-              <option v-for="group in groups" :key="group.id" :value="group.id">
-                {{ group.name }}
-              </option>
-            </select>
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
-            <input
-              v-model.number="editForm.maxConcurrentTasks"
-              class="ui-field mt-1.5 h-10 px-3"
-              max="15"
-              min="1"
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.totalQuota") }}</span>
-            <input
-              v-model.number="editForm.quota"
-              class="ui-field mt-1.5 h-10 px-3"
-              type="number"
-            />
-          </label>
-          <label class="block text-sm font-medium">
-            <span>{{ t("sysadmin.passwordOptional") }}</span>
-            <input
-              v-model="editForm.password"
-              class="ui-field mt-1.5 h-10 px-3"
-              minlength="8"
-              type="password"
-            />
-          </label>
-          <DialogFooter class="mt-1">
-            <DialogClose as-child>
-              <button class="ui-button ui-button-secondary" type="button" :disabled="editSaving">
-                {{ t("common.cancel") }}
-              </button>
-            </DialogClose>
-            <button class="ui-button ui-button-primary" type="submit" :disabled="editSaving">
-              <Loader2 v-if="editSaving" class="h-4 w-4 animate-spin" />
-              {{ t("common.save") }}
-            </button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <FormDialog
+      v-if="editing"
+      :open="editOpen"
+      :cancel-label="t('common.cancel')"
+      :saving="editSaving"
+      :submit-label="t('common.save')"
+      :title="t('sysadmin.editAdmin')"
+      @submit="saveEdit"
+      @update:open="setEditOpen"
+    >
+      <label class="block text-sm font-medium">
+        <span>{{ t("auth.nicknameForDisplay") }}</span>
+        <Input v-model="editForm.nickname" class="mt-1.5 h-10" />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.status") }}</span>
+        <Select v-model="editForm.status">
+          <SelectTrigger class="mt-1.5 h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">{{ t("common.enabled") }}</SelectItem>
+            <SelectItem value="disabled">{{ t("common.disabled") }}</SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("sysadmin.providerKeyGroup") }}</span>
+        <Select v-model="editProviderKeyGroupSelectValue">
+          <SelectTrigger class="mt-1.5 h-10">
+            <SelectValue :placeholder="t('sysadmin.selectKeyGroup')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="NO_PROVIDER_KEY_GROUP_VALUE">
+              {{ t("sysadmin.selectKeyGroup") }}
+            </SelectItem>
+            <SelectItem v-for="group in groups" :key="group.id" :value="group.id">
+              {{ group.name }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.maxConcurrentTasks") }}</span>
+        <Input
+          v-model.number="editForm.maxConcurrentTasks"
+          class="mt-1.5 h-10"
+          max="15"
+          min="1"
+          type="number"
+        />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("sysadmin.totalQuota") }}</span>
+        <Input v-model.number="editForm.quota" class="mt-1.5 h-10" type="number" />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("sysadmin.passwordOptional") }}</span>
+        <Input v-model="editForm.password" class="mt-1.5 h-10" minlength="8" type="password" />
+      </label>
+    </FormDialog>
   </AppShell>
 </template>

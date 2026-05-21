@@ -9,6 +9,8 @@ import { RotateCcw, Send, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import PromptAssistantFinalPrompt from "./PromptAssistantFinalPrompt.vue";
 import PromptAssistantMessages from "./PromptAssistantMessages.vue";
 import { promptAssistantLocaleFromUiLocale } from "./promptAssistantLocale";
@@ -225,15 +227,16 @@ defineExpose({ reset });
       <div class="min-w-0">
         <h3 class="text-sm font-semibold">{{ t("aiImage.assistantTitle") }}</h3>
       </div>
-      <button
-        class="ui-button ui-button-secondary h-8 shrink-0 whitespace-nowrap text-xs"
+      <Button
+        class="h-8 shrink-0 whitespace-nowrap text-xs"
+        variant="secondary"
         type="button"
         :disabled="disabled"
         @click="reset"
       >
         <RotateCcw class="h-3.5 w-3.5" />
         {{ t("aiImage.restartAssistant") }}
-      </button>
+      </Button>
     </div>
 
     <PromptAssistantMessages :loading="loading" :messages="messages" />
@@ -242,9 +245,9 @@ defineExpose({ reset });
       <p v-if="limitReached" class="mb-2 text-xs leading-5 text-muted-foreground">
         {{ t("aiImage.assistantLimitReached") }}
       </p>
-      <textarea
+      <Textarea
         v-model="input"
-        class="ui-field min-h-20 resize-none p-3 text-sm leading-6"
+        class="min-h-20 resize-none p-3 text-sm leading-6"
         :placeholder="t('aiImage.assistantInputPlaceholder')"
         :disabled="disabled || loading || completedAssistantReplies >= MAX_ASSISTANT_TURNS"
         @keydown.enter="onInputEnter"
@@ -254,8 +257,8 @@ defineExpose({ reset });
           {{ t("aiImage.assistantInputShortcutHint") }}
         </p>
         <div class="flex flex-wrap justify-end gap-2">
-          <button
-            class="ui-button ui-button-secondary"
+          <Button
+            variant="secondary"
             type="button"
             :disabled="!canFinalize"
             data-testid="finalize-assistant-prompt"
@@ -263,11 +266,11 @@ defineExpose({ reset });
           >
             <WandSparkles class="h-4 w-4" />
             {{ t("aiImage.finalizeAssistantPrompt") }}
-          </button>
-          <button class="ui-button ui-button-primary" type="submit" :disabled="!canSend">
+          </Button>
+          <Button type="submit" :disabled="!canSend">
             <Send class="h-4 w-4" />
             {{ t("aiImage.sendAssistantMessage") }}
-          </button>
+          </Button>
         </div>
       </div>
     </form>

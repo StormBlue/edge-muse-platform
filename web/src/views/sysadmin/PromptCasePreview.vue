@@ -6,6 +6,7 @@
  */
 import { Copy, ExternalLink, ImageOff } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import type { PromptCase } from "@/types/promptCases";
 
 defineProps<{
@@ -81,14 +82,15 @@ const { t } = useI18n();
           <span class="text-xs font-medium text-muted-foreground">
             {{ t("promptCases.promptTemplate") }}
           </span>
-          <button
-            class="ui-button ui-button-secondary h-8 text-xs"
+          <Button
+            class="h-8 text-xs"
+            variant="secondary"
             type="button"
             @click="emit('copyPrompt', item)"
           >
             <Copy class="h-3.5 w-3.5" />
             {{ t("promptCases.copyPrompt") }}
-          </button>
+          </Button>
         </div>
         <pre class="whitespace-pre-wrap break-words text-xs leading-5">{{
           item.promptTemplate

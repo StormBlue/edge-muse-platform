@@ -33,7 +33,6 @@ export function useAppShellController() {
   const router = useRouter();
   const { t } = useI18n();
   const themeMenuOpen = ref(false);
-  const themeMenuRef = ref<HTMLElement | null>(null);
   const isDesktopSidebar = ref(false);
   let sidebarModeQuery: MediaQueryList | null = null;
   let stopSidebarModeSync: (() => void) | null = null;
@@ -203,12 +202,6 @@ export function useAppShellController() {
     await router.push("/login");
   }
 
-  function closeThemeMenu(event: PointerEvent) {
-    if (!themeMenuOpen.value) return;
-    if (themeMenuRef.value?.contains(event.target as Node)) return;
-    themeMenuOpen.value = false;
-  }
-
   watch(
     () => ({ path: route.path, fullPath: route.fullPath }),
     (_current, previous) => {
@@ -233,7 +226,6 @@ export function useAppShellController() {
   );
 
   onMounted(() => {
-    document.addEventListener("pointerdown", closeThemeMenu);
     sidebarModeQuery = window.matchMedia("(min-width: 1024px)");
     syncSidebarMode();
     sidebarModeQuery.addEventListener("change", syncSidebarMode);
@@ -243,7 +235,6 @@ export function useAppShellController() {
   });
 
   onBeforeUnmount(() => {
-    document.removeEventListener("pointerdown", closeThemeMenu);
     stopSidebarModeSync?.();
   });
 
@@ -252,7 +243,6 @@ export function useAppShellController() {
     ui,
     t,
     themeMenuOpen,
-    themeMenuRef,
     isDesktopSidebar,
     quotaLabel,
     visibleNav,

@@ -10,6 +10,14 @@ import {
   type AnnouncementDetail,
   type AnnouncementListItem
 } from "@/api/announcements";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -122,14 +130,18 @@ function formatDateTime(value?: number | null) {
 
 <template>
   <Popover v-model:open="popoverOpen">
-    <PopoverTrigger
-      class="announcement-trigger ui-button ui-button-secondary ui-icon-button relative"
-      type="button"
-      :title="bellTitle"
-      :aria-label="bellTitle"
-    >
-      <Megaphone class="h-4 w-4" />
-      <span v-if="hasUnread" class="announcement-dot" aria-hidden="true"></span>
+    <PopoverTrigger as-child>
+      <Button
+        class="announcement-trigger relative"
+        variant="secondary"
+        size="icon"
+        type="button"
+        :title="bellTitle"
+        :aria-label="bellTitle"
+      >
+        <Megaphone class="h-4 w-4" />
+        <span v-if="hasUnread" class="announcement-dot" aria-hidden="true"></span>
+      </Button>
     </PopoverTrigger>
 
     <PopoverContent
@@ -138,7 +150,6 @@ function formatDateTime(value?: number | null) {
       :side-offset="8"
       :collision-padding="12"
       class="!w-[min(22rem,calc(100vw-2rem))] overflow-hidden !rounded-lg !p-0 shadow-xl"
-      role="dialog"
     >
       <div class="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
         <div class="min-w-0">
@@ -151,14 +162,16 @@ function formatDateTime(value?: number | null) {
             }}
           </p>
         </div>
-        <button
-          class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
+        <Button
+          class="announcement-close-button"
+          variant="secondary"
+          size="icon"
           type="button"
           :aria-label="t('common.close')"
           @click="popoverOpen = false"
         >
           <X class="h-4 w-4" />
-        </button>
+        </Button>
       </div>
 
       <div v-if="loadingRecent" class="p-5 text-center text-sm text-muted-foreground">
@@ -192,142 +205,103 @@ function formatDateTime(value?: number | null) {
       </div>
 
       <div v-if="hasMoreRecent" class="border-t border-border p-2">
-        <button
-          class="ui-button ui-button-secondary w-full text-sm"
-          type="button"
-          @click="openListDialog"
-        >
+        <Button class="w-full text-sm" variant="secondary" type="button" @click="openListDialog">
           {{ t("announcements.viewMore") }}
-        </button>
+        </Button>
       </div>
     </PopoverContent>
 
-    <Teleport to="body">
-      <div
-        v-if="listDialogOpen"
-        class="fixed inset-0 z-50 grid place-items-center bg-black/45 p-3"
-        role="dialog"
-        aria-modal="true"
-        @click.self="listDialogOpen = false"
+    <Dialog v-model:open="listDialogOpen">
+      <DialogContent
+        class="flex h-[min(42rem,calc(100dvh-2rem))] max-w-[min(48rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0"
       >
-        <section
-          class="flex h-[min(42rem,calc(100dvh-2rem))] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
-        >
-          <header class="flex items-center justify-between gap-3 border-b border-border p-4">
-            <div>
-              <h2 class="font-semibold">{{ t("announcements.moreTitle") }}</h2>
-              <p class="mt-1 text-xs text-muted-foreground">
-                {{ t("announcements.totalCount", { count: total }) }}
-              </p>
-            </div>
+        <DialogHeader class="border-b border-border p-4 pr-12">
+          <DialogTitle>{{ t("announcements.moreTitle") }}</DialogTitle>
+          <p class="text-xs text-muted-foreground">
+            {{ t("announcements.totalCount", { count: total }) }}
+          </p>
+        </DialogHeader>
+        <ScrollArea class="min-h-0 flex-1">
+          <div v-if="loadingList" class="p-8 text-center text-sm text-muted-foreground">
+            {{ t("common.loading") }}
+          </div>
+          <div v-else-if="!listItems.length" class="p-8 text-center text-sm text-muted-foreground">
+            {{ t("announcements.empty") }}
+          </div>
+          <div v-else class="divide-y divide-border">
             <button
-              class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
+              v-for="item in listItems"
+              :key="item.id"
+              class="flex w-full gap-3 p-4 text-left transition hover:bg-muted/50"
               type="button"
-              :aria-label="t('common.close')"
-              @click="listDialogOpen = false"
+              @click="openDetail(item)"
             >
-              <X class="h-4 w-4" />
-            </button>
-          </header>
-          <ScrollArea class="min-h-0 flex-1">
-            <div v-if="loadingList" class="p-8 text-center text-sm text-muted-foreground">
-              {{ t("common.loading") }}
-            </div>
-            <div
-              v-else-if="!listItems.length"
-              class="p-8 text-center text-sm text-muted-foreground"
-            >
-              {{ t("announcements.empty") }}
-            </div>
-            <div v-else class="divide-y divide-border">
-              <button
-                v-for="item in listItems"
-                :key="item.id"
-                class="flex w-full gap-3 p-4 text-left transition hover:bg-muted/50"
-                type="button"
-                @click="openDetail(item)"
-              >
-                <span
-                  class="mt-2 h-2.5 w-2.5 shrink-0 rounded-full"
-                  :class="item.isRead ? 'bg-muted' : 'bg-destructive'"
-                ></span>
-                <span class="min-w-0 flex-1">
-                  <span class="block truncate font-semibold">{{ item.title }}</span>
-                  <span class="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
-                    {{ item.contentPreview || t("announcements.noPreview") }}
-                  </span>
-                  <span class="mt-2 block text-xs text-muted-foreground">
-                    {{ formatDateTime(item.publishedAt) }}
-                  </span>
+              <span
+                class="mt-2 h-2.5 w-2.5 shrink-0 rounded-full"
+                :class="item.isRead ? 'bg-muted' : 'bg-destructive'"
+              ></span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate font-semibold">{{ item.title }}</span>
+                <span class="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                  {{ item.contentPreview || t("announcements.noPreview") }}
                 </span>
-              </button>
-            </div>
-          </ScrollArea>
-          <footer
-            class="flex items-center justify-between gap-3 border-t border-border p-3 text-sm"
-          >
-            <button
-              class="ui-button ui-button-secondary h-9"
-              type="button"
-              :disabled="page <= 1 || loadingList"
-              @click="loadList(page - 1)"
-            >
-              <ChevronLeft class="h-4 w-4" />
-              {{ t("common.previous") }}
+                <span class="mt-2 block text-xs text-muted-foreground">
+                  {{ formatDateTime(item.publishedAt) }}
+                </span>
+              </span>
             </button>
-            <span class="text-muted-foreground">{{ page }} / {{ totalPages }}</span>
-            <button
-              class="ui-button ui-button-secondary h-9"
-              type="button"
-              :disabled="page >= totalPages || loadingList"
-              @click="loadList(page + 1)"
-            >
-              {{ t("common.next") }}
-              <ChevronRight class="h-4 w-4" />
-            </button>
-          </footer>
-        </section>
-      </div>
-
-      <div
-        v-if="detailDialogOpen"
-        class="fixed inset-0 z-[60] grid place-items-center bg-black/50 p-3"
-        role="dialog"
-        aria-modal="true"
-        @click.self="closeDetail"
-      >
-        <section
-          class="flex h-[min(44rem,calc(100dvh-2rem))] w-[min(48rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl"
+          </div>
+        </ScrollArea>
+        <DialogFooter
+          class="flex-row items-center justify-between border-t border-border p-3 text-sm"
         >
-          <header class="flex items-start justify-between gap-3 border-b border-border p-4">
-            <div class="min-w-0">
-              <h2 class="truncate font-semibold">
-                {{ selectedDetail?.title ?? t("announcements.detailTitle") }}
-              </h2>
-              <p v-if="selectedDetail" class="mt-1 text-xs text-muted-foreground">
-                {{ formatDateTime(selectedDetail.publishedAt) }}
-              </p>
-            </div>
-            <button
-              class="announcement-close-button ui-button ui-button-secondary ui-icon-button"
-              type="button"
-              :aria-label="t('common.close')"
-              @click="closeDetail"
-            >
-              <X class="h-4 w-4" />
-            </button>
-          </header>
-          <ScrollArea class="min-h-0 flex-1">
-            <div v-if="loadingDetail" class="p-8 text-center text-sm text-muted-foreground">
-              {{ t("common.loading") }}
-            </div>
-            <div v-else-if="selectedDetail" class="p-4">
-              <AnnouncementMarkdown :content="selectedDetail.content" />
-            </div>
-          </ScrollArea>
-        </section>
-      </div>
-    </Teleport>
+          <Button
+            class="h-9"
+            variant="secondary"
+            type="button"
+            :disabled="page <= 1 || loadingList"
+            @click="loadList(page - 1)"
+          >
+            <ChevronLeft class="h-4 w-4" />
+            {{ t("common.previous") }}
+          </Button>
+          <span class="text-muted-foreground">{{ page }} / {{ totalPages }}</span>
+          <Button
+            class="h-9"
+            variant="secondary"
+            type="button"
+            :disabled="page >= totalPages || loadingList"
+            @click="loadList(page + 1)"
+          >
+            {{ t("common.next") }}
+            <ChevronRight class="h-4 w-4" />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="detailDialogOpen" @update:open="(open) => !open && closeDetail()">
+      <DialogContent
+        class="flex h-[min(44rem,calc(100dvh-2rem))] max-w-[min(48rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0"
+      >
+        <DialogHeader class="border-b border-border p-4 pr-12">
+          <DialogTitle class="truncate">
+            {{ selectedDetail?.title ?? t("announcements.detailTitle") }}
+          </DialogTitle>
+          <p v-if="selectedDetail" class="text-xs text-muted-foreground">
+            {{ formatDateTime(selectedDetail.publishedAt) }}
+          </p>
+        </DialogHeader>
+        <ScrollArea class="min-h-0 flex-1">
+          <div v-if="loadingDetail" class="p-8 text-center text-sm text-muted-foreground">
+            {{ t("common.loading") }}
+          </div>
+          <div v-else-if="selectedDetail" class="p-4">
+            <AnnouncementMarkdown :content="selectedDetail.content" />
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   </Popover>
 </template>
 

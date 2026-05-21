@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { SessionMode } from "@/stores/session";
 import type { ModeOption } from "./workspaceOptions";
@@ -36,8 +37,8 @@ function updateMode(value: string | number) {
       <div class="min-w-0 xl:w-72">
         <label v-if="canEditTitle" class="block">
           <span class="sr-only">{{ t("workspace.sessionTitle") }}</span>
-          <input
-            class="ui-field h-10 px-3 text-sm font-medium"
+          <Input
+            class="h-10 px-3 text-sm font-medium"
             maxlength="80"
             :placeholder="t('workspace.sessionTitlePlaceholder')"
             :value="draftTitle"

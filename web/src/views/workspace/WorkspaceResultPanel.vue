@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Image as ImageIcon, ImageOff, Loader2, RotateCw } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import type { ImageAttachment } from "@/stores/session";
 
 defineProps<{
@@ -79,14 +80,15 @@ const { t } = useI18n();
           {{ failedMessage }}
         </p>
       </div>
-      <button
-        class="ui-button ui-button-secondary h-9 border-destructive/30 text-destructive"
+      <Button
+        class="h-9 border-destructive/30 text-destructive"
+        variant="secondary"
         type="button"
         @click="$emit('retryFailed')"
       >
         <RotateCw class="h-4 w-4" />
         {{ t("common.retry") }}
-      </button>
+      </Button>
     </div>
 
     <div

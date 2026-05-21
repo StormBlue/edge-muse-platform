@@ -8,6 +8,7 @@
 import { onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
 import { useGenerationEntryAdmin } from "./useGenerationEntryAdmin";
 
 const { t } = useI18n();
@@ -42,14 +43,9 @@ function updatePageSwitch(key: (typeof switchOptions.value)[number]["key"], even
               {{ t("generationEntry.subtitle") }}
             </p>
           </div>
-          <button
-            class="ui-button ui-button-primary"
-            type="button"
-            :disabled="saveDisabled"
-            @click="save"
-          >
+          <Button type="button" :disabled="saveDisabled" @click="save">
             {{ saving ? t("common.loading") : t("common.save") }}
-          </button>
+          </Button>
         </div>
 
         <div class="mt-5 grid gap-3 md:grid-cols-2">

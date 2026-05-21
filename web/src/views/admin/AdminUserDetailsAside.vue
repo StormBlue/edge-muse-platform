@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 import StatBarChart from "@/components/stats/StatBarChart.vue";
 import StatKPICard from "@/components/stats/StatKPICard.vue";
 import StatLineChart from "@/components/stats/StatLineChart.vue";
@@ -83,14 +84,15 @@ const { locale, t } = useI18n();
     <div>
       <div class="mb-2 flex items-center justify-between">
         <h3 class="text-sm font-semibold">{{ t("adminUsers.quotaLedger") }}</h3>
-        <button
+        <Button
           v-if="transactionsNextCursor"
-          class="ui-button ui-button-secondary h-8 text-xs"
+          class="h-8 text-xs"
+          variant="secondary"
           type="button"
           @click="emit('load-more-quota')"
         >
           {{ t("adminUsers.more") }}
-        </button>
+        </Button>
       </div>
       <div class="max-h-56 overflow-auto rounded-lg border border-border">
         <table class="w-full text-xs">

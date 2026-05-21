@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ArrowLeft } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 
 defineProps<{
   disabled: boolean;
@@ -17,15 +18,16 @@ const { t } = useI18n();
 <template>
   <section class="generation-page-header">
     <div class="flex min-w-0 items-center gap-3">
-      <button
-        class="ui-button ui-button-secondary h-10 shrink-0 px-4 text-sm"
+      <Button
+        class="h-10 shrink-0 px-4 text-sm"
+        variant="secondary"
         type="button"
         :disabled="disabled"
         @click="emit('back')"
       >
         <ArrowLeft class="h-4 w-4" />
         {{ t("aiImage.backToCases") }}
-      </button>
+      </Button>
       <div class="min-w-0">
         <h1 class="truncate text-lg font-semibold leading-7">{{ title }}</h1>
       </div>

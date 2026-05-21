@@ -5,6 +5,15 @@
 import { Loader2 } from "@lucide/vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import UserSessionsDetailView from "./UserSessionsDetailView.vue";
 import UserSessionsTable from "./UserSessionsTable.vue";
 import { useUserSessionsController } from "./useUserSessionsController";
@@ -59,6 +68,11 @@ const {
   nextMessage,
   formatDuration
 } = useUserSessionsController();
+
+function updateUserFilter(value: unknown) {
+  userId.value = value ? String(value) : "";
+  submitFilters();
+}
 </script>
 
 <template>
@@ -110,30 +124,31 @@ const {
           class="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
           @submit.prevent="submitFilters"
         >
-          <select
-            v-model="userId"
-            class="ui-field h-10 !w-full px-3 text-sm sm:!w-72"
-            @change="submitFilters"
-          >
-            <option value="">{{ t("sysadmin.allUsers") }}</option>
-            <option
-              v-if="userId && !userOptions.some((user) => user.id === userId)"
-              :value="userId"
-            >
-              {{ userId }}
-            </option>
-            <option v-for="user in userOptions" :key="user.id" :value="user.id">
-              {{ userLabel(user) }}
-            </option>
-          </select>
-          <input
+          <Select :model-value="userId || '__all_users__'" @update:model-value="updateUserFilter">
+            <SelectTrigger class="h-10 !w-full px-3 text-sm sm:!w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all_users__">{{ t("sysadmin.allUsers") }}</SelectItem>
+              <SelectItem
+                v-if="userId && !userOptions.some((user) => user.id === userId)"
+                :value="userId"
+              >
+                {{ userId }}
+              </SelectItem>
+              <SelectItem v-for="user in userOptions" :key="user.id" :value="user.id">
+                {{ userLabel(user) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
             v-model="q"
-            class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-72"
+            class="col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-72"
             :placeholder="t('sysadmin.auditSearchPlaceholder')"
           />
-          <button class="ui-button ui-button-secondary h-10" type="submit">
+          <Button class="h-10" variant="secondary" type="submit">
             {{ t("common.search") }}
-          </button>
+          </Button>
         </form>
       </div>
 

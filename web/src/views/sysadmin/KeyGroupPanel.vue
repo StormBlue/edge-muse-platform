@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { KeyGroupRow, KeyRow } from "./useSysadminKeysController";
 
@@ -159,22 +160,24 @@ function confirmAddMember() {
             </div>
 
             <div class="flex shrink-0 gap-2">
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs"
+              <Button
+                class="h-8 px-2.5 text-xs"
+                variant="secondary"
                 type="button"
                 @click="$emit('openEditGroup', group)"
               >
                 <Pencil class="h-3.5 w-3.5" />
                 {{ t("sysadmin.edit") }}
-              </button>
-              <button
-                class="ui-button ui-button-secondary h-8 px-2.5 text-xs text-destructive"
+              </Button>
+              <Button
+                class="h-8 px-2.5 text-xs text-destructive"
+                variant="secondary"
                 type="button"
                 @click="$emit('deleteGroup', group)"
               >
                 <Trash2 class="h-3.5 w-3.5" />
                 {{ t("common.delete") }}
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -195,15 +198,16 @@ function confirmAddMember() {
                 }}
               </p>
             </div>
-            <button
-              class="ui-button ui-button-secondary h-8 shrink-0 px-2.5 text-xs"
+            <Button
+              class="h-8 shrink-0 px-2.5 text-xs"
+              variant="secondary"
               type="button"
               :disabled="memberSaving || !availableKeysForGroup(group.id).length"
               @click="openAddMemberDialog(group)"
             >
               <Plus class="h-3.5 w-3.5" />
               {{ t("sysadmin.addGroupMember") }}
-            </button>
+            </Button>
           </div>
 
           <div class="mt-3 space-y-2">
@@ -220,16 +224,18 @@ function confirmAddMember() {
               class="flex items-center gap-3 rounded border border-border bg-card/60 p-3"
               :class="draggingMemberId === member.id ? 'opacity-70' : ''"
             >
-              <button
+              <Button
                 :data-group-id="group.id"
                 :data-member-id="member.id"
-                class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
+                class="key-group-member-button"
+                variant="secondary"
+                size="icon"
                 type="button"
                 :aria-label="t('sysadmin.dragSort')"
                 :title="t('sysadmin.dragSort')"
               >
                 <GripVertical class="h-5 w-5" :stroke-width="2.25" />
-              </button>
+              </Button>
               <div class="min-w-0 flex-1">
                 <p class="truncate text-sm font-medium">{{ member.label }}</p>
                 <p class="truncate text-xs text-muted-foreground">
@@ -239,8 +245,10 @@ function confirmAddMember() {
                 </p>
               </div>
               <div class="flex shrink-0 gap-2">
-                <button
-                  class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
+                <Button
+                  class="key-group-member-button"
+                  variant="secondary"
+                  size="icon"
                   type="button"
                   :disabled="index === 0 || memberSaving"
                   :aria-label="t('common.previous')"
@@ -248,9 +256,11 @@ function confirmAddMember() {
                   @click="$emit('moveMember', group.id, index, index - 1)"
                 >
                   <ArrowUp class="h-5 w-5" :stroke-width="2.25" />
-                </button>
-                <button
-                  class="key-group-member-button ui-button ui-button-secondary ui-icon-button"
+                </Button>
+                <Button
+                  class="key-group-member-button"
+                  variant="secondary"
+                  size="icon"
                   type="button"
                   :disabled="index === group.members.length - 1 || memberSaving"
                   :aria-label="t('common.next')"
@@ -258,9 +268,11 @@ function confirmAddMember() {
                   @click="$emit('moveMember', group.id, index, index + 1)"
                 >
                   <ArrowDown class="h-5 w-5" :stroke-width="2.25" />
-                </button>
-                <button
-                  class="key-group-member-button key-group-member-button--danger ui-button ui-button-secondary ui-icon-button"
+                </Button>
+                <Button
+                  class="key-group-member-button key-group-member-button--danger"
+                  variant="secondary"
+                  size="icon"
                   type="button"
                   :disabled="memberSaving"
                   :aria-label="t('common.delete')"
@@ -268,7 +280,7 @@ function confirmAddMember() {
                   @click="$emit('removeMember', group.id, member.providerKeyId)"
                 >
                   <Trash2 class="h-5 w-5" :stroke-width="2.25" />
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -327,22 +339,21 @@ function confirmAddMember() {
         </div>
 
         <DialogFooter class="shrink-0 border-t border-border p-4">
-          <button
-            class="ui-button ui-button-secondary"
+          <Button
+            variant="secondary"
             type="button"
             :disabled="memberSaving"
             @click="closeAddMemberDialog"
           >
             {{ t("common.cancel") }}
-          </button>
-          <button
-            class="ui-button ui-button-primary"
+          </Button>
+          <Button
             type="button"
             :disabled="memberSaving || !selectedKeyId"
             @click="confirmAddMember"
           >
             {{ t("sysadmin.confirmAddGroupMember") }}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -9,6 +9,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { ImageOff, Loader2, RotateCw } from "@lucide/vue";
 import ImageMessage from "./ImageMessage.vue";
+import { Button } from "@/components/ui/button";
 import type { ImageAttachment, Message } from "@/stores/session";
 
 const props = defineProps<{
@@ -109,14 +110,15 @@ const failureMessage = computed(
                 {{ failureMessage }}
               </p>
             </div>
-            <button
-              class="ui-button ui-button-secondary h-8 border-destructive/30 text-destructive"
+            <Button
+              class="h-8 border-destructive/30 text-destructive"
+              variant="secondary"
               type="button"
               @click="emit('retry', message)"
             >
               <RotateCw class="h-3.5 w-3.5" />
               {{ t("common.retry") }}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

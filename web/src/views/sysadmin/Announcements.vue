@@ -14,7 +14,17 @@ import {
 } from "@/api/announcements";
 import AnnouncementMarkdown from "@/components/announcements/AnnouncementMarkdown.vue";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { useUiStore } from "@/stores/ui";
 
 type AnnouncementForm = {
@@ -51,6 +61,21 @@ const formTitle = computed(() =>
   editing.value ? t("announcementsAdmin.editTitle") : t("announcementsAdmin.createTitle")
 );
 const previewContent = computed(() => form.content.trim());
+const ALL_STATUS_VALUE = "__all_status__";
+const ALL_TARGET_VALUE = "__all_target__";
+const statusSelectValue = computed({
+  get: () => filters.status || ALL_STATUS_VALUE,
+  set: (value: string) => {
+    filters.status = value === ALL_STATUS_VALUE ? "" : (value as AnnouncementStatus);
+  }
+});
+const targetSelectValue = computed({
+  get: () => filters.targetAudience || ALL_TARGET_VALUE,
+  set: (value: string) => {
+    filters.targetAudience =
+      value === ALL_TARGET_VALUE ? "" : (value as AnnouncementTargetAudience);
+  }
+});
 
 onMounted(() => load());
 
@@ -173,10 +198,10 @@ function formatDateTime(value?: number | null) {
         <h1 class="text-xl font-semibold">{{ t("announcementsAdmin.title") }}</h1>
         <p class="mt-1 text-sm text-muted-foreground">{{ t("announcementsAdmin.subtitle") }}</p>
       </div>
-      <button class="ui-button ui-button-secondary" type="button" @click="load()">
+      <Button variant="secondary" type="button" @click="load()">
         <RefreshCw class="h-4 w-4" />
         {{ t("sysadmin.refreshList") }}
-      </button>
+      </Button>
     </div>
 
     <div class="grid gap-4 xl:grid-cols-[minmax(26rem,0.88fr)_minmax(0,1.12fr)]">
@@ -192,9 +217,9 @@ function formatDateTime(value?: number | null) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("announcementsAdmin.fieldTitle") }}
             </span>
-            <input
+            <Input
               v-model="form.title"
-              class="ui-field h-10 px-3"
+              class="h-10 px-3"
               :placeholder="t('announcementsAdmin.titlePlaceholder')"
               maxlength="120"
             />
@@ -204,48 +229,48 @@ function formatDateTime(value?: number | null) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("announcementsAdmin.target") }}
             </span>
-            <select v-model="form.targetAudience" class="ui-field h-10 px-3">
-              <option value="all">{{ t("announcementsAdmin.targetAll") }}</option>
-              <option value="admins">{{ t("announcementsAdmin.targetAdmins") }}</option>
-            </select>
+            <Select v-model="form.targetAudience">
+              <SelectTrigger class="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{{ t("announcementsAdmin.targetAll") }}</SelectItem>
+                <SelectItem value="admins">{{ t("announcementsAdmin.targetAdmins") }}</SelectItem>
+              </SelectContent>
+            </Select>
           </label>
 
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("announcementsAdmin.content") }}
             </span>
-            <textarea
+            <Textarea
               v-model="form.content"
-              class="ui-field min-h-72 resize-y p-3 font-mono text-sm leading-6"
+              class="min-h-72 resize-y p-3 font-mono text-sm leading-6"
               :placeholder="t('announcementsAdmin.contentPlaceholder')"
               maxlength="20000"
             />
           </label>
 
           <div class="flex flex-wrap justify-between gap-2">
-            <button
+            <Button
               v-if="editing"
-              class="ui-button ui-button-secondary"
+              variant="secondary"
               type="button"
               :disabled="saving"
               @click="resetForm"
             >
               {{ t("common.cancel") }}
-            </button>
+            </Button>
             <span v-else></span>
             <div class="flex flex-wrap gap-2">
-              <button
-                class="ui-button ui-button-secondary"
-                type="button"
-                :disabled="saving"
-                @click="save('draft')"
-              >
+              <Button variant="secondary" type="button" :disabled="saving" @click="save('draft')">
                 {{ t("announcementsAdmin.saveDraft") }}
-              </button>
-              <button class="ui-button ui-button-primary" type="submit" :disabled="saving">
+              </Button>
+              <Button type="submit" :disabled="saving">
                 <Send class="h-4 w-4" />
                 {{ t("announcementsAdmin.publish") }}
-              </button>
+              </Button>
             </div>
           </div>
         </form>
@@ -288,25 +313,41 @@ function formatDateTime(value?: number | null) {
         class="grid gap-3 border-b border-border p-4 md:grid-cols-[minmax(0,1fr)_10rem_10rem_auto]"
         @submit.prevent="load(1)"
       >
-        <input
+        <Input
           v-model="filters.q"
-          class="ui-field h-10 px-3"
+          class="h-10 px-3"
           :placeholder="t('announcementsAdmin.searchPlaceholder')"
         />
-        <select v-model="filters.status" class="ui-field h-10 px-3" @change="load(1)">
-          <option value="">{{ t("announcementsAdmin.allStatuses") }}</option>
-          <option value="draft">{{ t("announcementsAdmin.status.draft") }}</option>
-          <option value="published">{{ t("announcementsAdmin.status.published") }}</option>
-          <option value="archived">{{ t("announcementsAdmin.status.archived") }}</option>
-        </select>
-        <select v-model="filters.targetAudience" class="ui-field h-10 px-3" @change="load(1)">
-          <option value="">{{ t("announcementsAdmin.allTargets") }}</option>
-          <option value="all">{{ t("announcementsAdmin.targetAll") }}</option>
-          <option value="admins">{{ t("announcementsAdmin.targetAdmins") }}</option>
-        </select>
-        <button class="ui-button ui-button-primary h-10" type="submit">
+        <Select v-model="statusSelectValue" @update:model-value="load(1)">
+          <SelectTrigger class="h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="ALL_STATUS_VALUE">
+              {{ t("announcementsAdmin.allStatuses") }}
+            </SelectItem>
+            <SelectItem value="draft">{{ t("announcementsAdmin.status.draft") }}</SelectItem>
+            <SelectItem value="published">
+              {{ t("announcementsAdmin.status.published") }}
+            </SelectItem>
+            <SelectItem value="archived">{{ t("announcementsAdmin.status.archived") }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select v-model="targetSelectValue" @update:model-value="load(1)">
+          <SelectTrigger class="h-10">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem :value="ALL_TARGET_VALUE">
+              {{ t("announcementsAdmin.allTargets") }}
+            </SelectItem>
+            <SelectItem value="all">{{ t("announcementsAdmin.targetAll") }}</SelectItem>
+            <SelectItem value="admins">{{ t("announcementsAdmin.targetAdmins") }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button class="h-10" type="submit">
           {{ t("common.search") }}
-        </button>
+        </Button>
       </form>
 
       <div v-if="loading" class="p-8 text-center text-sm text-muted-foreground">
@@ -342,69 +383,75 @@ function formatDateTime(value?: number | null) {
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2 lg:justify-end">
-            <button class="ui-button ui-button-secondary h-9" type="button" @click="edit(item)">
+            <Button class="h-9" variant="secondary" type="button" @click="edit(item)">
               <Edit3 class="h-4 w-4" />
               {{ t("sysadmin.edit") }}
-            </button>
-            <button
+            </Button>
+            <Button
               v-if="item.status !== 'published'"
-              class="ui-button ui-button-secondary h-9"
+              class="h-9"
+              variant="secondary"
               type="button"
               :disabled="saving"
               @click="changeStatus(item, 'published')"
             >
               <Send class="h-4 w-4" />
               {{ t("announcementsAdmin.publish") }}
-            </button>
-            <button
+            </Button>
+            <Button
               v-else
-              class="ui-button ui-button-secondary h-9"
+              class="h-9"
+              variant="secondary"
               type="button"
               :disabled="saving"
               @click="changeStatus(item, 'draft')"
             >
               {{ t("announcementsAdmin.withdraw") }}
-            </button>
-            <button
-              class="ui-button ui-button-secondary h-9"
+            </Button>
+            <Button
+              class="h-9"
+              variant="secondary"
               type="button"
               :disabled="saving"
               @click="changeStatus(item, 'archived')"
             >
               <Archive class="h-4 w-4" />
               {{ t("announcementsAdmin.archive") }}
-            </button>
-            <button
-              class="ui-button ui-button-secondary h-9 text-destructive"
+            </Button>
+            <Button
+              class="h-9 text-destructive"
+              variant="secondary"
               type="button"
               :disabled="saving"
               @click="remove(item)"
             >
               <Trash2 class="h-4 w-4" />
               {{ t("common.delete") }}
-            </button>
+            </Button>
           </div>
         </article>
       </div>
 
       <footer class="flex items-center justify-between gap-3 border-t border-border p-3 text-sm">
-        <button
-          class="ui-button ui-button-secondary h-9"
+        <Button
+          class="h-9"
+          variant="secondary"
           type="button"
           :disabled="page <= 1 || loading"
           @click="load(page - 1)"
         >
           {{ t("common.previous") }}
-        </button>
+        </Button>
         <span class="text-muted-foreground"> {{ page }} / {{ totalPages }} · {{ total }} </span>
-        <button
-          class="ui-button ui-button-secondary h-9"
+        <Button
+          class="h-9"
+          variant="secondary"
           type="button"
           :disabled="page >= totalPages || loading"
           @click="load(page + 1)"
         >
           {{ t("common.next") }}
-        </button>
+        </Button>
       </footer>
     </section>
   </AppShell>

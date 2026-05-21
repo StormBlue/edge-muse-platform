@@ -4,7 +4,9 @@
  * 使用与登录页一致的 ScrollArea + 全高居中，避免无 AppShell 时布局跳变。
  */
 import { useI18n } from "vue-i18n";
+import { buttonVariants } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 const { t } = useI18n();
 </script>
@@ -15,7 +17,7 @@ const { t } = useI18n();
       <div class="text-center">
         <h1 class="text-3xl font-semibold">403</h1>
         <p class="mt-2 text-muted-foreground">{{ t("errors.forbidden") }}</p>
-        <RouterLink class="ui-button ui-button-primary mt-5" to="/workspace">
+        <RouterLink :class="cn(buttonVariants(), 'mt-5')" to="/workspace">
           {{ t("errors.backToWorkspace") }}
         </RouterLink>
       </div>

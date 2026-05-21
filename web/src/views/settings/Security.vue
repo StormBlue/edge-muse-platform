@@ -7,6 +7,8 @@ import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/api/client";
 
 const oldPassword = ref("");
@@ -30,21 +32,21 @@ async function save() {
     <div class="max-w-xl">
       <h1 class="mb-4 text-xl font-semibold">{{ t("settings.securityTitle") }}</h1>
       <form class="panel space-y-4 p-5" @submit.prevent="save">
-        <input
+        <Input
           v-model="oldPassword"
-          class="ui-field h-11 px-3"
+          class="h-11 px-3"
           :placeholder="t('settings.oldPassword')"
           type="password"
         />
-        <input
+        <Input
           v-model="newPassword"
-          class="ui-field h-11 px-3"
+          class="h-11 px-3"
           :placeholder="t('settings.newPassword')"
           type="password"
         />
-        <button class="ui-button ui-button-primary" type="submit">
+        <Button type="submit">
           {{ t("settings.changePassword") }}
-        </button>
+        </Button>
       </form>
     </div>
   </AppShell>

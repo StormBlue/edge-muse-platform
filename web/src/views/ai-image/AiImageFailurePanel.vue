@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ImageOff, RotateCw } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 
 defineProps<{
   title: string;
@@ -23,13 +24,14 @@ const { t } = useI18n();
     </div>
     <p class="mt-3 text-sm font-semibold text-foreground">{{ title }}</p>
     <p class="mt-2 text-xs leading-5 text-muted-foreground">{{ message }}</p>
-    <button
-      class="ui-button ui-button-secondary mt-3 h-8 border-destructive/30 text-destructive"
+    <Button
+      class="mt-3 h-8 border-destructive/30 text-destructive"
+      variant="secondary"
       type="button"
       @click="emit('retry')"
     >
       <RotateCw class="h-3.5 w-3.5" />
       {{ t("common.retry") }}
-    </button>
+    </Button>
   </div>
 </template>

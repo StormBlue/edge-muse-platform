@@ -5,6 +5,16 @@
  */
 import { ImagePlus, Loader2, Send, SlidersHorizontal, X } from "@lucide/vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { ImageAttachment } from "@/stores/session";
 import {
   useChatInputController,
@@ -51,6 +61,10 @@ const {
   setCount,
   normalizeCount
 } = useChatInputController(props, emit);
+
+function updateGenerationTarget(value: unknown) {
+  if (value) generationTargetId.value = String(value);
+}
 </script>
 
 <template>
@@ -132,13 +146,13 @@ const {
           <span class="mb-2 block text-xs font-medium text-muted-foreground">
             {{ t("workspace.prompt") }}
           </span>
-          <textarea
+          <Textarea
             v-model="prompt"
-            class="ui-field task-prompt-textarea resize-none px-3 py-3 text-sm leading-6"
+            class="task-prompt-textarea resize-none px-3 py-3 text-sm leading-6"
             :placeholder="t('workspace.promptPlaceholder')"
             @keydown.meta.enter.prevent="submit"
             @keydown.ctrl.enter.prevent="submit"
-          ></textarea>
+          />
         </label>
       </section>
 
@@ -155,24 +169,28 @@ const {
           <label class="task-setting-inline-label" for="task-generation-target">
             {{ t("workspace.generationTarget") }}
           </label>
-          <select
-            id="task-generation-target"
-            v-model="generationTargetId"
-            class="ui-field h-9 px-3 text-sm"
+          <Select
+            :model-value="generationTargetId"
             :disabled="isBusy"
+            @update:model-value="updateGenerationTarget"
           >
-            <option
-              v-for="target in effectiveGenerationTargets"
-              :key="target.id"
-              :value="target.id"
-            >
-              {{
-                target.experimental
-                  ? t("workspace.experimentalGenerationTarget", { label: target.label })
-                  : target.label
-              }}
-            </option>
-          </select>
+            <SelectTrigger id="task-generation-target" class="h-9 px-3 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="target in effectiveGenerationTargets"
+                :key="target.id"
+                :value="target.id"
+              >
+                {{
+                  target.experimental
+                    ? t("workspace.experimentalGenerationTarget", { label: target.label })
+                    : target.label
+                }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div class="task-setting-block">
@@ -188,9 +206,9 @@ const {
 
         <div class="task-setting-block task-count-block">
           <p class="task-setting-inline-label">{{ t("workspace.imageCount") }}</p>
-          <input
+          <Input
             v-if="props.allowCustomCount && !isReadOnly && !highResolutionCountLocked"
-            class="ui-field h-9 w-24 px-3 text-sm"
+            class="h-9 w-24 px-3 text-sm"
             type="number"
             min="1"
             :max="maxCustomCount"
@@ -219,16 +237,11 @@ const {
     </div>
 
     <div v-if="!isReadOnly" class="shrink-0 border-t border-border p-3">
-      <button
-        class="ui-button ui-button-primary w-full"
-        :aria-busy="isBusy"
-        :disabled="submitDisabled"
-        type="submit"
-      >
+      <Button class="w-full" :aria-busy="isBusy" :disabled="submitDisabled" type="submit">
         <Loader2 v-if="isBusy" class="h-4 w-4 animate-spin" />
         <Send v-else class="h-4 w-4" />
         {{ submitLabel }}
-      </button>
+      </Button>
     </div>
   </form>
 </template>

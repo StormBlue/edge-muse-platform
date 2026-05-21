@@ -2,9 +2,9 @@
 /**
  * 服务商 API 密钥与 key group 调度配置：key 保存密文，group 决定生成请求调度优先级。
  */
-import { onBeforeUnmount, watch } from "vue";
 import { Plus, RefreshCw } from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
 import KeyDialogs from "./KeyDialogs.vue";
 import KeyGroupPanel from "./KeyGroupPanel.vue";
 import KeyTable from "./KeyTable.vue";
@@ -55,8 +55,6 @@ const {
   providerMeta
 } = useSysadminKeysController();
 
-let escapeListenerActive = false;
-
 function closeCreateDialog() {
   if (!createSaving.value) createOpen.value = false;
 }
@@ -72,34 +70,6 @@ function closeGroupCreateDialog() {
 function closeGroupEditDialog() {
   if (!groupSaving.value) groupEditOpen.value = false;
 }
-
-function onDialogEscape(event: KeyboardEvent) {
-  if (event.key !== "Escape") return;
-  if (createOpen.value) return closeCreateDialog();
-  if (editOpen.value) return closeEditDialog();
-  if (groupCreateOpen.value) return closeGroupCreateDialog();
-  if (groupEditOpen.value) closeGroupEditDialog();
-}
-
-function syncEscapeListener() {
-  const shouldListen =
-    createOpen.value || editOpen.value || groupCreateOpen.value || groupEditOpen.value;
-  if (shouldListen && !escapeListenerActive) {
-    document.addEventListener("keydown", onDialogEscape);
-    escapeListenerActive = true;
-  } else if (!shouldListen && escapeListenerActive) {
-    document.removeEventListener("keydown", onDialogEscape);
-    escapeListenerActive = false;
-  }
-}
-
-watch([createOpen, editOpen, groupCreateOpen, groupEditOpen], syncEscapeListener, {
-  immediate: true
-});
-
-onBeforeUnmount(() => {
-  document.removeEventListener("keydown", onDialogEscape);
-});
 </script>
 
 <template>
@@ -107,18 +77,18 @@ onBeforeUnmount(() => {
     <div class="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
       <h1 class="text-xl font-semibold">{{ t("nav.keys") }}</h1>
       <div class="flex flex-wrap gap-2">
-        <button class="ui-button ui-button-secondary" type="button" @click="load">
+        <Button variant="secondary" type="button" @click="load">
           <RefreshCw class="h-4 w-4" />
           {{ t("sysadmin.refreshList") }}
-        </button>
-        <button class="ui-button ui-button-secondary" type="button" @click="openCreateGroup">
+        </Button>
+        <Button variant="secondary" type="button" @click="openCreateGroup">
           <Plus class="h-4 w-4" />
           {{ t("sysadmin.createKeyGroup") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="button" @click="openCreate">
+        </Button>
+        <Button type="button" @click="openCreate">
           <Plus class="h-4 w-4" />
           {{ t("sysadmin.createKey") }}
-        </button>
+        </Button>
       </div>
     </div>
 

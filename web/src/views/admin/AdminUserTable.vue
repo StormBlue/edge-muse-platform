@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Loader2 } from "@lucide/vue";
+import { Button } from "@/components/ui/button";
 import type { AdminUser } from "./adminUserTypes";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -98,35 +99,39 @@ const emit = defineEmits<{
             </td>
             <td class="p-3">
               <div class="flex flex-wrap justify-end gap-2">
-                <button
+                <Button
                   v-if="authIsSysadmin"
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('openEdit', user)"
                 >
                   {{ t("sysadmin.edit") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                </Button>
+                <Button
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('openQuota', user)"
                 >
                   {{ t("adminUsers.addQuota") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                </Button>
+                <Button
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('toggleStatus', user)"
                 >
                   {{ user.status === "active" ? t("common.disabled") : t("common.enabled") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                </Button>
+                <Button
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('openPassword', user)"
                 >
                   {{ t("adminUsers.resetPassword") }}
-                </button>
+                </Button>
               </div>
             </td>
           </tr>

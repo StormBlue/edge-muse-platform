@@ -11,7 +11,16 @@ import type { HTMLAttributes } from "vue";
 import { LogOut, Menu, Settings } from "@lucide/vue";
 import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { useAppShellController } from "./useAppShellController";
 
@@ -31,7 +40,6 @@ const {
   ui,
   t,
   themeMenuOpen,
-  themeMenuRef,
   isDesktopSidebar,
   quotaLabel,
   visibleNav,
@@ -49,13 +57,19 @@ const {
 } = useAppShellController();
 
 const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5 lg:pb-5";
+
+function updateLocale(value: unknown) {
+  if (!value) return;
+  ui.setLocale(String(value));
+}
 </script>
 
 <template>
   <div class="app-shell flex h-dvh overflow-hidden text-foreground">
-    <button
+    <Button
       v-if="ui.sidebarOpen"
-      class="fixed inset-0 z-20 bg-slate-950/45 backdrop-blur-sm lg:hidden"
+      class="fixed inset-0 z-20 h-auto rounded-none bg-slate-950/45 p-0 backdrop-blur-sm lg:hidden"
+      variant="ghost"
       type="button"
       :aria-label="t('shell.closeSidebar')"
       @click="ui.closeSidebar()"
@@ -125,8 +139,9 @@ const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5
       <header
         class="app-header z-30 flex h-16 shrink-0 items-center justify-between px-3 backdrop-blur sm:px-4"
       >
-        <button
-          class="ui-button ui-button-secondary ui-icon-button"
+        <Button
+          variant="secondary"
+          size="icon"
           type="button"
           aria-controls="app-sidebar"
           :aria-expanded="isDesktopSidebar ? !ui.sidebarCollapsed : ui.sidebarOpen"
@@ -135,43 +150,40 @@ const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5
           @click="toggleSidebarNav"
         >
           <Menu class="h-4 w-4" />
-        </button>
+        </Button>
         <div class="hidden min-w-0 flex-1 px-4 text-sm text-muted-foreground lg:block">
           {{ t("shell.tagline") }}
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2">
           <AnnouncementBell />
-          <select
-            class="ui-field h-9 w-20 px-2 text-sm sm:w-24"
-            :value="ui.locale"
-            @change="ui.setLocale(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="zh-CN">中文</option>
-            <option value="en-US">EN</option>
-          </select>
-          <div ref="themeMenuRef" class="relative">
-            <button
-              class="ui-button ui-button-secondary ui-icon-button"
-              type="button"
-              :title="themeTitle"
-              :aria-label="themeTitle"
-              :aria-expanded="themeMenuOpen"
-              aria-haspopup="menu"
-              @click="themeMenuOpen = !themeMenuOpen"
-              @keydown.esc="themeMenuOpen = false"
-            >
-              <component :is="currentTheme.icon" class="h-5 w-5" :stroke-width="2.25" />
-            </button>
-            <div
-              v-if="themeMenuOpen"
-              class="absolute right-0 z-50 mt-2 w-36 rounded-lg border border-border bg-card p-1 shadow-lg"
-              role="menu"
-            >
-              <button
+          <Select :model-value="ui.locale" @update:model-value="updateLocale">
+            <SelectTrigger class="h-9 w-20 px-2 text-sm sm:w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="zh-CN">中文</SelectItem>
+              <SelectItem value="en-US">EN</SelectItem>
+            </SelectContent>
+          </Select>
+          <Popover v-model:open="themeMenuOpen">
+            <PopoverTrigger as-child>
+              <Button
+                variant="secondary"
+                size="icon"
+                type="button"
+                :title="themeTitle"
+                :aria-label="themeTitle"
+              >
+                <component :is="currentTheme.icon" class="h-5 w-5" :stroke-width="2.25" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" class="w-36 p-1">
+              <Button
                 v-for="option in themeOptions"
                 :key="option.value"
-                class="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-muted"
+                class="h-9 w-full justify-start px-2.5"
                 :class="option.value === ui.theme ? 'text-foreground' : 'text-muted-foreground'"
+                variant="ghost"
                 type="button"
                 role="menuitemradio"
                 :aria-checked="option.value === ui.theme"
@@ -179,24 +191,19 @@ const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5
               >
                 <component :is="option.icon" class="h-4 w-4" :stroke-width="2.25" />
                 <span>{{ option.label }}</span>
-              </button>
-            </div>
-          </div>
+              </Button>
+            </PopoverContent>
+          </Popover>
           <RouterLink
-            class="ui-button ui-button-secondary"
+            class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-xs transition-all hover:bg-secondary/80 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
             to="/settings/profile"
             :title="t('common.settings')"
           >
             <Settings class="h-4 w-4" />
           </RouterLink>
-          <button
-            class="ui-button ui-button-secondary"
-            type="button"
-            :title="t('common.logout')"
-            @click="logout"
-          >
+          <Button variant="secondary" type="button" :title="t('common.logout')" @click="logout">
             <LogOut class="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </header>
       <ScrollArea v-if="shellProps.contentScrollable" class="min-h-0 flex-1">

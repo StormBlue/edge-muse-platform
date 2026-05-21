@@ -7,6 +7,8 @@
 import { computed } from "vue";
 import { Archive, EyeOff, Star, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { PromptCase, PromptCaseStatus } from "@/types/promptCases";
 
 const props = defineProps<{
@@ -43,6 +45,14 @@ function statusTone(status: PromptCase["status"]) {
   if (status === "archived") return "bg-destructive/10 text-destructive";
   return "bg-accent/20 text-foreground";
 }
+
+function onToggleAllVisible(checked: boolean | "indeterminate") {
+  emit("toggleAllVisible", checked === true);
+}
+
+function onToggleSelected(id: string, checked: boolean | "indeterminate") {
+  emit("toggleSelected", id, checked === true);
+}
 </script>
 
 <template>
@@ -63,12 +73,11 @@ function statusTone(status: PromptCase["status"]) {
         <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
           <tr>
             <th class="w-10 p-3">
-              <input
+              <Checkbox
                 :checked="allVisibleSelected"
                 :disabled="loading || !items.length"
-                :indeterminate="someVisibleSelected"
-                type="checkbox"
-                @change="emit('toggleAllVisible', ($event.target as HTMLInputElement).checked)"
+                :aria-checked="someVisibleSelected ? 'mixed' : allVisibleSelected"
+                @update:checked="onToggleAllVisible"
               />
             </th>
             <th class="p-3">{{ t("promptCases.case") }}</th>
@@ -101,12 +110,9 @@ function statusTone(status: PromptCase["status"]) {
               @click="emit('update:selectedId', item.id)"
             >
               <td class="p-3" @click.stop>
-                <input
+                <Checkbox
                   :checked="selectedIds.has(item.id)"
-                  type="checkbox"
-                  @change="
-                    emit('toggleSelected', item.id, ($event.target as HTMLInputElement).checked)
-                  "
+                  @update:checked="onToggleSelected(item.id, $event)"
                 />
               </td>
               <td class="p-3">
@@ -155,48 +161,53 @@ function statusTone(status: PromptCase["status"]) {
               </td>
               <td class="whitespace-nowrap p-3 font-mono">{{ item.sortOrder }}</td>
               <td class="space-x-2 whitespace-nowrap p-3 text-right" @click.stop>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                <Button
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('edit', item)"
                 >
                   {{ t("sysadmin.edit") }}
-                </button>
-                <button
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                </Button>
+                <Button
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('toggleFeatured', item)"
                 >
                   <Star class="h-3.5 w-3.5" />
                   {{ item.featured ? t("promptCases.unfeature") : t("promptCases.feature") }}
-                </button>
-                <button
+                </Button>
+                <Button
                   v-if="item.status !== 'published'"
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('changeStatus', item, 'published')"
                 >
                   <WandSparkles class="h-3.5 w-3.5" />
                   {{ t("promptCases.publish") }}
-                </button>
-                <button
+                </Button>
+                <Button
                   v-if="item.status !== 'hidden'"
-                  class="ui-button ui-button-secondary h-8 text-xs"
+                  class="h-8 text-xs"
+                  variant="secondary"
                   type="button"
                   @click="emit('changeStatus', item, 'hidden')"
                 >
                   <EyeOff class="h-3.5 w-3.5" />
                   {{ t("promptCases.hide") }}
-                </button>
-                <button
+                </Button>
+                <Button
                   v-if="item.status !== 'archived'"
-                  class="ui-button ui-button-secondary h-8 text-xs text-destructive"
+                  class="h-8 text-xs text-destructive"
+                  variant="secondary"
                   type="button"
                   @click="emit('changeStatus', item, 'archived')"
                 >
                   <Archive class="h-3.5 w-3.5" />
                   {{ t("promptCases.archive") }}
-                </button>
+                </Button>
               </td>
             </tr>
           </template>

@@ -2,6 +2,15 @@
 import { computed } from "vue";
 import { Image as ImageIcon, Loader2 } from "@lucide/vue";
 import PaginationControls from "@/components/admin/PaginationControls.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import type { HistorySession } from "./historyTypes";
 
 type Translate = (key: string, named?: Record<string, unknown>) => string;
@@ -35,6 +44,10 @@ const pageInputModel = computed({
   get: () => props.pageInput,
   set: (value) => emit("update:pageInput", value)
 });
+
+function updateOrder(value: unknown) {
+  emit("update:order", String(value));
+}
 </script>
 
 <template>
@@ -46,24 +59,25 @@ const pageInputModel = computed({
       class="grid w-full grid-cols-[minmax(0,1fr)_auto] gap-2 sm:flex sm:w-auto sm:flex-wrap sm:justify-end"
       @submit.prevent="emit('load', 1)"
     >
-      <select
-        class="ui-field h-10 !w-full px-3 text-sm sm:!w-40"
-        :value="order"
-        @change="emit('update:order', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="recent">{{ t("history.recent") }}</option>
-        <option value="oldest">{{ t("history.oldest") }}</option>
-        <option value="task_count">{{ t("history.taskCountOrder") }}</option>
-      </select>
-      <input
-        class="ui-field col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-80"
+      <Select :model-value="order" @update:model-value="updateOrder">
+        <SelectTrigger class="h-10 !w-full px-3 text-sm sm:!w-40">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="recent">{{ t("history.recent") }}</SelectItem>
+          <SelectItem value="oldest">{{ t("history.oldest") }}</SelectItem>
+          <SelectItem value="task_count">{{ t("history.taskCountOrder") }}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Input
+        class="col-span-2 h-10 !w-full px-3 sm:col-span-1 sm:!w-80"
         :placeholder="t('history.searchPlaceholder')"
         :value="q"
         @input="emit('update:q', ($event.target as HTMLInputElement).value)"
       />
-      <button class="ui-button ui-button-secondary h-10" type="submit">
+      <Button class="h-10" variant="secondary" type="submit">
         {{ t("common.search") }}
-      </button>
+      </Button>
     </form>
   </div>
 

@@ -6,6 +6,7 @@ import { computed, ref, watch } from "vue";
 import { ExternalLink, Loader2, Maximize2, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import { Button } from "@/components/ui/button";
 import PromptCaseThumbnail from "./PromptCaseThumbnail.vue";
 import { promptCasePreviewImage } from "./promptCasePreviewImage";
 import type { ImageAttachment } from "@/stores/session";
@@ -96,8 +97,8 @@ function openPreview() {
         </div>
         <h3 class="text-xl font-semibold leading-snug">{{ item.title }}</h3>
         <p class="mt-2 text-sm leading-6 text-muted-foreground">{{ item.promptSummary }}</p>
-        <button
-          class="ui-button ui-button-primary mt-4 h-11 w-full text-sm font-semibold shadow-sm shadow-primary/20"
+        <Button
+          class="mt-4 h-11 w-full text-sm font-semibold shadow-sm shadow-primary/20"
           type="button"
           :disabled="applying"
           @click="emit('apply', item)"
@@ -105,7 +106,7 @@ function openPreview() {
           <Loader2 v-if="applying" class="h-4 w-4 animate-spin" />
           <WandSparkles v-else class="h-4 w-4" />
           {{ applying ? t("common.loading") : t("aiImage.useCasePrompt") }}
-        </button>
+        </Button>
       </div>
 
       <button

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Loader2, Plus, Sparkles, Wifi } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
 
 defineProps<{
   hasRunningTask: boolean;
@@ -25,15 +26,15 @@ const { t } = useI18n();
       <h1 class="text-2xl font-semibold">{{ t("workspace.title") }}</h1>
     </div>
     <div class="flex flex-wrap items-center gap-2">
-      <button
-        class="ui-button ui-button-primary h-9 px-3 text-sm"
+      <Button
+        class="h-9 px-3 text-sm"
         type="button"
         :disabled="(!isSysadmin && hasRunningTask) || submitting"
         @click="$emit('newSession')"
       >
         <Plus class="h-4 w-4" />
         {{ t("workspace.newGeneration") }}
-      </button>
+      </Button>
       <div
         class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"
       >

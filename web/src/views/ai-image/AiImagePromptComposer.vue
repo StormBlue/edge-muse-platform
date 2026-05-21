@@ -3,7 +3,16 @@ import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import type { GenerationTarget } from "@/stores/auth";
 import type { PromptCaseMode } from "@/types/promptCases";
 import type { SizeOption } from "@/views/workspace/workspaceOptions";
@@ -58,6 +67,10 @@ function onPromptInput(event: Event) {
 function updateMode(value: string | number) {
   if (value === "image2image" || value === "text2image") emit("update:mode", value);
 }
+
+function updateGenerationTarget(value: unknown) {
+  if (value) emit("update:generationTargetId", String(value));
+}
 </script>
 
 <template>
@@ -92,21 +105,24 @@ function updateMode(value: string | number) {
         >
           {{ t("workspace.generationTarget") }}
         </label>
-        <select
-          id="ai-generation-target"
-          class="ui-field h-9 px-3 text-sm"
-          :value="generationTargetId"
+        <Select
+          :model-value="generationTargetId"
           :disabled="interactionLocked"
-          @change="emit('update:generationTargetId', ($event.target as HTMLSelectElement).value)"
+          @update:model-value="updateGenerationTarget"
         >
-          <option v-for="target in generationTargets" :key="target.id" :value="target.id">
-            {{
-              target.experimental
-                ? t("workspace.experimentalGenerationTarget", { label: target.label })
-                : target.label
-            }}
-          </option>
-        </select>
+          <SelectTrigger id="ai-generation-target" class="h-9 px-3 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem v-for="target in generationTargets" :key="target.id" :value="target.id">
+              {{
+                target.experimental
+                  ? t("workspace.experimentalGenerationTarget", { label: target.label })
+                  : target.label
+              }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div>
@@ -132,8 +148,8 @@ function updateMode(value: string | number) {
       />
 
       <label class="prompt-compose-field">
-        <textarea
-          class="ui-field prompt-compose-textarea resize-none p-3 text-sm leading-6"
+        <Textarea
+          class="prompt-compose-textarea resize-none p-3 text-sm leading-6"
           :aria-label="t('workspace.prompt')"
           :placeholder="t('aiImage.promptPlaceholder')"
           :value="prompt"
@@ -142,58 +158,54 @@ function updateMode(value: string | number) {
         />
       </label>
 
-      <button
+      <Button
         v-if="assistantEnabled && (hasPrompt || workflowExpanded)"
-        class="assistant-open-inline ui-button ui-button-secondary h-9 text-xs"
+        class="assistant-open-inline h-9 text-xs"
+        variant="secondary"
         type="button"
         :disabled="interactionLocked"
         @click="emit('openAssistant')"
       >
         <WandSparkles class="h-3.5 w-3.5" />
         {{ t("aiImage.openAssistant") }}
-      </button>
+      </Button>
     </div>
 
     <div class="prompt-compose-footer">
       <div class="flex gap-2">
-        <button
+        <Button
           v-if="canResetPrompt"
-          class="ui-button ui-button-secondary"
+          variant="secondary"
           type="button"
           :disabled="interactionLocked"
           @click="emit('resetPrompt')"
         >
           <RotateCcw class="h-4 w-4" />
           {{ t("aiImage.resetPrompt") }}
-        </button>
-        <button
-          class="ui-button ui-button-secondary"
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           :disabled="interactionLocked || !hasPrompt"
           @click="emit('copyPrompt')"
         >
           <Copy class="h-4 w-4" />
           {{ t("promptCases.copyPrompt") }}
-        </button>
-        <button
-          class="ui-button ui-button-secondary"
+        </Button>
+        <Button
+          variant="secondary"
           type="button"
           :disabled="interactionLocked || !hasPrompt"
           @click="emit('clearPrompt')"
         >
           <Trash2 class="h-4 w-4" />
           {{ t("aiImage.clearPrompt") }}
-        </button>
+        </Button>
       </div>
-      <button
-        class="ui-button ui-button-primary"
-        type="button"
-        :disabled="submitDisabled"
-        @click="emit('submit')"
-      >
+      <Button type="button" :disabled="submitDisabled" @click="emit('submit')">
         <Sparkles class="h-4 w-4" />
         {{ hasRunningTask ? t("workspace.generationRunning") : t("aiImage.oneClickGenerate") }}
-      </button>
+      </Button>
     </div>
   </section>
 </template>

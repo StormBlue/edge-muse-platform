@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { Search, WandSparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import type { PromptCaseMode } from "@/types/promptCases";
 
 defineProps<{
@@ -25,6 +32,16 @@ const { t } = useI18n();
 
 function updateSearch(event: Event) {
   emit("update:search", (event.target as HTMLInputElement).value);
+}
+
+function updateFilterMode(value: unknown) {
+  const next = String(value);
+  emit("update:filterMode", next === "__all_modes__" ? "" : (next as PromptCaseMode));
+}
+
+function updateSize(value: unknown) {
+  const next = String(value);
+  emit("update:size", next === "__all_sizes__" ? "" : next);
 }
 </script>
 
@@ -78,31 +95,28 @@ function updateSearch(event: Event) {
             @input="updateSearch"
           />
         </label>
-        <select
-          class="ui-field h-10 min-w-36 px-3 text-sm"
-          :value="filterMode"
-          @change="
-            emit(
-              'update:filterMode',
-              ($event.target as HTMLSelectElement).value as '' | PromptCaseMode
-            )
-          "
-        >
-          <option value="">{{ t("promptCases.allModes") }}</option>
-          <option v-for="mode in supportedModes" :key="mode" :value="mode">
-            {{ t(`workspace.${mode}`) }}
-          </option>
-        </select>
-        <select
-          class="ui-field h-10 min-w-36 px-3 text-sm"
-          :value="size"
-          @change="emit('update:size', ($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">{{ t("aiImage.allSizes") }}</option>
-          <option v-for="caseSize in sizes" :key="caseSize" :value="caseSize">
-            {{ caseSize }}
-          </option>
-        </select>
+        <Select :model-value="filterMode || '__all_modes__'" @update:model-value="updateFilterMode">
+          <SelectTrigger class="h-10 min-w-36 px-3 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all_modes__">{{ t("promptCases.allModes") }}</SelectItem>
+            <SelectItem v-for="mode in supportedModes" :key="mode" :value="mode">
+              {{ t(`workspace.${mode}`) }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Select :model-value="size || '__all_sizes__'" @update:model-value="updateSize">
+          <SelectTrigger class="h-10 min-w-36 px-3 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all_sizes__">{{ t("aiImage.allSizes") }}</SelectItem>
+            <SelectItem v-for="caseSize in sizes" :key="caseSize" :value="caseSize">
+              {{ caseSize }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   </section>

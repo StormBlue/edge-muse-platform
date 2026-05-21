@@ -6,6 +6,8 @@
  */
 import { Copy } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 const editablePrompt = defineModel<string>({ required: true });
 
@@ -40,24 +42,25 @@ const { t } = useI18n();
       <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
         {{ t("aiImage.assistantFinalPromptLabel") }}
       </span>
-      <textarea
+      <Textarea
         v-model="editablePrompt"
-        class="ui-field min-h-36 resize-y p-3 text-xs leading-5"
+        class="min-h-36 resize-y p-3 text-xs leading-5"
         spellcheck="false"
         readonly
         :disabled="disabled"
       />
     </label>
     <div class="flex flex-wrap justify-end gap-2">
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs"
+      <Button
+        class="h-8 text-xs"
+        variant="secondary"
         type="button"
         :disabled="disabled"
         @click="emit('copy')"
       >
         <Copy class="h-3.5 w-3.5" />
         {{ t("promptCases.copyPrompt") }}
-      </button>
+      </Button>
     </div>
   </div>
 </template>

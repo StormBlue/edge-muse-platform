@@ -18,6 +18,15 @@ import {
   X
 } from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import PromptCaseEditor from "./PromptCaseEditor.vue";
 import PromptCaseImportDialog from "./PromptCaseImportDialog.vue";
 import PromptCasePreview from "./PromptCasePreview.vue";
@@ -41,6 +50,47 @@ const editorTitle = computed(() =>
   admin.editing.value ? t("promptCases.editCase") : t("promptCases.createCase")
 );
 
+const ALL_STATUSES_VALUE = "__all_statuses__";
+const ALL_MODES_VALUE = "__all_modes__";
+const ALL_LOCALES_VALUE = "__all_locales__";
+const ALL_SOURCES_VALUE = "__all_sources__";
+const ALL_FEATURED_VALUE = "__all_featured__";
+
+const statusSelectValue = computed({
+  get: () => admin.filters.value.status || ALL_STATUSES_VALUE,
+  set: (value: string) => {
+    admin.filters.value.status =
+      value === ALL_STATUSES_VALUE ? "" : (value as (typeof PROMPT_CASE_STATUSES)[number]);
+  }
+});
+const modeSelectValue = computed({
+  get: () => admin.filters.value.mode || ALL_MODES_VALUE,
+  set: (value: string) => {
+    admin.filters.value.mode =
+      value === ALL_MODES_VALUE ? "" : (value as (typeof PROMPT_CASE_MODES)[number]);
+  }
+});
+const localeSelectValue = computed({
+  get: () => admin.filters.value.locale || ALL_LOCALES_VALUE,
+  set: (value: string) => {
+    admin.filters.value.locale =
+      value === ALL_LOCALES_VALUE ? "" : (value as (typeof PROMPT_CASE_LOCALES)[number]);
+  }
+});
+const sourceSelectValue = computed({
+  get: () => admin.filters.value.source || ALL_SOURCES_VALUE,
+  set: (value: string) => {
+    admin.filters.value.source =
+      value === ALL_SOURCES_VALUE ? "" : (value as "external" | "internal");
+  }
+});
+const featuredSelectValue = computed({
+  get: () => admin.filters.value.featured || ALL_FEATURED_VALUE,
+  set: (value: string) => {
+    admin.filters.value.featured = value === ALL_FEATURED_VALUE ? "" : (value as "0" | "1");
+  }
+});
+
 onMounted(admin.load);
 </script>
 
@@ -52,18 +102,18 @@ onMounted(admin.load);
         <p class="mt-1 text-sm text-muted-foreground">{{ t("promptCases.adminSubtitle") }}</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <button class="ui-button ui-button-secondary" type="button" @click="admin.load">
+        <Button variant="secondary" type="button" @click="admin.load">
           <RefreshCw class="h-4 w-4" />
           {{ t("sysadmin.refreshList") }}
-        </button>
-        <button class="ui-button ui-button-secondary" type="button" @click="admin.openImport">
+        </Button>
+        <Button variant="secondary" type="button" @click="admin.openImport">
           <Upload class="h-4 w-4" />
           {{ t("promptCases.importJson") }}
-        </button>
-        <button class="ui-button ui-button-primary" type="button" @click="admin.openCreate">
+        </Button>
+        <Button type="button" @click="admin.openCreate">
           <Plus class="h-4 w-4" />
           {{ t("promptCases.createCase") }}
-        </button>
+        </Button>
       </div>
     </div>
 
@@ -71,57 +121,78 @@ onMounted(admin.load);
       class="panel mb-4 grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-8"
       @submit.prevent="admin.load"
     >
-      <input
+      <Input
         v-model="admin.filters.value.search"
-        class="ui-field h-10 px-3 md:col-span-2 xl:col-span-2"
+        class="h-10 px-3 md:col-span-2 xl:col-span-2"
         :placeholder="t('promptCases.searchPlaceholder')"
       />
-      <input
+      <Input
         v-model="admin.filters.value.category"
-        class="ui-field h-10 px-3"
+        class="h-10 px-3"
         list="prompt-case-categories"
         :placeholder="t('promptCases.category')"
       />
       <datalist id="prompt-case-categories">
         <option v-for="category in admin.categories.value" :key="category" :value="category" />
       </datalist>
-      <select v-model="admin.filters.value.status" class="ui-field h-10 px-3" @change="admin.load">
-        <option value="">{{ t("promptCases.allStatuses") }}</option>
-        <option v-for="status in PROMPT_CASE_STATUSES" :key="status" :value="status">
-          {{ t(`promptCases.status.${status}`) }}
-        </option>
-      </select>
-      <select v-model="admin.filters.value.mode" class="ui-field h-10 px-3" @change="admin.load">
-        <option value="">{{ t("promptCases.allModes") }}</option>
-        <option v-for="mode in PROMPT_CASE_MODES" :key="mode" :value="mode">
-          {{ t(`workspace.${mode}`) }}
-        </option>
-      </select>
-      <select v-model="admin.filters.value.locale" class="ui-field h-10 px-3" @change="admin.load">
-        <option value="">{{ t("promptCases.allLocales") }}</option>
-        <option v-for="locale in PROMPT_CASE_LOCALES" :key="locale" :value="locale">
-          {{ locale }}
-        </option>
-      </select>
-      <select v-model="admin.filters.value.source" class="ui-field h-10 px-3" @change="admin.load">
-        <option value="">{{ t("promptCases.allSources") }}</option>
-        <option value="external">{{ t("promptCases.externalSource") }}</option>
-        <option value="internal">{{ t("promptCases.internalSource") }}</option>
-      </select>
-      <select
-        v-model="admin.filters.value.featured"
-        class="ui-field h-10 px-3"
-        @change="admin.load"
-      >
-        <option value="">{{ t("promptCases.allFeatured") }}</option>
-        <option value="1">{{ t("promptCases.featured") }}</option>
-        <option value="0">{{ t("promptCases.notFeatured") }}</option>
-      </select>
+      <Select v-model="statusSelectValue" @update:model-value="admin.load">
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="ALL_STATUSES_VALUE">{{ t("promptCases.allStatuses") }}</SelectItem>
+          <SelectItem v-for="status in PROMPT_CASE_STATUSES" :key="status" :value="status">
+            {{ t(`promptCases.status.${status}`) }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="modeSelectValue" @update:model-value="admin.load">
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="ALL_MODES_VALUE">{{ t("promptCases.allModes") }}</SelectItem>
+          <SelectItem v-for="mode in PROMPT_CASE_MODES" :key="mode" :value="mode">
+            {{ t(`workspace.${mode}`) }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="localeSelectValue" @update:model-value="admin.load">
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="ALL_LOCALES_VALUE">{{ t("promptCases.allLocales") }}</SelectItem>
+          <SelectItem v-for="locale in PROMPT_CASE_LOCALES" :key="locale" :value="locale">
+            {{ locale }}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="sourceSelectValue" @update:model-value="admin.load">
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="ALL_SOURCES_VALUE">{{ t("promptCases.allSources") }}</SelectItem>
+          <SelectItem value="external">{{ t("promptCases.externalSource") }}</SelectItem>
+          <SelectItem value="internal">{{ t("promptCases.internalSource") }}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Select v-model="featuredSelectValue" @update:model-value="admin.load">
+        <SelectTrigger class="h-10">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem :value="ALL_FEATURED_VALUE">{{ t("promptCases.allFeatured") }}</SelectItem>
+          <SelectItem value="1">{{ t("promptCases.featured") }}</SelectItem>
+          <SelectItem value="0">{{ t("promptCases.notFeatured") }}</SelectItem>
+        </SelectContent>
+      </Select>
       <div class="flex gap-2 md:col-span-3 xl:col-span-8">
-        <button class="ui-button ui-button-primary" type="submit">{{ t("common.search") }}</button>
-        <button class="ui-button ui-button-secondary" type="button" @click="admin.resetFilters">
+        <Button type="submit">{{ t("common.search") }}</Button>
+        <Button variant="secondary" type="button" @click="admin.resetFilters">
           {{ t("promptCases.resetFilters") }}
-        </button>
+        </Button>
       </div>
     </form>
 
@@ -132,75 +203,77 @@ onMounted(admin.load);
       <span class="mr-1 text-muted-foreground">
         {{ t("promptCases.bulkSelected", { count: admin.selectedCount.value }) }}
       </span>
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs"
+      <Button
+        class="h-8 text-xs"
+        variant="secondary"
         type="button"
         :disabled="admin.saving.value"
         @click="admin.bulkChangeStatus('published')"
       >
         <WandSparkles class="h-3.5 w-3.5" />
         {{ t("promptCases.publish") }}
-      </button>
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs"
+      </Button>
+      <Button
+        class="h-8 text-xs"
+        variant="secondary"
         type="button"
         :disabled="admin.saving.value"
         @click="admin.bulkChangeStatus('hidden')"
       >
         <EyeOff class="h-3.5 w-3.5" />
         {{ t("promptCases.hide") }}
-      </button>
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs text-destructive"
+      </Button>
+      <Button
+        class="h-8 text-xs text-destructive"
+        variant="secondary"
         type="button"
         :disabled="admin.saving.value"
         @click="admin.bulkChangeStatus('archived')"
       >
         <Archive class="h-3.5 w-3.5" />
         {{ t("promptCases.archive") }}
-      </button>
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs"
+      </Button>
+      <Button
+        class="h-8 text-xs"
+        variant="secondary"
         type="button"
         :disabled="admin.saving.value"
         @click="admin.bulkSetFeatured(true)"
       >
         <Star class="h-3.5 w-3.5" />
         {{ t("promptCases.feature") }}
-      </button>
-      <button
-        class="ui-button ui-button-secondary h-8 text-xs"
+      </Button>
+      <Button
+        class="h-8 text-xs"
+        variant="secondary"
         type="button"
         :disabled="admin.saving.value"
         @click="admin.bulkSetFeatured(false)"
       >
         <StarOff class="h-3.5 w-3.5" />
         {{ t("promptCases.unfeature") }}
-      </button>
+      </Button>
       <div class="flex min-w-[14rem] flex-1 gap-2">
-        <input
+        <Input
           v-model="admin.bulkCategory.value"
-          class="ui-field h-8 min-w-0 flex-1 px-3 text-xs"
+          class="h-8 min-w-0 flex-1 px-3 text-xs"
           list="prompt-case-categories"
           :placeholder="t('promptCases.bulkCategoryPlaceholder')"
         />
-        <button
-          class="ui-button ui-button-secondary h-8 text-xs"
+        <Button
+          class="h-8 text-xs"
+          variant="secondary"
           type="button"
           :disabled="admin.saving.value || !admin.bulkCategory.value.trim()"
           @click="admin.bulkSetCategory"
         >
           {{ t("promptCases.bulkSetCategory") }}
-        </button>
+        </Button>
       </div>
-      <button
-        class="ui-button ui-button-ghost h-8 text-xs"
-        type="button"
-        @click="admin.clearSelection"
-      >
+      <Button class="h-8 text-xs" variant="ghost" type="button" @click="admin.clearSelection">
         <X class="h-3.5 w-3.5" />
         {{ t("common.cancel") }}
-      </button>
+      </Button>
     </div>
 
     <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">

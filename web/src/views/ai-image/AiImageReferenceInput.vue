@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { ImagePlus, X } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Textarea } from "@/components/ui/textarea";
 import { imageFilesFromDataTransfer, imageFilesFromFileList } from "@/utils/referenceImageFiles";
 
 type PreviewImage = {
@@ -89,9 +90,9 @@ function addReferenceFiles(files: File[]) {
       <span class="mb-2 block text-xs font-medium text-muted-foreground">
         {{ t("aiImage.referenceDescriptionLabel") }}
       </span>
-      <textarea
+      <Textarea
         v-model="description"
-        class="ui-field min-h-24 resize-none p-3 text-sm leading-6"
+        class="min-h-24 resize-none p-3 text-sm leading-6"
         :placeholder="t('aiImage.referenceDescriptionPlaceholder')"
       />
       <span class="mt-1 block text-xs leading-5 text-muted-foreground">

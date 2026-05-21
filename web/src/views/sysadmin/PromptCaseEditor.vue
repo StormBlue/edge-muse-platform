@@ -16,6 +16,17 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { uploadSysadminPromptCaseAsset } from "@/api/promptCases";
 import {
   PROMPT_CASE_LICENSES,
@@ -76,6 +87,10 @@ function toggleMode(mode: PromptCaseMode, checked: boolean) {
   form.value.modes = applyPromptCaseModeToggle(form.value.modes, mode, checked);
 }
 
+function onModeCheckedChange(mode: PromptCaseMode, checked: boolean | "indeterminate") {
+  toggleMode(mode, checked === true);
+}
+
 function submit() {
   emit("save", normalizePromptCaseEditorForm(form.value, tagsText.value));
 }
@@ -130,13 +145,13 @@ async function uploadAsset(event: Event) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.title") }}
             </span>
-            <input v-model="form.title" class="ui-field h-10 px-3" required />
+            <Input v-model="form.title" class="h-10 px-3" required />
           </label>
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.category") }}
             </span>
-            <input v-model="form.category" class="ui-field h-10 px-3" required />
+            <Input v-model="form.category" class="h-10 px-3" required />
           </label>
 
           <div class="block">
@@ -149,10 +164,9 @@ async function uploadAsset(event: Event) {
                 :key="mode"
                 class="flex h-10 items-center gap-2 rounded-lg border border-border px-3 text-sm"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   :checked="form.modes.includes(mode)"
-                  @change="toggleMode(mode, ($event.target as HTMLInputElement).checked)"
+                  @update:checked="onModeCheckedChange(mode, $event)"
                 />
                 {{ t(`workspace.${mode}`) }}
               </label>
@@ -162,16 +176,16 @@ async function uploadAsset(event: Event) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.recommendedSize") }}
             </span>
-            <input v-model="form.recommendedSize" class="ui-field h-10 px-3" required />
+            <Input v-model="form.recommendedSize" class="h-10 px-3" required />
           </label>
 
           <label class="block md:col-span-2">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.tags") }}
             </span>
-            <input
+            <Input
               v-model="tagsText"
-              class="ui-field h-10 px-3"
+              class="h-10 px-3"
               :placeholder="t('promptCases.tagsPlaceholder')"
             />
           </label>
@@ -180,13 +194,13 @@ async function uploadAsset(event: Event) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.summary") }}
             </span>
-            <textarea v-model="form.promptSummary" class="ui-field min-h-24 p-3" required />
+            <Textarea v-model="form.promptSummary" class="min-h-24 p-3" required />
           </label>
           <label class="block md:col-span-2">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.promptTemplate") }}
             </span>
-            <textarea v-model="form.promptTemplate" class="ui-field min-h-48 p-3" required />
+            <Textarea v-model="form.promptTemplate" class="min-h-48 p-3" required />
           </label>
 
           <label class="block">
@@ -194,9 +208,10 @@ async function uploadAsset(event: Event) {
               {{ t("promptCases.thumbnailUrl") }}
             </span>
             <div class="flex flex-col gap-2 sm:flex-row">
-              <input v-model="form.thumbnailUrl" class="ui-field h-10 min-w-0 flex-1 px-3" />
-              <button
-                class="ui-button ui-button-secondary w-full shrink-0 sm:w-auto"
+              <Input v-model="form.thumbnailUrl" class="h-10 min-w-0 flex-1 px-3" />
+              <Button
+                class="w-full shrink-0 sm:w-auto"
+                variant="secondary"
                 type="button"
                 :disabled="saving || uploadingAsset"
                 @click="pickAssetFile"
@@ -204,7 +219,7 @@ async function uploadAsset(event: Event) {
                 {{
                   uploadingAsset ? t("promptCases.uploadingImage") : t("promptCases.uploadImage")
                 }}
-              </button>
+              </Button>
             </div>
             <input
               ref="uploadInput"
@@ -218,30 +233,35 @@ async function uploadAsset(event: Event) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.sourceLicense") }}
             </span>
-            <select v-model="form.sourceLicense" class="ui-field h-10 px-3">
-              <option v-for="license in PROMPT_CASE_LICENSES" :key="license" :value="license">
-                {{ license }}
-              </option>
-            </select>
+            <Select v-model="form.sourceLicense">
+              <SelectTrigger class="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="license in PROMPT_CASE_LICENSES" :key="license" :value="license">
+                  {{ license }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
 
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.sourceUrl") }}
             </span>
-            <input v-model="form.sourceUrl" class="ui-field h-10 px-3" />
+            <Input v-model="form.sourceUrl" class="h-10 px-3" />
           </label>
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.sourceAuthor") }}
             </span>
-            <input v-model="form.sourceAuthor" class="ui-field h-10 px-3" />
+            <Input v-model="form.sourceAuthor" class="h-10 px-3" />
           </label>
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.sourceRepo") }}
             </span>
-            <input v-model="form.sourceRepo" class="ui-field h-10 px-3" />
+            <Input v-model="form.sourceRepo" class="h-10 px-3" />
           </label>
           <div
             class="rounded-lg border border-border bg-muted/35 p-3 text-xs text-muted-foreground"
@@ -257,56 +277,53 @@ async function uploadAsset(event: Event) {
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("adminUsers.status") }}
             </span>
-            <select v-model="form.status" class="ui-field h-10 px-3">
-              <option v-for="status in PROMPT_CASE_STATUSES" :key="status" :value="status">
-                {{ t(`promptCases.status.${status}`) }}
-              </option>
-            </select>
+            <Select v-model="form.status">
+              <SelectTrigger class="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="status in PROMPT_CASE_STATUSES" :key="status" :value="status">
+                  {{ t(`promptCases.status.${status}`) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.locale") }}
             </span>
-            <select v-model="form.locale" class="ui-field h-10 px-3">
-              <option v-for="locale in PROMPT_CASE_LOCALES" :key="locale" :value="locale">
-                {{ locale }}
-              </option>
-            </select>
+            <Select v-model="form.locale">
+              <SelectTrigger class="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem v-for="locale in PROMPT_CASE_LOCALES" :key="locale" :value="locale">
+                  {{ locale }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </label>
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-muted-foreground">
               {{ t("promptCases.sortOrder") }}
             </span>
-            <input
-              v-model.number="form.sortOrder"
-              class="ui-field h-10 px-3"
-              min="0"
-              type="number"
-            />
+            <Input v-model.number="form.sortOrder" class="h-10 px-3" min="0" type="number" />
           </label>
           <label class="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-            <input v-model="form.featured" type="checkbox" />
+            <Checkbox v-model:checked="form.featured" />
             {{ t("promptCases.featured") }}
           </label>
         </div>
 
         <DialogFooter class="shrink-0 border-t border-border px-4 py-3 sm:px-5 sm:py-4">
           <DialogClose as-child>
-            <button
-              class="ui-button ui-button-secondary w-full sm:w-auto"
-              type="button"
-              :disabled="saving"
-            >
+            <Button class="w-full sm:w-auto" variant="secondary" type="button" :disabled="saving">
               {{ t("common.cancel") }}
-            </button>
+            </Button>
           </DialogClose>
-          <button
-            class="ui-button ui-button-primary w-full sm:w-auto"
-            type="submit"
-            :disabled="saving"
-          >
+          <Button class="w-full sm:w-auto" type="submit" :disabled="saving">
             {{ t("common.save") }}
-          </button>
+          </Button>
         </DialogFooter>
       </form>
     </DialogContent>

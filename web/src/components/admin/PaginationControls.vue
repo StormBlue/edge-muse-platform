@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 defineProps<{
   page: number;
@@ -33,24 +35,26 @@ const { t } = useI18n();
       class="flex min-w-0 max-w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end"
     >
       <div class="flex shrink-0 items-center gap-2">
-        <button
-          class="ui-button ui-button-secondary h-9 px-3 text-sm"
+        <Button
+          class="h-9 px-3 text-sm"
+          variant="secondary"
           type="button"
           :disabled="page <= 1 || loading"
           @click="$emit('previous')"
         >
           <ChevronLeft class="h-4 w-4" />
           {{ t("common.previous") }}
-        </button>
-        <button
-          class="ui-button ui-button-secondary h-9 px-3 text-sm"
+        </Button>
+        <Button
+          class="h-9 px-3 text-sm"
+          variant="secondary"
           type="button"
           :disabled="page >= totalPages || loading"
           @click="$emit('next')"
         >
           {{ t("common.next") }}
           <ChevronRight class="h-4 w-4" />
-        </button>
+        </Button>
       </div>
       <form
         class="flex min-w-0 max-w-full shrink-0 items-center gap-2 sm:pl-2"
@@ -60,10 +64,10 @@ const { t } = useI18n();
         <label class="shrink-0 whitespace-nowrap text-sm text-muted-foreground" :for="inputId">
           {{ t("history.jumpTo") }}
         </label>
-        <input
+        <Input
           :id="inputId"
           :value="pageInput"
-          class="ui-field h-9 !w-20 shrink-0 px-2 text-center text-sm"
+          class="h-9 !w-20 shrink-0 px-2 text-center text-sm"
           type="number"
           inputmode="numeric"
           min="1"
@@ -72,13 +76,14 @@ const { t } = useI18n();
           :disabled="loading"
           @input="$emit('update:pageInput', ($event.target as HTMLInputElement).value)"
         />
-        <button
-          class="ui-button ui-button-secondary h-9 shrink-0 whitespace-nowrap px-3 text-sm"
+        <Button
+          class="h-9 shrink-0 whitespace-nowrap px-3 text-sm"
+          variant="secondary"
           type="submit"
           :disabled="loading"
         >
           {{ t("history.jumpToPage") }}
-        </button>
+        </Button>
       </form>
     </div>
   </div>
