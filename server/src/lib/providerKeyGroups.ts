@@ -17,7 +17,7 @@ import {
   type ProviderKey,
   type ProviderKeyGroup
 } from "../db/schema";
-import { isProviderKeyAssignable } from "../providers/catalog";
+import { isBuiltInProviderId, isProviderKeyAssignable } from "../providers/catalog";
 import { getProvider } from "../providers/registry";
 import type { ImageProvider } from "../providers/types";
 import { appError, isAppError } from "./errors";
@@ -166,7 +166,7 @@ export function providerCapabilitiesFromResolvedGroup(
     requestFormat: resolved.provider.requestFormat,
     model: firstKey?.model ?? resolved.provider.defaultModel,
     supportedModes: providerImpl.supportedModes ?? [...ALL_SESSION_MODES],
-    supportedSizes: parseProviderSupportedSizes(resolved.provider.supportedSizes, providerImpl),
+    supportedSizes: parseProviderSupportedSizes(resolved.provider, providerImpl),
     maxReferenceImages: providerImpl.maxReferenceImages ?? PLATFORM_REFERENCE_IMAGE_LIMIT
   };
 }
@@ -296,11 +296,9 @@ export async function ensureLegacyProviderKeyGroup(
   return group;
 }
 
-function parseProviderSupportedSizes(
-  supportedSizes: string,
-  providerImpl: ImageProvider
-): string[] {
-  const sizes = parseJson<string[]>(supportedSizes, providerImpl.supportedSizes);
+function parseProviderSupportedSizes(provider: Provider, providerImpl: ImageProvider): string[] {
+  if (isBuiltInProviderId(provider.id)) return providerImpl.supportedSizes;
+  const sizes = parseJson<string[]>(provider.supportedSizes, providerImpl.supportedSizes);
   return sizes.length ? sizes : providerImpl.supportedSizes;
 }
 

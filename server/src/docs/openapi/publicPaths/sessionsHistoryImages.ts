@@ -70,7 +70,7 @@ export const sessionsHistoryImagePaths = {
           mode: { $ref: "#/components/schemas/GenerationMode", default: "image2image" },
           settings: {
             $ref: "#/components/schemas/SessionSettings",
-            default: { size: "1024x1024", n: 1 }
+            default: { size: "auto", n: 1 }
           }
         },
         additionalProperties: false

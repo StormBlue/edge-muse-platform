@@ -41,14 +41,14 @@ import type { AppContext, AppEnv } from "../types";
 
 /** 预设与「宽x高」自定义尺寸白名单；具体能力还受 provider supportedSizes 约束 */
 const allowedSizes = [
+  "auto",
   "1024x1024",
   "1024x1536",
   "1536x1024",
   "2048x2048",
   "2880x2880",
   "3840x2160",
-  "2160x3840",
-  "auto"
+  "2160x3840"
 ];
 
 /** 表单或恶意请求传空字符串时视为新会话，避免插入 id 为空的脏 session。 */
@@ -81,7 +81,7 @@ const generateSchema = z.object({
   size: z
     .string()
     .refine((value) => allowedSizes.includes(value) || /^\d+x\d+$/.test(value), "Invalid size")
-    .default("1024x1024"),
+    .default("auto"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional(),
   referenceImageIds: z.array(z.string()).max(5).optional(),

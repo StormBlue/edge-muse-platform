@@ -49,9 +49,9 @@ export const generationTaskPaths = {
           mode: { $ref: "#/components/schemas/GenerationMode", default: "image2image" },
           size: {
             type: "string",
-            default: "1024x1024",
+            default: "auto",
             description:
-              "尺寸预设或自定义 `{width}x{height}`；还会受 provider supportedSizes 限制。内置白名单含 1024x1024、1024x1536、1536x1024、2048x2048、2880x2880、3840x2160、2160x3840、auto。"
+              "`auto` 表示不向上游传递尺寸；也可传尺寸预设或自定义 `{width}x{height}`，并受 provider supportedSizes 限制。内置白名单含 auto、1024x1024、1024x1536、1536x1024、2048x2048、2880x2880、3840x2160、2160x3840。"
           },
           n: {
             type: "integer",

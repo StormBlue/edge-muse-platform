@@ -1,10 +1,14 @@
 import { toArrayBuffer } from "../../lib/encoding";
+import { bytesToBase64 } from "../../lib/encoding";
 import { logInfo, logWarn, urlSummary } from "../../lib/log";
-import { effectiveMicuModel } from "../micuPolicy";
+import {
+  effectiveMicuModel,
+  isMicuHighResolutionSize,
+  MICU_IMAGE_SIZE_PRESETS
+} from "../micuPolicy";
 import type { GenerateRequest, GenerateResponse, ImageProvider } from "../types";
 import { ProviderError } from "../types";
 import { mockGenerate, providerFetch } from "../openai-compatibleHelpers";
-import { DEFAULT_SIZES } from "./constants";
 import { chatCompletion } from "./chat";
 import { providerMultipartFetch } from "./multipart";
 import { parsedCompatibleResponse } from "./response";
@@ -18,7 +22,7 @@ import { parsedCompatibleResponse } from "./response";
 export class MicuImagesProvider implements ImageProvider {
   id = "micu_images";
   name = "Micu Images";
-  supportedSizes = DEFAULT_SIZES;
+  supportedSizes = [...MICU_IMAGE_SIZE_PRESETS];
   supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
   maxReferenceImages = 1;
 
@@ -92,7 +96,7 @@ export class MicuImagesProvider implements ImageProvider {
         model,
         prompt: req.prompt,
         n: 1,
-        size: req.size,
+        ...sizePayload(req.size),
         response_format: "b64_json"
       },
       {
@@ -115,11 +119,12 @@ export class MicuImagesProvider implements ImageProvider {
     const referenceImage = req.referenceImages?.[0];
     if (!referenceImage)
       throw new ProviderError("PROVIDER_VALIDATION_ERROR", "Reference image required");
+    if (isMicuHighResolutionSize(req.size)) return this.micuReferenceImage(req, referenceImage);
     const model = resolveMicuRequestModel(req, this.id);
     const form = new FormData();
     form.set("model", model);
     form.set("prompt", req.prompt);
-    form.set("size", req.size);
+    if (shouldSendSize(req.size)) form.set("size", req.size);
     form.set("response_format", "b64_json");
     form.set(
       "image",
@@ -145,6 +150,40 @@ export class MicuImagesProvider implements ImageProvider {
   private async micuChat(req: GenerateRequest): Promise<GenerateResponse> {
     return chatCompletion(req, this.id, resolveMicuRequestModel(req, this.id));
   }
+
+  private async micuReferenceImage(
+    req: GenerateRequest,
+    referenceImage: NonNullable<GenerateRequest["referenceImages"]>[number]
+  ): Promise<GenerateResponse> {
+    const baseUrl = req.baseUrl.replace(/\/$/, "");
+    const model = resolveMicuRequestModel(req, this.id);
+    const json = await providerFetch(
+      `${baseUrl}/v1/images/generations`,
+      req.apiKey,
+      {
+        model,
+        prompt: req.prompt,
+        n: 1,
+        ...sizePayload(req.size),
+        reference_image: `data:${referenceImage.mime};base64,${bytesToBase64(referenceImage.bytes)}`,
+        response_format: "b64_json"
+      },
+      {
+        ...req.logContext,
+        providerAdapter: this.id,
+        endpoint: "images.generations.reference_image",
+        mode: req.mode,
+        model,
+        size: req.size,
+        referenceImageCount: req.referenceImages?.length ?? 0,
+        requestedImageCount: 1
+      }
+    );
+    return parsedCompatibleResponse(json, req.logContext, {
+      providerAdapter: this.id,
+      endpoint: "images.generations.reference_image"
+    });
+  }
 }
 
 function resolveMicuRequestModel(req: GenerateRequest, providerAdapter: string): string {
@@ -165,4 +204,12 @@ function fileNameForMime(mime: string): string {
   if (mime.includes("jpeg") || mime.includes("jpg")) return "image.jpg";
   if (mime.includes("webp")) return "image.webp";
   return "image.png";
+}
+
+function shouldSendSize(size: string): boolean {
+  return size !== "auto";
+}
+
+function sizePayload(size: string): { size?: string } {
+  return shouldSendSize(size) ? { size } : {};
 }

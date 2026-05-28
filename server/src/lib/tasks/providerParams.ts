@@ -3,7 +3,15 @@ import { parseJson } from "../json";
 import type { Provider as ProviderRow } from "../../db/schema";
 import type { GenerateParams } from "../../types";
 import type { ImageProvider } from "../../providers/types";
-import { isMicuHighResolutionSize, MICU_REQUEST_FORMAT } from "../../providers/micuPolicy";
+import {
+  isMicu4KSize,
+  isMicuHighResolutionSize,
+  isValidMicuImageSize,
+  MICU_MAX_SIZE_EDGE,
+  MICU_MIN_SIZE_EDGE,
+  MICU_REQUEST_FORMAT,
+  MICU_SIZE_ALIGNMENT
+} from "../../providers/micuPolicy";
 
 /**
  * provider 能力校验必须尽量前置到任务创建阶段，避免「写入任务/扣配额/启动 Workflow 后」
@@ -36,16 +44,30 @@ export function assertProviderSupportsGenerateParams(
 
   const supportedSizes = parseJson<string[]>(provider.supportedSizes, providerImpl.supportedSizes);
   if (
+    provider.requestFormat === MICU_REQUEST_FORMAT &&
+    params.size !== "auto" &&
+    !isValidMicuImageSize(params.size)
+  ) {
+    throw appError(
+      "VALIDATION_ERROR",
+      `${provider.name} size must be WxH, each edge ${MICU_MIN_SIZE_EDGE}-${MICU_MAX_SIZE_EDGE}, and divisible by ${MICU_SIZE_ALIGNMENT}`
+    );
+  }
+  if (
     supportedSizes.length > 0 &&
     !supportedSizes.includes("*") &&
+    provider.requestFormat !== MICU_REQUEST_FORMAT &&
     !supportedSizes.includes(params.size)
   ) {
     throw appError("VALIDATION_ERROR", `${provider.name} does not support size ${params.size}`);
   }
 
   if (provider.requestFormat === MICU_REQUEST_FORMAT) {
-    if (params.mode === "image2image" && isMicuHighResolutionSize(params.size)) {
-      throw appError("VALIDATION_ERROR", `${provider.name} image-to-image only supports 1K sizes`);
+    if (params.mode === "image2image" && isMicu4KSize(params.size)) {
+      throw appError(
+        "VALIDATION_ERROR",
+        `${provider.name} image-to-image only supports 1K/2K sizes`
+      );
     }
     if (params.n > 1 && isMicuHighResolutionSize(params.size)) {
       throw appError(

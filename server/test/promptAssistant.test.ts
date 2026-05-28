@@ -50,6 +50,20 @@ describe("prompt assistant", () => {
     ).toThrow();
   });
 
+  it("accepts the expanded provider size list", () => {
+    const supportedSizes = Array.from({ length: 38 }, (_, index) => `${256 + index * 8}x1024`);
+
+    expect(() =>
+      promptAssistantTurnSchema.parse({
+        mode: "text2image",
+        locale: "zh-CN",
+        turnIndex: 0,
+        provider: { supportedSizes },
+        messages: [{ role: "user", content: "做一张 A4 海报" }]
+      })
+    ).not.toThrow();
+  });
+
   it("falls back to a ready prompt when Workers AI is unavailable after enough turns", async () => {
     const input = promptAssistantTurnSchema.parse({
       mode: "text2image",
@@ -81,6 +95,27 @@ describe("prompt assistant", () => {
       degraded: true
     });
     expect(logPayload).not.toHaveProperty("messages");
+  });
+
+  it("does not recommend Auto when provider sizes include concrete options", async () => {
+    const input = promptAssistantTurnSchema.parse({
+      mode: "text2image",
+      locale: "zh-CN",
+      turnIndex: 5,
+      provider: { supportedSizes: ["auto", "1024x1024", "1536x1024"] },
+      messages: [
+        { role: "user", content: "做一张产品图" },
+        { role: "assistant", content: "发布渠道是什么？" },
+        { role: "user", content: "官网首图" },
+        { role: "assistant", content: "主体是什么？" },
+        { role: "user", content: "新品耳机" },
+        { role: "assistant", content: "需要文字吗？" }
+      ]
+    });
+
+    const result = await runPromptAssistantTurn({} as AppBindings, input);
+
+    expect(result.recommendedSize).toBe("1024x1024");
   });
 
   it("uses enriched prompt case context when falling back", async () => {

@@ -29,7 +29,7 @@ export const promptAssistantTurnSchema = z.object({
   provider: z
     .object({
       model: z.string().trim().max(120).optional(),
-      supportedSizes: z.array(z.string().trim().max(40)).max(20).optional(),
+      supportedSizes: z.array(z.string().trim().max(40)).max(80).optional(),
       maxReferenceImages: z.number().int().min(0).max(10).nullable().optional()
     })
     .optional(),

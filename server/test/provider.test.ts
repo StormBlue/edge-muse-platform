@@ -113,6 +113,39 @@ describe("provider response parsing", () => {
     expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
   });
 
+  it("omits size for OpenAI Images Auto text-to-image requests", async () => {
+    const provider = new OpenAIImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as {
+          model: string;
+          prompt: string;
+          n: number;
+          size?: string;
+        };
+        expect(body).toEqual({
+          model: "gpt-image-2",
+          prompt: "a cat",
+          n: 1
+        });
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "a cat",
+      mode: "text2image",
+      model: "gpt-image-2",
+      size: "auto",
+      apiKey: "key",
+      baseUrl: "https://api-dmit.cubence.com"
+    });
+  });
+
   it("calls Micu images generations directly with b64_json response format", async () => {
     const provider = new MicuImagesProvider();
     vi.stubGlobal(
@@ -151,6 +184,41 @@ describe("provider response parsing", () => {
     });
 
     expect(response.images).toEqual([{ kind: "base64", data: png, mime: "image/png" }]);
+  });
+
+  it("omits size for Micu Auto text-to-image requests", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as {
+          model: string;
+          prompt: string;
+          n: number;
+          size?: string;
+          response_format: string;
+        };
+        expect(body).toEqual({
+          model: "gpt-image-2",
+          prompt: "a cat",
+          n: 1,
+          response_format: "b64_json"
+        });
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "a cat",
+      mode: "text2image",
+      model: "gpt-image-2",
+      size: "auto",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai"
+    });
   });
 
   it("maps Grok sizes to resolution and aspect ratio", () => {
@@ -295,6 +363,71 @@ describe("provider response parsing", () => {
     expect(response.images[0]?.kind).toBe("base64");
   });
 
+  it("omits size for Micu Auto image-to-image requests", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        expect(init.body).toBeInstanceOf(FormData);
+        const form = init.body as FormData;
+        expect(form.get("size")).toBeNull();
+        expect(form.get("response_format")).toBe("b64_json");
+        expect(form.get("image")).toBeInstanceOf(File);
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "replace background",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "auto",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai",
+      referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
+    });
+  });
+
+  it("calls Micu generations reference_image path for 2K image-to-image", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        expect(url).toBe("https://www.micuapi.ai/v1/images/generations");
+        expect(init.method).toBe("POST");
+        const body = JSON.parse(String(init.body)) as {
+          model: string;
+          size: string;
+          reference_image?: string;
+          response_format: string;
+        };
+        expect(body.model).toBe("gpt-image-2-pro");
+        expect(body.size).toBe("2048x2048");
+        expect(body.reference_image).toMatch(/^data:image\/png;base64,/);
+        expect(body.response_format).toBe("b64_json");
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    const response = await provider.generate({
+      prompt: "enhance detail",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "2048x2048",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai",
+      referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
+    });
+
+    expect(response.images[0]?.kind).toBe("base64");
+  });
+
   it("falls back to Micu chat completions when edits endpoint is unavailable", async () => {
     const provider = new MicuImagesProvider();
     const fetchMock = vi
@@ -393,6 +526,33 @@ describe("provider response parsing", () => {
 
     expect(response.images).toHaveLength(1);
     expect(response.images[0]?.kind).toBe("base64");
+  });
+
+  it("omits size for OpenAI Images Auto image-to-image requests", async () => {
+    const provider = new OpenAIImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        expect(init.body).toBeInstanceOf(FormData);
+        const form = init.body as FormData;
+        expect(form.get("size")).toBeNull();
+        expect(form.get("image")).toBeInstanceOf(File);
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "replace background",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "auto",
+      apiKey: "key",
+      baseUrl: "https://api-dmit.cubence.com",
+      referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
+    });
   });
 
   it("exposes only one-shot modes for OpenAI Images providers", () => {

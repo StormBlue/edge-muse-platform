@@ -93,6 +93,10 @@ export class OpenAICompatibleProvider implements ImageProvider {
   /** Responses API（/v1/responses），文生图与图生图多模态 input */
   private async responses(req: GenerateRequest): Promise<GenerateResponse> {
     const baseUrl = req.baseUrl.replace(/\/$/, "");
+    const imageGenerationTool: { type: "image_generation"; size?: string } = {
+      type: "image_generation",
+      ...sizePayload(req.size)
+    };
     const body =
       req.mode === "image2image"
         ? {
@@ -109,12 +113,12 @@ export class OpenAICompatibleProvider implements ImageProvider {
                 ]
               }
             ],
-            tools: [{ type: "image_generation", size: req.size }]
+            tools: [imageGenerationTool]
           }
         : {
             model: req.model,
             input: req.prompt,
-            tools: [{ type: "image_generation", size: req.size }]
+            tools: [imageGenerationTool]
           };
     const json = await providerFetch(`${baseUrl}/v1/responses`, req.apiKey, body, {
       ...req.logContext,
@@ -153,7 +157,7 @@ export class OpenAICompatibleProvider implements ImageProvider {
         model: req.model,
         prompt: req.prompt,
         n: 1,
-        size: req.size,
+        ...sizePayload(req.size),
         response_format: "b64_json"
       },
       {
@@ -231,4 +235,12 @@ export class OpenAICompatibleProvider implements ImageProvider {
       raw: json
     };
   }
+}
+
+function shouldSendSize(size: string): boolean {
+  return size !== "auto";
+}
+
+function sizePayload(size: string): { size?: string } {
+  return shouldSendSize(size) ? { size } : {};
 }

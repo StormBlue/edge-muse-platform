@@ -19,14 +19,14 @@ import { ProviderError } from "./types";
 import { parseProviderImages } from "./openai-compatible";
 
 const DEFAULT_SIZES = [
+  "auto",
   "1024x1024",
   "1024x1536",
   "1536x1024",
   "2048x2048",
   "2880x2880",
   "3840x2160",
-  "2160x3840",
-  "auto"
+  "2160x3840"
 ];
 const PROVIDER_FETCH_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -101,7 +101,7 @@ export class OpenAIImagesProvider implements ImageProvider {
         model: req.model,
         prompt: req.prompt,
         n: 1,
-        size: req.size
+        ...sizePayload(req.size)
       },
       {
         ...req.logContext,
@@ -138,7 +138,7 @@ export class OpenAIImagesProvider implements ImageProvider {
     form.set("model", req.model);
     form.set("prompt", req.prompt);
     form.set("n", "1");
-    form.set("size", req.size);
+    if (shouldSendSize(req.size)) form.set("size", req.size);
     // FormData 的第三个参数保留文件名；Cubence/OpenAI Images edits 会据此识别上传文件。
     form.set(
       "image",
@@ -152,7 +152,7 @@ export class OpenAIImagesProvider implements ImageProvider {
       req.apiKey,
       form,
       {
-        keys: ["image", "model", "n", "prompt", "size"],
+        keys: [...form.keys()].sort(),
         model: req.model,
         promptLength: req.prompt.length,
         imageCount: referenceImages.length,
@@ -362,6 +362,14 @@ function fileNameForMime(mime: string): string {
   if (mime.includes("jpeg") || mime.includes("jpg")) return "reference.jpg";
   if (mime.includes("webp")) return "reference.webp";
   return "reference.png";
+}
+
+function shouldSendSize(size: string): boolean {
+  return size !== "auto";
+}
+
+function sizePayload(size: string): { size?: string } {
+  return shouldSendSize(size) ? { size } : {};
 }
 
 function tryJson(text: string): unknown {

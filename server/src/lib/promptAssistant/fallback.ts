@@ -63,7 +63,7 @@ export function recommendedSizeForTurn(
     firstNonEmptyString(
       aiRecommendedSize,
       input.caseRecommendedSize,
-      input.provider?.supportedSizes?.[0]
+      input.provider?.supportedSizes?.find((size) => size !== "auto")
     ) ?? "1024x1024"
   );
 }

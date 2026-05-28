@@ -343,7 +343,7 @@ export const adminPaths = {
           supportedSizes: {
             type: "array",
             items: { type: "string" },
-            default: ["1024x1024", "1024x1536", "1536x1024", "auto"]
+            default: ["auto", "1024x1024", "1536x1024", "1024x1536"]
           },
           enabled: { type: "boolean", default: true }
         },

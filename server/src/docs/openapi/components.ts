@@ -237,7 +237,10 @@ export const components = {
       type: "object",
       required: ["size", "n"],
       properties: {
-        size: { type: "string", description: "尺寸预设或 `{width}x{height}`。" },
+        size: {
+          type: "string",
+          description: "`auto` 表示不向上游传递尺寸；也可为尺寸预设或 `{width}x{height}`。"
+        },
         n: {
           type: "integer",
           minimum: 1,

@@ -7,6 +7,7 @@
 import { now } from "../lib/id";
 import { stringifyJson } from "../lib/json";
 import type { AppBindings } from "../types";
+import { MICU_IMAGE_SIZE_PRESETS } from "./micuPolicy";
 
 export const MICU_PROVIDER_ID = "prv_micu";
 export const CUBENCE_PROVIDER_ID = "prv_cubence";
@@ -20,20 +21,7 @@ export const BUILT_IN_PROVIDERS = [
     baseUrl: MICU_BASE_URL,
     defaultModel: "gpt-image-2",
     requestFormat: "micu_images",
-    supportedSizes: [
-      "1024x1024",
-      "1280x720",
-      "720x1280",
-      "1024x1536",
-      "1536x1024",
-      "1920x1088",
-      "1088x1920",
-      "2048x2048",
-      "2048x1152",
-      "1152x2048",
-      "3840x2160",
-      "2160x3840"
-    ]
+    supportedSizes: MICU_IMAGE_SIZE_PRESETS
   },
   {
     id: CUBENCE_PROVIDER_ID,
@@ -42,14 +30,14 @@ export const BUILT_IN_PROVIDERS = [
     defaultModel: "gpt-image-2",
     requestFormat: "openai_images",
     supportedSizes: [
+      "auto",
       "1024x1024",
       "1024x1536",
       "1536x1024",
       "2048x2048",
       "2880x2880",
       "3840x2160",
-      "2160x3840",
-      "auto"
+      "2160x3840"
     ]
   },
   {

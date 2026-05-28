@@ -205,7 +205,7 @@ async function settleTimedOutGenerateTask(
   const params = parseJson<GenerateParams>(task.params, {
     prompt: "",
     mode: "text2image",
-    size: "1024x1024",
+    size: "auto",
     n: 1
   });
   const timeoutError = new TaskAttemptTimeoutError(task.id);

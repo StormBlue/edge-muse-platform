@@ -14,35 +14,125 @@ export type SizeOption = {
   label: string;
 };
 
+const AUTO_SIZE_VALUE = "auto";
+
+const DEFAULT_SIZE_VALUES = [
+  "auto",
+  "1024x1024",
+  "1536x1024",
+  "1024x1536",
+  "1280x720",
+  "720x1280",
+  "2048x2048",
+  "2048x1152",
+  "1152x2048",
+  "1752x2480",
+  "2480x1752",
+  "1920x1080",
+  "1080x1920",
+  "2048x1536",
+  "1536x2048",
+  "1240x1752",
+  "1752x1240",
+  "2880x2880",
+  "3840x2160",
+  "2160x3840"
+] as const;
+
+const COMMON_SIZE_USAGE_ORDER = [
+  "auto",
+  "1024x1024",
+  "1536x1024",
+  "1024x1536",
+  "1280x720",
+  "720x1280",
+  "2048x2048",
+  "2048x1152",
+  "1152x2048",
+  "1752x2480",
+  "2480x1752",
+  "1920x1080",
+  "1080x1920",
+  "1536x1152",
+  "1152x1536",
+  "2048x1536",
+  "1536x2048",
+  "1280x1024",
+  "1024x1280",
+  "1240x1752",
+  "1752x1240",
+  "2480x3504",
+  "3504x2480",
+  "872x1240",
+  "1240x872",
+  "2048x1024",
+  "1024x2048",
+  "1536x768",
+  "768x1536",
+  "2304x1536",
+  "1536x2304",
+  "2880x2880",
+  "3840x2160",
+  "2160x3840",
+  "3840x1920",
+  "1920x3840",
+  "2048x2560",
+  "2560x2048"
+] as const;
+
+const COMMON_SIZE_RANK = new Map<string, number>(
+  COMMON_SIZE_USAGE_ORDER.map((size, index) => [size, index] as const)
+);
+
+const NAMED_SIZE_LABELS: Record<string, string> = {
+  "872x1240": "A6 portrait",
+  "1240x872": "A6 landscape",
+  "1240x1752": "A5 portrait",
+  "1752x1240": "A5 landscape",
+  "1752x2480": "A4 portrait",
+  "2480x1752": "A4 landscape",
+  "2480x3504": "A3 portrait",
+  "3504x2480": "A3 landscape"
+};
+
 /** Provider 没有明确限制时沿用默认尺寸；`*` 表示所有尺寸都交给上游判断。 */
 export function sizeOptionsForProvider(capabilities: ProviderCapabilities | null): SizeOption[] {
   const sizes = capabilities?.supportedSizes ?? [];
-  if (!sizes.length || sizes.includes("*")) return defaultSizeOptions();
-  return sizes.map(sizeToOption);
+  const values =
+    !sizes.length || sizes.includes("*")
+      ? DEFAULT_SIZE_VALUES
+      : shouldForceAutoSize(capabilities)
+        ? [AUTO_SIZE_VALUE, ...sizes]
+        : sizes;
+  return sortSizeValues(values).map(sizeToOption);
 }
 
 export function defaultSizeOptions(): SizeOption[] {
-  return ["auto", "1536x1024", "1024x1024", "1024x1536"].map(sizeToOption);
+  return sortSizeValues(DEFAULT_SIZE_VALUES).map(sizeToOption);
+}
+
+export function sortSizeValues(values: readonly string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort(compareSizeValues);
 }
 
 export function sizeToOption(size: string): SizeOption {
-  if (size === "auto") return { value: size, ratio: "Auto", label: "Auto" };
-  const match = /^(\d+)x(\d+)$/.exec(size);
-  if (!match) return { value: size, ratio: size, label: size };
-  const width = Number(match[1]);
-  const height = Number(match[2]);
-  const divisor = gcd(width, height);
+  if (size === AUTO_SIZE_VALUE) return { value: size, ratio: "Auto", label: "Auto" };
+  const parsed = parseSize(size);
+  if (!parsed) return { value: size, ratio: size, label: size };
+  const { width, height, divisor } = parsed;
   return {
     value: size,
     ratio: `${width / divisor}:${height / divisor}`,
-    label: `${width} x ${height}`
+    label: NAMED_SIZE_LABELS[size]
+      ? `${NAMED_SIZE_LABELS[size]} · ${width} x ${height}`
+      : `${width} x ${height}`
   };
 }
 
 export function maxEdgeForSize(size: string): number | null {
-  const match = /^(\d+)x(\d+)$/.exec(size);
-  if (!match) return null;
-  return Math.max(Number(match[1]), Number(match[2]));
+  const parsed = parseSize(size);
+  if (!parsed) return null;
+  return Math.max(parsed.width, parsed.height);
 }
 
 export function isHighResolutionSize(size: string): boolean {
@@ -64,6 +154,67 @@ export function defaultSessionTitle(date = new Date()) {
   const minute = padDatePart(date.getMinutes());
   const second = padDatePart(date.getSeconds());
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+function compareSizeValues(left: string, right: string): number {
+  if (left === right) return 0;
+  if (left === AUTO_SIZE_VALUE) return -1;
+  if (right === AUTO_SIZE_VALUE) return 1;
+
+  const leftRank = COMMON_SIZE_RANK.get(left);
+  const rightRank = COMMON_SIZE_RANK.get(right);
+  if (leftRank !== undefined || rightRank !== undefined) {
+    return (leftRank ?? Number.MAX_SAFE_INTEGER) - (rightRank ?? Number.MAX_SAFE_INTEGER);
+  }
+
+  const leftScore = dynamicSizeScore(left);
+  const rightScore = dynamicSizeScore(right);
+  if (leftScore !== rightScore) return leftScore - rightScore;
+  return left.localeCompare(right);
+}
+
+function shouldForceAutoSize(capabilities: ProviderCapabilities | null): boolean {
+  return (
+    capabilities?.requestFormat === "micu_images" || capabilities?.requestFormat === "openai_images"
+  );
+}
+
+function dynamicSizeScore(size: string): number {
+  const parsed = parseSize(size);
+  if (!parsed) return Number.MAX_SAFE_INTEGER;
+  const ratio = `${parsed.width / parsed.divisor}:${parsed.height / parsed.divisor}`;
+  const area = parsed.width * parsed.height;
+  const ratioRank = ratioUsageRank(ratio);
+  const areaRank = areaBucketRank(area);
+  const orientationRank = parsed.width >= parsed.height ? 0 : 1;
+  return ratioRank * 100 + areaRank * 10 + orientationRank;
+}
+
+function ratioUsageRank(ratio: string): number {
+  if (ratio === "1:1") return 0;
+  if (ratio === "3:2" || ratio === "2:3") return 1;
+  if (ratio === "16:9" || ratio === "9:16") return 2;
+  if (ratio === "4:3" || ratio === "3:4") return 3;
+  if (ratio === "5:4" || ratio === "4:5") return 4;
+  if (ratio === "2:1" || ratio === "1:2") return 5;
+  return 6;
+}
+
+function areaBucketRank(area: number): number {
+  if (area <= 1_400_000) return 0;
+  if (area <= 2_600_000) return 1;
+  if (area <= 4_800_000) return 2;
+  if (area <= 8_400_000) return 3;
+  return 4;
+}
+
+function parseSize(size: string) {
+  const match = /^(\d+)x(\d+)$/.exec(size);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const divisor = gcd(width, height);
+  return { width, height, divisor };
 }
 
 function gcd(a: number, b: number): number {

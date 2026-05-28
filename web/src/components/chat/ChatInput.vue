@@ -36,6 +36,7 @@ const {
   size,
   generationTargetId,
   n,
+  countInput,
   dragging,
   isReadOnly,
   isImageToImage,
@@ -213,7 +214,8 @@ function updateGenerationTarget(value: unknown) {
             min="1"
             :max="maxCustomCount"
             step="1"
-            :value="n"
+            inputmode="numeric"
+            :model-value="countInput"
             @input="setCount"
             @blur="normalizeCount"
           />

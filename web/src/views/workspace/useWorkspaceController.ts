@@ -19,7 +19,6 @@ import {
 import { useWorkspaceActions } from "./useWorkspaceActions";
 import {
   defaultSessionTitle,
-  isHighResolutionSize,
   isGeneratingMessage,
   sizeOptionsForProvider,
   type ModeOption
@@ -162,7 +161,7 @@ export function useWorkspaceController() {
   const providerSizeOptions = computed(() => {
     const options = sizeOptionsForProvider(providerCapabilities.value);
     if (isMicuProvider.value && taskInputMode.value === "image2image") {
-      return options.filter((option) => !isHighResolutionSize(option.value));
+      return options.filter((option) => !isMicu4KSize(option.value));
     }
     return options;
   });
@@ -416,4 +415,10 @@ export function useWorkspaceController() {
     openActivePreview,
     deleteImageMessage
   };
+}
+
+function isMicu4KSize(size: string): boolean {
+  const match = /^(\d+)x(\d+)$/i.exec(size);
+  if (!match) return false;
+  return Math.max(Number(match[1]), Number(match[2])) >= 3000;
 }

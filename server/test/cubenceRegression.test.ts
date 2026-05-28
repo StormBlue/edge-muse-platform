@@ -91,6 +91,21 @@ describe("Cubence integration regressions", () => {
     expect(isBuiltInProviderId("prv_custom")).toBe(false);
   });
 
+  it("keeps common Micu paper sizes in the built-in catalog", () => {
+    const micu = BUILT_IN_PROVIDERS.find((provider) => provider.id === MICU_PROVIDER_ID);
+
+    expect(micu?.supportedSizes[0]).toBe("auto");
+    expect(micu?.supportedSizes).toEqual(
+      expect.arrayContaining(["1752x2480", "2480x1752", "2480x3504"])
+    );
+  });
+
+  it("keeps Auto as the first Cubence size in the built-in catalog", () => {
+    const cubence = BUILT_IN_PROVIDERS.find((provider) => provider.id === CUBENCE_PROVIDER_ID);
+
+    expect(cubence?.supportedSizes[0]).toBe("auto");
+  });
+
   it("only allows provider keys to be assigned to built-in providers", () => {
     expect(isProviderKeyAssignable(MICU_PROVIDER_ID)).toBe(true);
     expect(isProviderKeyAssignable(CUBENCE_PROVIDER_ID)).toBe(true);

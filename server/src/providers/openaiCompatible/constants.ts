@@ -1,4 +1,5 @@
 export const DEFAULT_SIZES = [
+  "auto",
   "1024x1024",
   "1280x720",
   "720x1280",
@@ -11,8 +12,7 @@ export const DEFAULT_SIZES = [
   "1152x2048",
   "2880x2880",
   "3840x2160",
-  "2160x3840",
-  "auto"
+  "2160x3840"
 ];
 
 export type UnknownRecord = Record<string, unknown>;

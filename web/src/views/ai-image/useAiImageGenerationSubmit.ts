@@ -21,11 +21,7 @@ import {
   getAiImageSubmitBlockReason,
   type AiImageSubmitBlockReason
 } from "./aiImageSubmitValidation";
-import {
-  defaultSessionTitle,
-  isHighResolutionSize,
-  sizeOptionsForProvider
-} from "@/views/workspace/workspaceOptions";
+import { defaultSessionTitle, sizeOptionsForProvider } from "@/views/workspace/workspaceOptions";
 import type { PromptCaseMode } from "@/types/promptCases";
 
 export type AiImageSubmitGenerationEvent = {
@@ -67,7 +63,7 @@ export function useAiImageGenerationSubmit() {
       providerCapabilities.value?.requestFormat === "micu_images" &&
       mode.value === "image2image"
     ) {
-      return options.filter((option) => !isHighResolutionSize(option.value));
+      return options.filter((option) => !isMicu4KSize(option.value));
     }
     return options;
   });
@@ -398,6 +394,12 @@ export function useAiImageGenerationSubmit() {
     retry,
     submit
   };
+}
+
+function isMicu4KSize(size: string): boolean {
+  const match = /^(\d+)x(\d+)$/i.exec(size);
+  if (!match) return false;
+  return Math.max(Number(match[1]), Number(match[2])) >= 3000;
 }
 
 function findAiImageActiveResultMessage(

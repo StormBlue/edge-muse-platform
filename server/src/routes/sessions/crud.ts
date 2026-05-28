@@ -24,7 +24,7 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
       z.object({
         title: z.string().trim().min(1).max(80).optional(),
         mode: modeSchema.default("image2image"),
-        settings: settingsSchema.default({ size: "1024x1024", n: 1 })
+        settings: settingsSchema.default({ size: "auto", n: 1 })
       })
     ),
     async (c) => {

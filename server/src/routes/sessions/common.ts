@@ -13,7 +13,7 @@ export function normalizeSessionMode(value: unknown) {
 
 /** 会话默认生图参数，整段 JSON 存 D1 `sessions.settings`。 */
 export const settingsSchema = z.object({
-  size: z.string().default("1024x1024"),
+  size: z.string().default("auto"),
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional()
 });

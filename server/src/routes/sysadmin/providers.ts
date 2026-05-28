@@ -16,7 +16,7 @@ const providerSchema = z.object({
   baseUrl: z.string().min(1),
   defaultModel: z.string().min(1).default("gpt-image-2"),
   requestFormat: z.string().default("openai_compatible"),
-  supportedSizes: z.array(z.string()).default(["1024x1024", "1024x1536", "1536x1024", "auto"]),
+  supportedSizes: z.array(z.string()).default(["auto", "1024x1024", "1536x1024", "1024x1536"]),
   enabled: z.boolean().default(true)
 });
 

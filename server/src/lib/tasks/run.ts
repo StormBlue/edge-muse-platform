@@ -57,7 +57,7 @@ export async function runGenerateTask(
   const params = parseJson<GenerateParams>(task.params, {
     prompt: "",
     mode: "text2image",
-    size: "1024x1024",
+    size: "auto",
     n: 1
   });
   const taskUser = await db.query.users.findFirst({ where: eq(users.id, task.userId) });

@@ -53,8 +53,8 @@ type ChatInputEmit = {
 
 const DEFAULT_SIZE_OPTIONS: ChatInputSizeOption[] = [
   { value: "auto", ratio: "Auto", label: "Auto" },
-  { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
   { value: "1024x1024", ratio: "1:1", label: "1024 x 1024" },
+  { value: "1536x1024", ratio: "3:2", label: "1536 x 1024" },
   { value: "1024x1536", ratio: "2:3", label: "1024 x 1536" }
 ];
 
@@ -67,6 +67,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   const generationTargetId = ref("default");
   const size = ref("auto");
   const n = ref(1);
+  const countInput = ref("1");
   const files = ref<File[]>([]);
   const dragging = ref(false);
   const previews = ref<Array<{ file: File; url: string }>>([]);
@@ -173,7 +174,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     () => {
       if (isReadOnly.value) return;
       if (effectiveSizeOptions.value.some((option) => option.value === size.value)) return;
-      size.value = effectiveSizeOptions.value[0]?.value ?? "1024x1024";
+      size.value = effectiveSizeOptions.value[0]?.value ?? "auto";
     },
     { immediate: true }
   );
@@ -181,23 +182,24 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   watch(
     () => [props.initialCount, props.allowCustomCount] as const,
     ([next]) => {
-      n.value =
+      setNormalizedCount(
         props.allowCustomCount && typeof next === "number" && !highResolutionCountLocked.value
           ? clampImageCount(next)
-          : 1;
+          : 1
+      );
     },
     { immediate: true }
   );
 
   watch(highResolutionCountLocked, (locked) => {
-    if (locked) n.value = 1;
+    if (locked) setNormalizedCount(1);
   });
 
   watch(
     () => props.mode,
     (next) => {
       if (next !== "image2image") clearFiles();
-      if (!props.allowCustomCount) n.value = 1;
+      if (!props.allowCustomCount) setNormalizedCount(1);
     }
   );
 
@@ -229,12 +231,14 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
 
   async function submit() {
     if (submitDisabled.value) return;
+    const submittedCount =
+      props.allowCustomCount && !highResolutionCountLocked.value ? normalizeCountFromInput() : 1;
     emit("submit", {
       prompt: prompt.value.trim(),
       generationTargetId: generationTargetId.value,
       mode: props.mode,
       size: size.value,
-      n: props.allowCustomCount && !highResolutionCountLocked.value ? clampImageCount(n.value) : 1,
+      n: submittedCount,
       files: isImageToImage.value ? files.value : []
     });
     if (!isImageToImage.value) clearFiles();
@@ -281,19 +285,30 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
 
   function setCount(event: Event) {
     const input = event.target as HTMLInputElement;
-    const value = Number(input.value);
-    if (!Number.isFinite(value)) return;
-    n.value = clampImageCount(value);
+    countInput.value = input.value.replace(/[^\d]/g, "");
+    const value = Number(countInput.value);
+    if (Number.isFinite(value) && value >= 1) n.value = clampImageCount(value);
   }
 
   function normalizeCount(event: Event) {
     const input = event.target as HTMLInputElement;
-    n.value = clampImageCount(n.value);
-    input.value = String(n.value);
+    normalizeCountFromInput();
+    input.value = countInput.value;
   }
 
   function clampImageCount(value: number) {
     return Math.min(maxCustomCount, Math.max(1, Math.floor(value)));
+  }
+
+  function setNormalizedCount(value: number) {
+    n.value = clampImageCount(value);
+    countInput.value = String(n.value);
+  }
+
+  function normalizeCountFromInput() {
+    const value = countInput.value ? Number(countInput.value) : 1;
+    setNormalizedCount(Number.isFinite(value) ? value : 1);
+    return n.value;
   }
 
   function revokePreviews() {
@@ -306,6 +321,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     generationTargetId,
     size,
     n,
+    countInput,
     dragging,
     isReadOnly,
     isImageToImage,

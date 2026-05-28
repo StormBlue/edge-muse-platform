@@ -62,7 +62,7 @@ export async function findActiveGenerationTaskForUser(
       id: row.sessionId,
       title: row.sessionTitle,
       mode: row.sessionMode,
-      settings: parseJson(row.sessionSettings, { size: "1024x1024", n: 1 }),
+      settings: parseJson(row.sessionSettings, { size: "auto", n: 1 }),
       lastMessageAt: row.sessionLastMessageAt
     }
   };

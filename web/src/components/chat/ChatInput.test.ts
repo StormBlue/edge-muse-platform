@@ -11,7 +11,7 @@ vi.mock("vue-i18n", () => ({
 }));
 
 describe("ChatInput", () => {
-  it("defaults new generation size to Auto and exposes a compact size selector", async () => {
+  it("defaults new generation size to Auto and exposes all canvas sizes", async () => {
     const wrapper = mount(ChatInput, {
       props: {
         mode: "text2image",
@@ -28,8 +28,8 @@ describe("ChatInput", () => {
     await textarea.setValue("默认 auto 尺寸");
     await wrapper.get("form").trigger("submit");
 
-    expect(wrapper.findAll(".generation-size-choice")).toHaveLength(2);
-    expect(wrapper.find(".generation-size-more-select").exists()).toBe(true);
+    expect(wrapper.findAll(".generation-size-choice")).toHaveLength(4);
+    expect(wrapper.find(".generation-size-more-select").exists()).toBe(false);
     expect(wrapper.find(".task-size-grid").exists()).toBe(false);
     expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
       prompt: "默认 auto 尺寸",
@@ -95,10 +95,51 @@ describe("ChatInput", () => {
     expect((textarea.element as HTMLTextAreaElement).value).toBe("生成一张现代产品海报");
   });
 
+  it("allows typing multi-digit custom image counts", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        allowCustomCount: true,
+        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+      }
+    });
+
+    await wrapper.get("textarea").setValue("生成多张贴纸候选");
+    const countInput = wrapper.get('input[type="number"]');
+    await countInput.setValue("12");
+    await wrapper.get("form").trigger("submit");
+
+    expect((countInput.element as HTMLInputElement).value).toBe("12");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      prompt: "生成多张贴纸候选",
+      n: 12
+    });
+  });
+
+  it("normalizes a blank custom image count before submit", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        allowCustomCount: true,
+        initialCount: 12,
+        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+      }
+    });
+
+    await wrapper.get("textarea").setValue("生成默认张数");
+    const countInput = wrapper.get('input[type="number"]');
+    await countInput.setValue("");
+    await wrapper.get("form").trigger("submit");
+
+    expect((countInput.element as HTMLInputElement).value).toBe("1");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ n: 1 });
+  });
+
   it("submits the selected generation target", async () => {
     const wrapper = mount(ChatInput, {
       props: {
         mode: "text2image",
+        initialGenerationTargetId: "micu_grok",
         generationTargets: [
           { id: "default", label: "默认生成", experimental: false },
           { id: "micu_grok", label: "米醋 Grok 图像", experimental: true }
@@ -107,7 +148,6 @@ describe("ChatInput", () => {
       }
     });
 
-    await wrapper.get("select#task-generation-target").setValue("micu_grok");
     await wrapper.get("textarea").setValue("实验目标生图");
     await wrapper.get("form").trigger("submit");
 

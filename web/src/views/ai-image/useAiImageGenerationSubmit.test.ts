@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick, ref } from "vue";
 import { apiFetch } from "@/api/client";
+import { useAuthStore } from "@/stores/auth";
 import { useSessionStore } from "@/stores/session";
 import { useAiImageGenerationSubmit } from "./useAiImageGenerationSubmit";
 
@@ -139,6 +140,32 @@ describe("useAiImageGenerationSubmit", () => {
       prompt: "Grok 实验图",
       generationTargetId: "micu_grok"
     });
+  });
+
+  it("keeps Micu 2K image-to-image sizes while filtering 4K sizes", () => {
+    const auth = useAuthStore();
+    auth.providerCapabilities = {
+      providerId: "prv_micu",
+      providerName: "米醋API",
+      providerKeyId: "key_micu",
+      providerKeyGroupId: "pkg_micu",
+      providerKeyGroupName: "米醋分组",
+      requestFormat: "micu_images",
+      model: "gpt-image-2",
+      supportedModes: ["image2image", "text2image"],
+      supportedSizes: ["3840x2160", "auto", "2048x2048", "1024x1024", "1752x2480"],
+      maxReferenceImages: 1
+    };
+    const generation = useAiImageGenerationSubmit();
+
+    generation.mode.value = "image2image";
+
+    expect(generation.sizeOptions.value.map((option) => option.value)).toEqual([
+      "auto",
+      "1024x1024",
+      "2048x2048",
+      "1752x2480"
+    ]);
   });
 
   it("clears only the current AI image result scope when starting a new flow", async () => {
