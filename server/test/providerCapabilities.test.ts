@@ -71,7 +71,7 @@ describe("provider capability validation", () => {
     });
 
     expect(capabilities.supportedSizes[0]).toBe("auto");
-    expect(capabilities.supportedSizes).toContain("1752x2480");
+    expect(capabilities.supportedSizes).toContain("1760x2480");
   });
 
   it("rejects Cubence image-to-image with more than one reference image", () => {
@@ -120,7 +120,7 @@ describe("provider capability validation", () => {
     ).not.toThrow();
   });
 
-  it("allows Micu custom 8-aligned text-to-image sizes", () => {
+  it("allows Micu custom 16-aligned text-to-image sizes", () => {
     expect(() =>
       assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
         prompt: "a cat",
@@ -133,15 +133,29 @@ describe("provider capability validation", () => {
 
   it("allows Micu A-series preset sizes", () => {
     expect(MICU_IMAGE_SIZE_PRESETS[0]).toBe("auto");
-    expect(MICU_IMAGE_SIZE_PRESETS).toContain("1752x2480");
+    expect(MICU_IMAGE_SIZE_PRESETS).toContain("1760x2480");
     expect(() =>
       assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
         prompt: "a poster",
         mode: "text2image",
-        size: "1752x2480",
+        size: "1760x2480",
         n: 1
       })
     ).not.toThrow();
+  });
+
+  it("normalizes legacy Micu 8-aligned preset sizes before validation", () => {
+    const params = {
+      prompt: "a poster",
+      mode: "text2image" as const,
+      size: "1752x2480",
+      n: 1
+    };
+
+    expect(() =>
+      assertProviderSupportsGenerateParams(micuProvider, micuImpl, params)
+    ).not.toThrow();
+    expect(params.size).toBe("1760x2480");
   });
 
   it("allows Micu Auto size requests", () => {
@@ -155,7 +169,15 @@ describe("provider capability validation", () => {
     ).not.toThrow();
   });
 
-  it("rejects Micu non-8-aligned custom sizes", () => {
+  it("rejects Micu non-16-aligned custom sizes", () => {
+    expect(() =>
+      assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
+        prompt: "a cat",
+        mode: "text2image",
+        size: "1512x1512",
+        n: 1
+      })
+    ).toThrow("divisible by 16");
     expect(() =>
       assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
         prompt: "a cat",
@@ -163,7 +185,7 @@ describe("provider capability validation", () => {
         size: "1501x1001",
         n: 1
       })
-    ).toThrow("divisible by 8");
+    ).toThrow("divisible by 16");
   });
 
   it("rejects Micu high-resolution multi-image tasks before provider billing", () => {

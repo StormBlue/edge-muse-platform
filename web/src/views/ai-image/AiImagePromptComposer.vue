@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Copy, RotateCcw, Sparkles, Trash2, WandSparkles } from "@lucide/vue";
+import { Copy, RotateCcw, Sparkles, Trash2 } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import AiImageReferenceInput from "./AiImageReferenceInput.vue";
 import GenerationSizeSelector from "@/components/generation/GenerationSizeSelector.vue";
@@ -39,8 +39,6 @@ defineProps<{
   sizeOptions: SizeOption[];
   submitDisabled: boolean;
   supportedModes: PromptCaseMode[];
-  assistantEnabled: boolean;
-  workflowExpanded: boolean;
 }>();
 
 const referenceDescription = defineModel<string>("referenceDescription", { required: true });
@@ -48,7 +46,6 @@ const emit = defineEmits<{
   addFiles: [files: File[]];
   clearPrompt: [];
   copyPrompt: [];
-  openAssistant: [];
   removeFile: [index: number];
   resetPrompt: [];
   submit: [];
@@ -125,18 +122,6 @@ function updateGenerationTarget(value: unknown) {
         </Select>
       </div>
 
-      <div>
-        <p class="mb-2 text-xs font-medium text-muted-foreground">
-          {{ t("workspace.canvasSize") }}
-        </p>
-        <GenerationSizeSelector
-          :model-value="size"
-          :options="sizeOptions"
-          :disabled="interactionLocked"
-          @update:model-value="emit('update:size', $event)"
-        />
-      </div>
-
       <AiImageReferenceInput
         v-if="mode === 'image2image'"
         v-model:description="referenceDescription"
@@ -158,17 +143,17 @@ function updateGenerationTarget(value: unknown) {
         />
       </label>
 
-      <Button
-        v-if="assistantEnabled && (hasPrompt || workflowExpanded)"
-        class="assistant-open-inline h-9 text-xs"
-        variant="secondary"
-        type="button"
-        :disabled="interactionLocked"
-        @click="emit('openAssistant')"
-      >
-        <WandSparkles class="h-3.5 w-3.5" />
-        {{ t("aiImage.openAssistant") }}
-      </Button>
+      <div>
+        <p class="mb-2 text-xs font-medium text-muted-foreground">
+          {{ t("workspace.canvasSize") }}
+        </p>
+        <GenerationSizeSelector
+          :model-value="size"
+          :options="sizeOptions"
+          :disabled="interactionLocked"
+          @update:model-value="emit('update:size', $event)"
+        />
+      </div>
     </div>
 
     <div class="prompt-compose-footer">
@@ -262,15 +247,5 @@ function updateGenerationTarget(value: unknown) {
   gap: 0.5rem;
   border-top: 1px solid var(--border);
   padding: 1rem;
-}
-
-:global(.ai-prompt-workspace--expanded) .assistant-open-inline {
-  display: none;
-}
-
-@media (max-width: 767px) {
-  :global(.ai-prompt-workspace--expanded) .assistant-open-inline {
-    display: inline-flex;
-  }
 }
 </style>

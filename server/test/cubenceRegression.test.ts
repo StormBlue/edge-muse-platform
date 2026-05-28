@@ -96,7 +96,7 @@ describe("Cubence integration regressions", () => {
 
     expect(micu?.supportedSizes[0]).toBe("auto");
     expect(micu?.supportedSizes).toEqual(
-      expect.arrayContaining(["1752x2480", "2480x1752", "2480x3504"])
+      expect.arrayContaining(["1760x2480", "2480x1760", "2480x3504"])
     );
   });
 

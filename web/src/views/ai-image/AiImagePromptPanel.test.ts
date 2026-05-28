@@ -99,6 +99,24 @@ describe("AiImagePromptPanel", () => {
     expect(wrapper.text()).not.toContain("workspace.oneShotEmpty");
     expect(wrapper.text()).not.toContain("workspace.generationMode");
     expect(wrapper.get('[data-testid="size-selector"]').text()).toContain("1024x1024");
+    expect(wrapper.text()).not.toContain("aiImage.openAssistant");
+    expect(wrapper.find(".assistant-open-inline").exists()).toBe(false);
+
+    const textarea = wrapper.get("textarea");
+    const sizeSelector = wrapper.get('[data-testid="size-selector"]');
+    const footer = wrapper.get(".prompt-compose-footer");
+    expect(
+      Boolean(
+        textarea.element.compareDocumentPosition(sizeSelector.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    ).toBe(true);
+    expect(
+      Boolean(
+        sizeSelector.element.compareDocumentPosition(footer.element) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+      )
+    ).toBe(true);
   });
 
   it("keeps long running prompts inside the progress layout", () => {

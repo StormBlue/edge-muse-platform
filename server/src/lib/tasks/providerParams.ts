@@ -10,7 +10,8 @@ import {
   MICU_MAX_SIZE_EDGE,
   MICU_MIN_SIZE_EDGE,
   MICU_REQUEST_FORMAT,
-  MICU_SIZE_ALIGNMENT
+  MICU_SIZE_ALIGNMENT,
+  normalizeMicuImageSize
 } from "../../providers/micuPolicy";
 
 /**
@@ -22,6 +23,7 @@ export function assertProviderSupportsGenerateParams(
   providerImpl: ImageProvider,
   params: GenerateParams
 ): void {
+  normalizeProviderGenerateParams(provider, params);
   if (providerImpl.supportedModes && !providerImpl.supportedModes.includes(params.mode)) {
     throw appError(
       "VALIDATION_ERROR",
@@ -42,9 +44,12 @@ export function assertProviderSupportsGenerateParams(
     );
   }
 
-  const supportedSizes = parseJson<string[]>(provider.supportedSizes, providerImpl.supportedSizes);
+  const supportedSizes = parseJson<string[]>(
+    provider.supportedSizes,
+    providerImpl.supportedSizes
+  ).map((size) => normalizeProviderSize(provider, size));
   if (
-    provider.requestFormat === MICU_REQUEST_FORMAT &&
+    shouldEnforceSizeAlignment(provider) &&
     params.size !== "auto" &&
     !isValidMicuImageSize(params.size)
   ) {
@@ -76,6 +81,28 @@ export function assertProviderSupportsGenerateParams(
       );
     }
   }
+}
+
+export function normalizeProviderGenerateParams(
+  provider: Pick<ProviderRow, "requestFormat">,
+  params: GenerateParams
+): GenerateParams {
+  params.size = normalizeProviderSize(provider, params.size);
+  return params;
+}
+
+function normalizeProviderSize(provider: Pick<ProviderRow, "requestFormat">, size: string): string {
+  if (size === "auto") return size;
+  if (!shouldEnforceSizeAlignment(provider)) return size;
+  return normalizeMicuImageSize(size);
+}
+
+function shouldEnforceSizeAlignment(provider: Pick<ProviderRow, "requestFormat">): boolean {
+  return (
+    provider.requestFormat === MICU_REQUEST_FORMAT ||
+    provider.requestFormat === "openai_compatible" ||
+    provider.requestFormat === "openai_images"
+  );
 }
 
 function modeLabel(mode: GenerateParams["mode"]): string {

@@ -51,7 +51,7 @@ describe("prompt assistant", () => {
   });
 
   it("accepts the expanded provider size list", () => {
-    const supportedSizes = Array.from({ length: 38 }, (_, index) => `${256 + index * 8}x1024`);
+    const supportedSizes = Array.from({ length: 38 }, (_, index) => `${256 + index * 16}x1024`);
 
     expect(() =>
       promptAssistantTurnSchema.parse({

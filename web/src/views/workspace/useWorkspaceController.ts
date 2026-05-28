@@ -347,7 +347,7 @@ export function useWorkspaceController() {
   function supportsSize(size: string) {
     const sizes = providerCapabilities.value?.supportedSizes;
     if (!sizes?.length || sizes.includes("*")) return true;
-    return sizes.includes(size);
+    return providerSizeOptions.value.some((option) => option.value === size);
   }
 
   const { submit, retry, retryFailedResult, openImage, openActivePreview, deleteImageMessage } =

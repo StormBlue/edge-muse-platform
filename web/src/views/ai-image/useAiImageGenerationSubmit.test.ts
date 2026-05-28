@@ -153,7 +153,7 @@ describe("useAiImageGenerationSubmit", () => {
       requestFormat: "micu_images",
       model: "gpt-image-2",
       supportedModes: ["image2image", "text2image"],
-      supportedSizes: ["3840x2160", "auto", "2048x2048", "1024x1024", "1752x2480"],
+      supportedSizes: ["3840x2160", "auto", "2048x2048", "1024x1024", "1760x2480"],
       maxReferenceImages: 1
     };
     const generation = useAiImageGenerationSubmit();
@@ -164,7 +164,7 @@ describe("useAiImageGenerationSubmit", () => {
       "auto",
       "1024x1024",
       "2048x2048",
-      "1752x2480"
+      "1760x2480"
     ]);
   });
 

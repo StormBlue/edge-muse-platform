@@ -69,7 +69,6 @@ const emit = defineEmits<{
   submit: [];
 }>();
 
-const assistantShellRef = ref<{ openAssistantView: () => void } | null>(null);
 const referenceDescription = ref("");
 
 const hasPrompt = computed(() => props.prompt.trim().length > 0);
@@ -126,7 +125,6 @@ function fillAssistantPrompt(value: {
   >
     <AiImageAssistantShell
       v-if="assistantEnabled"
-      ref="assistantShellRef"
       :case-item="caseItem"
       :disabled="interactionLocked"
       :mode="mode"
@@ -141,7 +139,6 @@ function fillAssistantPrompt(value: {
 
     <AiImagePromptComposer
       v-model:reference-description="referenceDescription"
-      :assistant-enabled="assistantEnabled"
       :can-accept-reference-files="canAcceptReferenceFiles"
       :can-reset-prompt="canResetPrompt"
       :has-prompt="hasPrompt"
@@ -158,11 +155,9 @@ function fillAssistantPrompt(value: {
       :size-options="sizeOptions"
       :submit-disabled="submitDisabled"
       :supported-modes="supportedModes"
-      :workflow-expanded="workflowExpanded"
       @add-files="addReferenceFiles"
       @clear-prompt="emit('clearPrompt')"
       @copy-prompt="emit('copyPrompt')"
-      @open-assistant="assistantShellRef?.openAssistantView()"
       @remove-file="emit('removeFile', $event)"
       @reset-prompt="emit('resetPrompt')"
       @submit="emit('submit')"

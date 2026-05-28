@@ -3,11 +3,11 @@ import { sizeOptionsForProvider, sortSizeValues } from "./workspaceOptions";
 
 describe("workspace size options", () => {
   it("sorts common canvas sizes by usage first and keeps Auto first", () => {
-    expect(sortSizeValues(["1752x2480", "3840x2160", "auto", "1024x1024", "1536x1024"])).toEqual([
+    expect(sortSizeValues(["1760x2480", "3840x2160", "auto", "1024x1024", "1536x1024"])).toEqual([
       "auto",
       "1024x1024",
       "1536x1024",
-      "1752x2480",
+      "1760x2480",
       "3840x2160"
     ]);
   });
@@ -22,18 +22,18 @@ describe("workspace size options", () => {
       requestFormat: "micu_images",
       model: "gpt-image-2",
       supportedModes: ["image2image", "text2image"],
-      supportedSizes: ["3840x2160", "auto", "1752x2480", "1024x1024"],
+      supportedSizes: ["3840x2160", "auto", "1760x2480", "1024x1024"],
       maxReferenceImages: 1
     });
 
     expect(options.map((option) => option.value)).toEqual([
       "auto",
       "1024x1024",
-      "1752x2480",
+      "1760x2480",
       "3840x2160"
     ]);
-    expect(options.find((option) => option.value === "1752x2480")?.label).toBe(
-      "A4 portrait · 1752 x 2480"
+    expect(options.find((option) => option.value === "1760x2480")?.label).toBe(
+      "A4 portrait · 1760 x 2480"
     );
   });
 
@@ -52,5 +52,14 @@ describe("workspace size options", () => {
     });
 
     expect(options.map((option) => option.value)).toEqual(["auto", "1024x1024", "2048x2048"]);
+  });
+
+  it("normalizes legacy 8-aligned paper and 16:9 sizes to provider-safe values", () => {
+    expect(sortSizeValues(["1752x2480", "2480x1752", "1920x1080", "1080x1920"])).toEqual([
+      "1760x2480",
+      "2480x1760",
+      "1920x1088",
+      "1088x1920"
+    ]);
   });
 });

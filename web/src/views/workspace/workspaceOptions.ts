@@ -15,6 +15,16 @@ export type SizeOption = {
 };
 
 const AUTO_SIZE_VALUE = "auto";
+const LEGACY_SIZE_ALIASES: Record<string, string> = {
+  "872x1240": "880x1248",
+  "1240x872": "1248x880",
+  "1240x1752": "1248x1760",
+  "1752x1240": "1760x1248",
+  "1752x2480": "1760x2480",
+  "2480x1752": "2480x1760",
+  "1920x1080": "1920x1088",
+  "1080x1920": "1088x1920"
+};
 
 const DEFAULT_SIZE_VALUES = [
   "auto",
@@ -26,14 +36,14 @@ const DEFAULT_SIZE_VALUES = [
   "2048x2048",
   "2048x1152",
   "1152x2048",
-  "1752x2480",
-  "2480x1752",
-  "1920x1080",
-  "1080x1920",
+  "1760x2480",
+  "2480x1760",
+  "1920x1088",
+  "1088x1920",
   "2048x1536",
   "1536x2048",
-  "1240x1752",
-  "1752x1240",
+  "1248x1760",
+  "1760x1248",
   "2880x2880",
   "3840x2160",
   "2160x3840"
@@ -49,22 +59,22 @@ const COMMON_SIZE_USAGE_ORDER = [
   "2048x2048",
   "2048x1152",
   "1152x2048",
-  "1752x2480",
-  "2480x1752",
-  "1920x1080",
-  "1080x1920",
+  "1760x2480",
+  "2480x1760",
+  "1920x1088",
+  "1088x1920",
   "1536x1152",
   "1152x1536",
   "2048x1536",
   "1536x2048",
   "1280x1024",
   "1024x1280",
-  "1240x1752",
-  "1752x1240",
+  "1248x1760",
+  "1760x1248",
   "2480x3504",
   "3504x2480",
-  "872x1240",
-  "1240x872",
+  "880x1248",
+  "1248x880",
   "2048x1024",
   "1024x2048",
   "1536x768",
@@ -85,12 +95,12 @@ const COMMON_SIZE_RANK = new Map<string, number>(
 );
 
 const NAMED_SIZE_LABELS: Record<string, string> = {
-  "872x1240": "A6 portrait",
-  "1240x872": "A6 landscape",
-  "1240x1752": "A5 portrait",
-  "1752x1240": "A5 landscape",
-  "1752x2480": "A4 portrait",
-  "2480x1752": "A4 landscape",
+  "880x1248": "A6 portrait",
+  "1248x880": "A6 landscape",
+  "1248x1760": "A5 portrait",
+  "1760x1248": "A5 landscape",
+  "1760x2480": "A4 portrait",
+  "2480x1760": "A4 landscape",
   "2480x3504": "A3 portrait",
   "3504x2480": "A3 landscape"
 };
@@ -112,7 +122,7 @@ export function defaultSizeOptions(): SizeOption[] {
 }
 
 export function sortSizeValues(values: readonly string[]): string[] {
-  return [...new Set(values.filter(Boolean))].sort(compareSizeValues);
+  return [...new Set(values.filter(Boolean).map(normalizeSizeValue))].sort(compareSizeValues);
 }
 
 export function sizeToOption(size: string): SizeOption {
@@ -171,6 +181,11 @@ function compareSizeValues(left: string, right: string): number {
   const rightScore = dynamicSizeScore(right);
   if (leftScore !== rightScore) return leftScore - rightScore;
   return left.localeCompare(right);
+}
+
+function normalizeSizeValue(size: string): string {
+  const normalized = size.trim().toLowerCase();
+  return LEGACY_SIZE_ALIASES[normalized] ?? normalized;
 }
 
 function shouldForceAutoSize(capabilities: ProviderCapabilities | null): boolean {
