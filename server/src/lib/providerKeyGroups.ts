@@ -239,16 +239,18 @@ export async function ensureLegacyProviderKeyGroup(
 ): Promise<ProviderKeyGroup> {
   const db = getDb(env);
   const groupId = `pkg_${key.id}`;
+  const groupName = `${key.label} 默认分组`;
+  const groupDescription = "Migrated from single provider key binding";
   const existing = await db.query.providerKeyGroups.findFirst({
-    where: and(eq(providerKeyGroups.id, groupId), isNull(providerKeyGroups.deletedAt))
+    where: eq(providerKeyGroups.id, groupId)
   });
   const timestamp = now();
   if (!existing) {
     await db.insert(providerKeyGroups).values({
       id: groupId,
       providerId: key.providerId,
-      name: `${key.label} 默认分组`,
-      description: "Migrated from single provider key binding",
+      name: groupName,
+      description: groupDescription,
       enabled: true,
       createdBy: key.ownerAdminId,
       updatedBy: key.ownerAdminId,
@@ -256,11 +258,19 @@ export async function ensureLegacyProviderKeyGroup(
       updatedAt: timestamp,
       deletedAt: null
     });
-  } else if (!existing.enabled || existing.providerId !== key.providerId) {
+  } else if (
+    !existing.enabled ||
+    existing.deletedAt !== null ||
+    existing.providerId !== key.providerId ||
+    existing.name !== groupName ||
+    existing.description !== groupDescription
+  ) {
     await db
       .update(providerKeyGroups)
       .set({
         providerId: key.providerId,
+        name: groupName,
+        description: groupDescription,
         enabled: true,
         updatedBy: key.ownerAdminId,
         updatedAt: timestamp,

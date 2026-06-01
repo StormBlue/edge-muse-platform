@@ -273,6 +273,53 @@ describe("provider key group API permissions", () => {
     expect(body.error.code).toBe("FORBIDDEN");
   });
 
+  it("restores a soft-deleted legacy default key group when sysadmin changes preferences", async () => {
+    const timestamp = 1_778_000_000_100;
+    await context.env.DB.prepare(
+      `INSERT INTO provider_key_groups (
+         id, provider_id, name, description, enabled, created_by, updated_by,
+         created_at, updated_at, deleted_at
+       ) VALUES (
+         'pkg_key_perm_extra', ?1, 'Deleted Default Group', NULL, 0, NULL, NULL, ?2, ?2, ?2
+       )`
+    )
+      .bind(MICU_PROVIDER_ID, timestamp)
+      .run();
+
+    const response = await app.request(
+      "/api/sysadmin/preferences",
+      {
+        method: "PATCH",
+        headers: await jsonHeaders("sys_owner"),
+        body: JSON.stringify({ preferredProviderKeyId: "key_perm_extra" })
+      },
+      context.env
+    );
+
+    expect(response.status).toBe(200);
+    const user = await context.env.DB.prepare(
+      "SELECT preferred_provider_key_id, provider_key_group_id FROM users WHERE id = 'sys_owner'"
+    ).first<{ preferred_provider_key_id: string | null; provider_key_group_id: string | null }>();
+    const group = await context.env.DB.prepare(
+      "SELECT name, enabled, deleted_at FROM provider_key_groups WHERE id = 'pkg_key_perm_extra'"
+    ).first<{ name: string; enabled: number; deleted_at: number | null }>();
+    const member = await context.env.DB.prepare(
+      `SELECT provider_key_id FROM provider_key_group_members
+       WHERE group_id = 'pkg_key_perm_extra'`
+    ).first<{ provider_key_id: string }>();
+
+    expect(user).toEqual({
+      preferred_provider_key_id: "key_perm_extra",
+      provider_key_group_id: "pkg_key_perm_extra"
+    });
+    expect(group).toEqual({
+      name: "key_perm_extra 默认分组",
+      enabled: 1,
+      deleted_at: null
+    });
+    expect(member).toEqual({ provider_key_id: "key_perm_extra" });
+  });
+
   it("lets sysadmin grant Grok image access only to selected admins", async () => {
     const update = await app.request(
       "/api/sysadmin/generation-features",
