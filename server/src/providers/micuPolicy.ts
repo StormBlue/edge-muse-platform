@@ -9,6 +9,7 @@ export const MICU_SIZE_ALIGNMENT = 16;
 export const MICU_STANDARD_PARALLEL_GENERATIONS = 5;
 export const MICU_PRO_PARALLEL_GENERATIONS = 1;
 export const AUTO_IMAGE_SIZE = "auto";
+const MICU_EXACT_SIZE_PRESETS = new Set<string>(["640x200"]);
 
 const LEGACY_MICU_SIZE_ALIASES: Record<string, string> = {
   "872x1240": "880x1248",
@@ -27,6 +28,7 @@ const LEGACY_MICU_SIZE_ALIASES: Record<string, string> = {
  */
 export const MICU_IMAGE_SIZE_PRESETS = [
   AUTO_IMAGE_SIZE,
+  "640x200",
   "1024x1024",
   "1280x720",
   "720x1280",
@@ -83,7 +85,9 @@ export function isMicu4KSize(size: string): boolean {
 }
 
 export function isValidMicuImageSize(size: string): boolean {
-  const match = /^(\d+)x(\d+)$/i.exec(normalizeMicuImageSize(size));
+  const normalized = normalizeMicuImageSize(size);
+  if (isMicuExactSizePreset(normalized)) return true;
+  const match = /^(\d+)x(\d+)$/i.exec(normalized);
   if (!match) return false;
   const width = Number(match[1]);
   const height = Number(match[2]);
@@ -100,6 +104,10 @@ export function isValidMicuImageSize(size: string): boolean {
 export function normalizeMicuImageSize(size: string): string {
   const normalized = size.trim().toLowerCase();
   return LEGACY_MICU_SIZE_ALIASES[normalized] ?? normalized;
+}
+
+export function isMicuExactSizePreset(size: string): boolean {
+  return MICU_EXACT_SIZE_PRESETS.has(normalizeMicuImageSize(size));
 }
 
 export function effectiveMicuModel(model: string, size: string): string {

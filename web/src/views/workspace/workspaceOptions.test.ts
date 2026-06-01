@@ -22,16 +22,21 @@ describe("workspace size options", () => {
       requestFormat: "micu_images",
       model: "gpt-image-2",
       supportedModes: ["image2image", "text2image"],
-      supportedSizes: ["3840x2160", "auto", "1760x2480", "1024x1024"],
+      supportedSizes: ["3840x2160", "auto", "1760x2480", "640x200", "1024x1024"],
       maxReferenceImages: 1
     });
 
     expect(options.map((option) => option.value)).toEqual([
       "auto",
+      "640x200",
       "1024x1024",
       "1760x2480",
       "3840x2160"
     ]);
+    expect(options.find((option) => option.value === "640x200")?.label).toBe(
+      "WeChat banner · 640 x 200"
+    );
+    expect(options.find((option) => option.value === "640x200")?.ratio).toBe("16:5");
     expect(options.find((option) => option.value === "1760x2480")?.label).toBe(
       "A4 portrait · 1760 x 2480"
     );

@@ -71,6 +71,7 @@ describe("provider capability validation", () => {
     });
 
     expect(capabilities.supportedSizes[0]).toBe("auto");
+    expect(capabilities.supportedSizes).toContain("640x200");
     expect(capabilities.supportedSizes).toContain("1760x2480");
   });
 
@@ -95,6 +96,25 @@ describe("provider capability validation", () => {
         n: 1
       })
     ).toThrow("Cubence does not support size 1536x1024");
+  });
+
+  it("keeps the WeChat banner size scoped to Micu", () => {
+    expect(() =>
+      assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
+        prompt: "a WeChat official account banner",
+        mode: "text2image",
+        size: "640x200",
+        n: 1
+      })
+    ).not.toThrow();
+    expect(() =>
+      assertProviderSupportsGenerateParams(cubenceProvider, providerImpl, {
+        prompt: "a WeChat official account banner",
+        mode: "text2image",
+        size: "640x200",
+        n: 1
+      })
+    ).toThrow();
   });
 
   it("rejects Micu image-to-image high-resolution sizes before provider billing", () => {

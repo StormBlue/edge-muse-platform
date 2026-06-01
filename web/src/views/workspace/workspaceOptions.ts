@@ -51,6 +51,7 @@ const DEFAULT_SIZE_VALUES = [
 
 const COMMON_SIZE_USAGE_ORDER = [
   "auto",
+  "640x200",
   "1024x1024",
   "1536x1024",
   "1024x1536",
@@ -95,6 +96,7 @@ const COMMON_SIZE_RANK = new Map<string, number>(
 );
 
 const NAMED_SIZE_LABELS: Record<string, string> = {
+  "640x200": "WeChat banner",
   "880x1248": "A6 portrait",
   "1248x880": "A6 landscape",
   "1248x1760": "A5 portrait",

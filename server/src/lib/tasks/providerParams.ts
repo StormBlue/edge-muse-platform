@@ -5,6 +5,7 @@ import type { GenerateParams } from "../../types";
 import type { ImageProvider } from "../../providers/types";
 import {
   isMicu4KSize,
+  isMicuExactSizePreset,
   isMicuHighResolutionSize,
   isValidMicuImageSize,
   MICU_MAX_SIZE_EDGE,
@@ -51,7 +52,7 @@ export function assertProviderSupportsGenerateParams(
   if (
     shouldEnforceSizeAlignment(provider) &&
     params.size !== "auto" &&
-    !isValidMicuImageSize(params.size)
+    !isValidProviderImageSize(provider, params.size)
   ) {
     throw appError(
       "VALIDATION_ERROR",
@@ -103,6 +104,14 @@ function shouldEnforceSizeAlignment(provider: Pick<ProviderRow, "requestFormat">
     provider.requestFormat === "openai_compatible" ||
     provider.requestFormat === "openai_images"
   );
+}
+
+function isValidProviderImageSize(
+  provider: Pick<ProviderRow, "requestFormat">,
+  size: string
+): boolean {
+  if (provider.requestFormat === MICU_REQUEST_FORMAT) return isValidMicuImageSize(size);
+  return isValidMicuImageSize(size) && !isMicuExactSizePreset(size);
 }
 
 function modeLabel(mode: GenerateParams["mode"]): string {
