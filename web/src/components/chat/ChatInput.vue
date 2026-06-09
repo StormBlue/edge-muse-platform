@@ -66,6 +66,12 @@ const {
 function updateGenerationTarget(value: unknown) {
   if (value) generationTargetId.value = String(value);
 }
+
+function onPromptKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || (!event.metaKey && !event.ctrlKey)) return;
+  event.preventDefault();
+  submit();
+}
 </script>
 
 <template>
@@ -151,8 +157,7 @@ function updateGenerationTarget(value: unknown) {
             v-model="prompt"
             class="task-prompt-textarea resize-none px-3 py-3 text-sm leading-6"
             :placeholder="t('workspace.promptPlaceholder')"
-            @keydown.meta.enter.prevent="submit"
-            @keydown.ctrl.enter.prevent="submit"
+            @keydown="onPromptKeydown"
           />
         </label>
       </section>

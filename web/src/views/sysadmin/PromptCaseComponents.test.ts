@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import PromptCaseEditor from "./PromptCaseEditor.vue";
@@ -11,9 +11,14 @@ vi.mock("vue-i18n", () => ({
   useI18n: () => ({ t: (key: string) => key })
 }));
 
+afterEach(() => {
+  document.body.innerHTML = "";
+});
+
 describe("PromptCaseImportDialog", () => {
   it("updates fields and emits submit from the import form", async () => {
     const wrapper = mount(PromptCaseImportDialog, {
+      attachTo: document.body,
       props: {
         open: true,
         source: "manual",
@@ -22,12 +27,13 @@ describe("PromptCaseImportDialog", () => {
         saving: false
       }
     });
+    await nextTick();
 
-    const inputs = wrapper.findAll("input");
-    await inputs[0].setValue("awesome-gpt-image-2-prompts");
-    await inputs[1].setValue("https://github.com/EvoLinkAI/awesome-gpt-image-2-prompts");
-    await wrapper.find("textarea").setValue('[{"title":"案例"}]');
-    await wrapper.find("form").trigger("submit");
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>("input"));
+    await setInputValue(inputs[0], "awesome-gpt-image-2-prompts");
+    await setInputValue(inputs[1], "https://github.com/EvoLinkAI/awesome-gpt-image-2-prompts");
+    await setInputValue(document.querySelector("textarea") ?? undefined, '[{"title":"案例"}]');
+    submitCurrentForm();
 
     expect(wrapper.emitted("update:source")?.at(-1)).toEqual(["awesome-gpt-image-2-prompts"]);
     expect(wrapper.emitted("update:sourceUrl")?.at(-1)).toEqual([
@@ -35,6 +41,7 @@ describe("PromptCaseImportDialog", () => {
     ]);
     expect(wrapper.emitted("update:payload")?.at(-1)).toEqual(['[{"title":"案例"}]']);
     expect(wrapper.emitted("submit")).toHaveLength(1);
+    wrapper.unmount();
   });
 });
 
@@ -59,7 +66,9 @@ describe("PromptCaseEditor", () => {
     });
     await nextTick();
 
-    const textInputs = Array.from(document.querySelectorAll<HTMLInputElement>("input.ui-field"));
+    const textInputs = Array.from(
+      document.querySelectorAll<HTMLInputElement>('input:not([type="file"])')
+    );
     await setInputValue(textInputs[0], "  新标题  ");
     await setInputValue(textInputs[1], "  商品海报  ");
     const tagsInput = textInputs.find((input) => input.value === "旧标签");
@@ -68,7 +77,7 @@ describe("PromptCaseEditor", () => {
     const textareas = Array.from(document.querySelectorAll<HTMLTextAreaElement>("textarea"));
     await setInputValue(textareas[0], "  用于商品详情页  ");
     await setInputValue(textareas[1], "  专业棚拍 prompt  ");
-    document.querySelector("form")?.dispatchEvent(new Event("submit", { bubbles: true }));
+    submitCurrentForm();
     await nextTick();
 
     const saved = wrapper.emitted("save")?.[0]?.[0];
@@ -97,7 +106,7 @@ describe("PromptCaseTable", () => {
     });
 
     await wrapper.findAll("tbody tr")[0].trigger("click");
-    await wrapper.findAll('input[type="checkbox"]')[1].setValue(true);
+    await wrapper.findAll('[role="checkbox"]')[1].trigger("click");
     await buttonByText(wrapper, "sysadmin.edit").trigger("click");
     await buttonByText(wrapper, "promptCases.feature").trigger("click");
     await buttonByText(wrapper, "promptCases.publish").trigger("click");
@@ -124,6 +133,12 @@ async function setInputValue(
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
   await nextTick();
+}
+
+function submitCurrentForm() {
+  const form = document.querySelector("form");
+  if (!form) throw new Error("Form not found");
+  form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 
 function promptCase(overrides: Partial<PromptCase> = {}): PromptCase {

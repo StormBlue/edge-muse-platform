@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest-batches.mjs",
     "types": "wrangler types",
     "db:gen": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply edge-muse --local",
@@ -21,17 +21,17 @@
   },
   "dependencies": {
     "@hono/zod-validator": "0.8.0",
-    "@scalar/hono-api-reference": "0.10.16",
+    "@scalar/hono-api-reference": "0.10.20",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.21",
+    "hono": "4.12.23",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260520.1",
+    "@cloudflare/workers-types": "4.20260608.1",
     "drizzle-kit": "0.31.10",
-    "miniflare": "4.20260518.0",
+    "miniflare": "4.20260603.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.6",
-    "wrangler": "4.93.0"
+    "vitest": "4.1.8",
+    "wrangler": "4.98.0"
   }
 }

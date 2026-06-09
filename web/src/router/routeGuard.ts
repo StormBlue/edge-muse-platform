@@ -6,16 +6,21 @@
  */
 import { homePath } from "./homePath";
 import type { GenerationEntry } from "@/api/generation";
+import type { RouteMeta } from "vue-router";
 
 export type RouteAccessRole = "admin" | "sysadmin";
+
+declare module "vue-router" {
+  interface RouteMeta {
+    public?: boolean;
+    role?: RouteAccessRole;
+  }
+}
 
 export type RouteAccessTarget = {
   path: string;
   fullPath: string;
-  meta: {
-    public?: boolean;
-    role?: RouteAccessRole;
-  };
+  meta: RouteMeta;
 };
 
 export type RouteAccessAuthState = {
