@@ -28,6 +28,7 @@ type AdminRow = {
   providerKeyGroupName?: string | null;
   providerKeyGroupProviderId?: string | null;
   maxConcurrentTasks?: number | null;
+  maxImagesPerGeneration?: number | null;
   allocatedQuota: number | null;
   usedQuota: number | null;
 };
@@ -44,6 +45,7 @@ type AdminUpdatePayload = {
   status?: "active" | "disabled";
   providerKeyGroupId?: string;
   maxConcurrentTasks?: number;
+  maxImagesPerGeneration?: number;
   quota?: number | null;
   password?: string;
 };
@@ -63,6 +65,7 @@ const form = ref({
   nickname: "",
   providerKeyGroupId: "",
   maxConcurrentTasks: 10,
+  maxImagesPerGeneration: 1,
   quota: 100
 });
 const editForm = ref({
@@ -70,6 +73,7 @@ const editForm = ref({
   status: "active" as "active" | "disabled",
   providerKeyGroupId: "",
   maxConcurrentTasks: 10,
+  maxImagesPerGeneration: 1,
   quota: 100 as number | null,
   password: ""
 });
@@ -116,6 +120,7 @@ function openCreate() {
     nickname: "",
     providerKeyGroupId: groups.value[0]?.id ?? "",
     maxConcurrentTasks: 10,
+    maxImagesPerGeneration: 1,
     quota: 100
   };
   createOpen.value = true;
@@ -142,6 +147,7 @@ function openEdit(admin: AdminRow) {
     status: admin.status,
     providerKeyGroupId: admin.providerKeyGroupId ?? "",
     maxConcurrentTasks: admin.maxConcurrentTasks ?? 10,
+    maxImagesPerGeneration: admin.maxImagesPerGeneration ?? 1,
     quota: admin.allocatedQuota,
     password: ""
   };
@@ -163,6 +169,9 @@ async function saveEdit() {
   }
   if (editForm.value.maxConcurrentTasks !== (admin.maxConcurrentTasks ?? 10)) {
     payload.maxConcurrentTasks = editForm.value.maxConcurrentTasks;
+  }
+  if (editForm.value.maxImagesPerGeneration !== (admin.maxImagesPerGeneration ?? 1)) {
+    payload.maxImagesPerGeneration = editForm.value.maxImagesPerGeneration;
   }
   if (editForm.value.quota !== admin.allocatedQuota) payload.quota = editForm.value.quota;
   if (editForm.value.password) payload.password = editForm.value.password;
@@ -212,6 +221,7 @@ onMounted(load);
             <th class="p-3">{{ t("sysadmin.adminsTitle") }}</th>
             <th class="p-3">{{ t("sysadmin.providerKeyGroup") }}</th>
             <th class="p-3">{{ t("adminUsers.maxConcurrentTasks") }}</th>
+            <th class="p-3">{{ t("adminUsers.maxImagesPerGeneration") }}</th>
             <th class="p-3">{{ t("common.quota") }}</th>
             <th class="p-3">{{ t("adminUsers.status") }}</th>
             <th class="p-3"></th>
@@ -230,6 +240,7 @@ onMounted(load);
               </p>
             </td>
             <td class="p-3">{{ admin.maxConcurrentTasks ?? 10 }}</td>
+            <td class="p-3">{{ admin.maxImagesPerGeneration ?? 1 }}</td>
             <td class="p-3">{{ admin.usedQuota ?? 0 }} / {{ admin.allocatedQuota ?? "∞" }}</td>
             <td class="p-3">
               {{ admin.status === "active" ? t("common.enabled") : t("common.disabled") }}
@@ -296,6 +307,16 @@ onMounted(load);
         />
       </label>
       <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.maxImagesPerGeneration") }}</span>
+        <Input
+          v-model.number="form.maxImagesPerGeneration"
+          class="mt-1.5 h-10"
+          max="20"
+          min="1"
+          type="number"
+        />
+      </label>
+      <label class="block text-sm font-medium">
         <span>{{ t("adminUsers.initialQuota") }}</span>
         <Input v-model.number="form.quota" class="mt-1.5 h-10" type="number" />
       </label>
@@ -349,6 +370,16 @@ onMounted(load);
           v-model.number="editForm.maxConcurrentTasks"
           class="mt-1.5 h-10"
           max="15"
+          min="1"
+          type="number"
+        />
+      </label>
+      <label class="block text-sm font-medium">
+        <span>{{ t("adminUsers.maxImagesPerGeneration") }}</span>
+        <Input
+          v-model.number="editForm.maxImagesPerGeneration"
+          class="mt-1.5 h-10"
+          max="20"
           min="1"
           type="number"
         />

@@ -408,6 +408,7 @@
     "taskCount": "Tasks",
     "remainingQuota": "Remaining quota",
     "maxConcurrentTasks": "Max concurrent tasks",
+    "maxImagesPerGeneration": "Max images per generation",
     "statusShare": "Status share",
     "modeShare": "Mode share",
     "thirtyDayTrend": "30-day trend",

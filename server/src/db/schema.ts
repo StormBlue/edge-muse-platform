@@ -36,6 +36,8 @@ export const users = sqliteTable(
     providerKeyGroupId: text("provider_key_group_id"),
     /** 用户级最大 queued/running 任务数；null 表示使用角色默认值或 sysadmin 不限。 */
     maxConcurrentTasks: integer("max_concurrent_tasks"),
+    /** 用户级单次生成张数上限；null 表示使用角色默认值。sysadmin 自身不受此字段限制。 */
+    maxImagesPerGeneration: integer("max_images_per_generation"),
     locale: text("locale").notNull().default("zh-CN"),
     status: text("status", { enum: ["active", "disabled"] })
       .notNull()

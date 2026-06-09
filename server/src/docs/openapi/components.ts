@@ -90,6 +90,13 @@ export const components = {
           type: "integer",
           nullable: true,
           description: "账号级 queued/running 生成任务上限；sysadmin 不受此字段限制。"
+        },
+        maxImagesPerGeneration: {
+          type: "integer",
+          nullable: true,
+          minimum: 1,
+          maximum: 20,
+          description: "admin/user 账号级单次生成张数上限；未设置时默认 1。"
         }
       },
       additionalProperties: true
@@ -324,6 +331,7 @@ export const components = {
         providerKeyGroupName: { type: "string", nullable: true },
         providerKeyGroupProviderId: { type: "string", nullable: true },
         maxConcurrentTasks: { type: "integer", nullable: true },
+        maxImagesPerGeneration: { type: "integer", nullable: true, minimum: 1, maximum: 20 },
         generationCount: { type: "integer", nullable: true },
         lastLoginAt: { type: "integer", nullable: true },
         lastGenerationAt: { type: "integer", nullable: true },

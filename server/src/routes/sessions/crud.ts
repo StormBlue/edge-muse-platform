@@ -30,7 +30,7 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
     async (c) => {
       const user = c.get("user");
       const body = c.req.valid("json");
-      assertImageCountAllowed(user.role, body.settings.n);
+      assertImageCountAllowed(user.role, body.settings.n, user.maxImagesPerGeneration);
       const id = newId("ses");
       const timestamp = now();
       const title = body.title ?? defaultSessionTitle(timestamp);
@@ -116,7 +116,10 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
       const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
       const body = c.req.valid("json");
       const db = getDb(c.env);
-      if (body.settings) assertImageCountAllowed(c.get("user").role, body.settings.n);
+      if (body.settings) {
+        const user = c.get("user");
+        assertImageCountAllowed(user.role, body.settings.n, user.maxImagesPerGeneration);
+      }
       if (body.title !== undefined) {
         const task = await db.query.tasks.findFirst({
           where: eq(tasks.sessionId, session.id)

@@ -59,6 +59,10 @@ const { locale, t } = useI18n();
           {{ t("adminUsers.maxConcurrentTasks") }}:
           {{ selectedUser.maxConcurrentTasks ?? (selectedUser.role === "admin" ? 10 : 5) }}
         </p>
+        <p>
+          {{ t("adminUsers.maxImagesPerGeneration") }}:
+          {{ selectedUser.maxImagesPerGeneration ?? 1 }}
+        </p>
       </div>
     </div>
 

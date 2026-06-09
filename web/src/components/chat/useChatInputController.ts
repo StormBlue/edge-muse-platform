@@ -39,6 +39,7 @@ export type ChatInputProps = {
   initialSize?: string;
   initialCount?: number;
   allowCustomCount?: boolean;
+  maxCustomCount?: number;
   referenceCount?: number;
   referenceImages?: ImageAttachment[];
   sizeOptions?: ChatInputSizeOption[];
@@ -59,7 +60,7 @@ const DEFAULT_SIZE_OPTIONS: ChatInputSizeOption[] = [
 ];
 
 const defaultMaxReferenceFiles = 5;
-const maxCustomCount = 200;
+const defaultMaxCustomCount = 200;
 
 export function useChatInputController(props: ChatInputProps, emit: ChatInputEmit) {
   const { t } = useI18n();
@@ -86,6 +87,11 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   const highResolutionCountLocked = computed(
     () => Boolean(props.limitHighResolutionCount) && isHighResolutionSize(size.value)
   );
+  const effectiveMaxCustomCount = computed(() => {
+    const configured = props.maxCustomCount ?? defaultMaxCustomCount;
+    if (!Number.isFinite(configured)) return defaultMaxCustomCount;
+    return Math.max(1, Math.min(defaultMaxCustomCount, Math.floor(configured)));
+  });
   const countSelectionDisabled = computed(
     () => isReadOnly.value || !props.allowCustomCount || highResolutionCountLocked.value
   );
@@ -180,7 +186,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   );
 
   watch(
-    () => [props.initialCount, props.allowCustomCount] as const,
+    () => [props.initialCount, props.allowCustomCount, effectiveMaxCustomCount.value] as const,
     ([next]) => {
       setNormalizedCount(
         props.allowCustomCount && typeof next === "number" && !highResolutionCountLocked.value
@@ -297,7 +303,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   }
 
   function clampImageCount(value: number) {
-    return Math.min(maxCustomCount, Math.max(1, Math.floor(value)));
+    return Math.min(effectiveMaxCustomCount.value, Math.max(1, Math.floor(value)));
   }
 
   function setNormalizedCount(value: number) {
@@ -326,7 +332,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     isReadOnly,
     isImageToImage,
     isBusy,
-    maxCustomCount,
+    maxCustomCount: effectiveMaxCustomCount,
     highResolutionCountLocked,
     submitDisabled,
     countSelectionDisabled,

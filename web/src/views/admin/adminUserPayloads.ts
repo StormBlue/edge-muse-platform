@@ -6,6 +6,7 @@ export type AdminUserEditPayload = {
   status?: "active" | "disabled";
   providerKeyGroupId?: string;
   maxConcurrentTasks?: number;
+  maxImagesPerGeneration?: number;
   quota?: number | null;
   password?: string;
 };
@@ -16,6 +17,7 @@ export function createAdminEditFormForUser(user: AdminUser): AdminEditUserForm {
     status: user.status,
     providerKeyGroupId: user.providerKeyGroupId ?? "",
     maxConcurrentTasks: user.maxConcurrentTasks ?? (user.role === "admin" ? 10 : 5),
+    maxImagesPerGeneration: user.maxImagesPerGeneration ?? 1,
     quota: user.allocatedQuota,
     password: ""
   };
@@ -36,6 +38,9 @@ export function buildAdminUserEditPayload(
     editForm.maxConcurrentTasks !== (user.maxConcurrentTasks ?? (user.role === "admin" ? 10 : 5))
   ) {
     payload.maxConcurrentTasks = editForm.maxConcurrentTasks;
+  }
+  if (editForm.maxImagesPerGeneration !== (user.maxImagesPerGeneration ?? 1)) {
+    payload.maxImagesPerGeneration = editForm.maxImagesPerGeneration;
   }
   if (editForm.quota !== user.allocatedQuota) payload.quota = editForm.quota;
   if (editForm.password) payload.password = editForm.password;

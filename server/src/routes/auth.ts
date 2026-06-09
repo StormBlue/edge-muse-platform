@@ -233,6 +233,7 @@ function publicUser(user: {
   preferredProviderKeyId?: string | null;
   providerKeyGroupId?: string | null;
   maxConcurrentTasks?: number | null;
+  maxImagesPerGeneration?: number | null;
 }): AuthUser {
   return {
     id: user.id,
@@ -243,6 +244,7 @@ function publicUser(user: {
     status: user.status,
     preferredProviderKeyId: user.preferredProviderKeyId ?? null,
     providerKeyGroupId: user.providerKeyGroupId ?? null,
-    maxConcurrentTasks: user.maxConcurrentTasks ?? null
+    maxConcurrentTasks: user.maxConcurrentTasks ?? null,
+    maxImagesPerGeneration: user.maxImagesPerGeneration ?? null
   };
 }

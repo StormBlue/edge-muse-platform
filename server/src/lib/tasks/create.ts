@@ -132,7 +132,12 @@ export async function createGenerateTask(
   });
   const params = {
     ...input.params,
-    n: resolveImageCountForRole(user.role, input.params.mode, input.params.n),
+    n: resolveImageCountForRole(
+      user.role,
+      input.params.mode,
+      input.params.n,
+      user.maxImagesPerGeneration
+    ),
     referenceImageIds
   };
   const generationTarget = await resolveGenerationTargetForUser(env, {

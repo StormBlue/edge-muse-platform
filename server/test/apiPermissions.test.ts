@@ -223,22 +223,23 @@ describe("provider key group API permissions", () => {
     expect(key?.enabled).toBe(0);
   });
 
-  it("allows an admin to update only a managed user max concurrent task limit", async () => {
+  it("allows an admin to update only managed user generation limits", async () => {
     const response = await app.request(
       "/api/admin/users/usr_managed",
       {
         method: "PATCH",
         headers: await jsonHeaders("adm_owner"),
-        body: JSON.stringify({ maxConcurrentTasks: 7 })
+        body: JSON.stringify({ maxConcurrentTasks: 7, maxImagesPerGeneration: 12 })
       },
       context.env
     );
 
     expect(response.status).toBe(200);
     const user = await context.env.DB.prepare(
-      "SELECT max_concurrent_tasks FROM users WHERE id = 'usr_managed'"
-    ).first<{ max_concurrent_tasks: number }>();
+      "SELECT max_concurrent_tasks, max_images_per_generation FROM users WHERE id = 'usr_managed'"
+    ).first<{ max_concurrent_tasks: number; max_images_per_generation: number }>();
     expect(user?.max_concurrent_tasks).toBe(7);
+    expect(user?.max_images_per_generation).toBe(12);
   });
 
   it("rejects admin edits to users outside their tenant", async () => {
@@ -271,6 +272,56 @@ describe("provider key group API permissions", () => {
 
     expect(response.status).toBe(403);
     expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("allows a configured managed user to generate multiple images in one task", async () => {
+    await context.env.DB.prepare(
+      "UPDATE users SET max_images_per_generation = 3 WHERE id = 'usr_managed'"
+    ).run();
+
+    const response = await app.request(
+      "/api/generate",
+      {
+        method: "POST",
+        headers: await jsonHeaders("usr_managed"),
+        body: JSON.stringify({
+          prompt: "three cats",
+          mode: "text2image",
+          size: "1024x1024",
+          n: 3
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as { taskId: string };
+
+    expect(response.status).toBe(202);
+    const task = await context.env.DB.prepare("SELECT params FROM tasks WHERE id = ?1")
+      .bind(body.taskId)
+      .first<{ params: string }>();
+    expect(JSON.parse(task?.params ?? "{}")).toMatchObject({ n: 3 });
+  });
+
+  it("rejects multiple-image generation when the user limit is still the default", async () => {
+    const response = await app.request(
+      "/api/generate",
+      {
+        method: "POST",
+        headers: await jsonHeaders("usr_other"),
+        body: JSON.stringify({
+          prompt: "two cats",
+          mode: "text2image",
+          size: "1024x1024",
+          n: 2
+        })
+      },
+      context.env
+    );
+    const body = (await response.json()) as ApiErrorBody;
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(body.error.message).toContain("Image count must be between 1 and 1");
   });
 
   it("restores a soft-deleted legacy default key group when sysadmin changes preferences", async () => {
@@ -639,42 +690,48 @@ async function seedPermissionFixture(env: AppBindings) {
     role: "sysadmin",
     createdBy: null,
     providerKeyGroupId: null,
-    maxConcurrentTasks: null
+    maxConcurrentTasks: null,
+    maxImagesPerGeneration: null
   });
   await seedUser(env, {
     id: "adm_owner",
     role: "admin",
     createdBy: "sys_owner",
     providerKeyGroupId: "grp_perm",
-    maxConcurrentTasks: 10
+    maxConcurrentTasks: 10,
+    maxImagesPerGeneration: 1
   });
   await seedUser(env, {
     id: "adm_other",
     role: "admin",
     createdBy: "sys_owner",
     providerKeyGroupId: "grp_perm",
-    maxConcurrentTasks: 10
+    maxConcurrentTasks: 10,
+    maxImagesPerGeneration: 1
   });
   await seedUser(env, {
     id: "usr_managed",
     role: "user",
     createdBy: "adm_owner",
     providerKeyGroupId: "grp_perm",
-    maxConcurrentTasks: 5
+    maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1
   });
   await seedUser(env, {
     id: "usr_other",
     role: "user",
     createdBy: "adm_other",
     providerKeyGroupId: "grp_perm",
-    maxConcurrentTasks: 5
+    maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1
   });
   await seedUser(env, {
     id: "usr_no_group",
     role: "user",
     createdBy: "adm_owner",
     providerKeyGroupId: null,
-    maxConcurrentTasks: 5
+    maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1
   });
 }
 
@@ -704,6 +761,7 @@ async function seedUser(
     createdBy: string | null;
     providerKeyGroupId: string | null;
     maxConcurrentTasks: number | null;
+    maxImagesPerGeneration: number | null;
   }
 ) {
   const timestamp = 1_778_000_000_000;
@@ -711,8 +769,9 @@ async function seedUser(
     `INSERT INTO users (
        id, email, username, password_hash, nickname, role, created_by,
        preferred_provider_key_id, provider_key_group_id, max_concurrent_tasks,
+       max_images_per_generation,
        locale, status, created_at, updated_at, last_login_at
-     ) VALUES (?1, ?2, ?1, 'hash', ?1, ?3, ?4, NULL, ?5, ?6, 'zh-CN', 'active', ?7, ?7, NULL)`
+     ) VALUES (?1, ?2, ?1, 'hash', ?1, ?3, ?4, NULL, ?5, ?6, ?7, 'zh-CN', 'active', ?8, ?8, NULL)`
   )
     .bind(
       input.id,
@@ -721,6 +780,7 @@ async function seedUser(
       input.createdBy,
       input.providerKeyGroupId,
       input.maxConcurrentTasks,
+      input.maxImagesPerGeneration,
       timestamp
     )
     .run();

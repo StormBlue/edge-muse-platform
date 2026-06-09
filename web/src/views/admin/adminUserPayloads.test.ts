@@ -10,23 +10,36 @@ describe("admin user group payload helpers", () => {
   });
 
   it("creates edit form defaults from the user's key group and role limit", () => {
-    const admin = user({ role: "admin", providerKeyGroupId: "grp_2", maxConcurrentTasks: null });
-    const normalUser = user({ role: "user", providerKeyGroupId: null, maxConcurrentTasks: null });
+    const admin = user({
+      role: "admin",
+      providerKeyGroupId: "grp_2",
+      maxConcurrentTasks: null,
+      maxImagesPerGeneration: null
+    });
+    const normalUser = user({
+      role: "user",
+      providerKeyGroupId: null,
+      maxConcurrentTasks: null,
+      maxImagesPerGeneration: null
+    });
 
     expect(createAdminEditFormForUser(admin)).toMatchObject({
       providerKeyGroupId: "grp_2",
-      maxConcurrentTasks: 10
+      maxConcurrentTasks: 10,
+      maxImagesPerGeneration: 1
     });
     expect(createAdminEditFormForUser(normalUser)).toMatchObject({
       providerKeyGroupId: "",
-      maxConcurrentTasks: 5
+      maxConcurrentTasks: 5,
+      maxImagesPerGeneration: 1
     });
   });
 
-  it("builds edit payloads only for changed group and concurrency fields", () => {
+  it("builds edit payloads only for changed group and generation limit fields", () => {
     const original = user({
       providerKeyGroupId: "grp_1",
       maxConcurrentTasks: 5,
+      maxImagesPerGeneration: 1,
       allocatedQuota: 10
     });
 
@@ -36,6 +49,7 @@ describe("admin user group payload helpers", () => {
         status: original.status,
         providerKeyGroupId: "grp_1",
         maxConcurrentTasks: 5,
+        maxImagesPerGeneration: 1,
         quota: 10,
         password: ""
       })
@@ -47,6 +61,7 @@ describe("admin user group payload helpers", () => {
         status: "disabled",
         providerKeyGroupId: "grp_2",
         maxConcurrentTasks: 8,
+        maxImagesPerGeneration: 12,
         quota: null,
         password: "password456"
       })
@@ -55,6 +70,7 @@ describe("admin user group payload helpers", () => {
       status: "disabled",
       providerKeyGroupId: "grp_2",
       maxConcurrentTasks: 8,
+      maxImagesPerGeneration: 12,
       quota: null,
       password: "password456"
     });
@@ -98,6 +114,7 @@ function user(overrides: Partial<AdminUser> = {}): AdminUser {
     providerKeyGroupName: "Primary Group",
     providerKeyGroupProviderId: "prv_micu",
     maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1,
     allocatedQuota: 10,
     usedQuota: 0,
     generationCount: 0,

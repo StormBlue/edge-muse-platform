@@ -116,6 +116,25 @@ describe("ChatInput", () => {
     });
   });
 
+  it("clamps custom image counts to the configured user limit", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        allowCustomCount: true,
+        maxCustomCount: 3,
+        sizeOptions: [{ value: "1024x1024", ratio: "1:1", label: "1024 x 1024" }]
+      }
+    });
+
+    await wrapper.get("textarea").setValue("生成三张候选");
+    const countInput = wrapper.get('input[type="number"]');
+    await countInput.setValue("12");
+    await wrapper.get("form").trigger("submit");
+
+    expect((countInput.element as HTMLInputElement).value).toBe("3");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ n: 3 });
+  });
+
   it("normalizes a blank custom image count before submit", async () => {
     const wrapper = mount(ChatInput, {
       props: {

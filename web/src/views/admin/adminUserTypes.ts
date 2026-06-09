@@ -10,6 +10,7 @@ export type AdminUser = {
   providerKeyGroupName?: string | null;
   providerKeyGroupProviderId?: string | null;
   maxConcurrentTasks?: number | null;
+  maxImagesPerGeneration?: number | null;
   allocatedQuota: number | null;
   usedQuota: number | null;
   createdAt?: number;

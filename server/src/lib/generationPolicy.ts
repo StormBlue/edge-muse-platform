@@ -1,11 +1,13 @@
 /**
- * 生图张数等**产品策略**（与 docs「仅 sysadmin 可调张数」等对齐）。
+ * 生图张数等**产品策略**。
  */
 import { appError } from "./errors";
 import type { SessionMode, UserRole } from "../types";
 
-/** 普通用户固定张数 */
+/** admin/user 默认单次生成张数 */
 export const DEFAULT_IMAGE_COUNT = 1;
+/** admin/user 可配置的单次生成张数上限 */
+export const MAX_CONFIGURABLE_IMAGE_COUNT = 20;
 /** sysadmin 单次任务允许的最大 n（与 zod、settings 上限一致） */
 export const MAX_SYSADMIN_IMAGE_COUNT = 200;
 /** admin 默认/最大同时 queued+running 任务数 */
@@ -55,16 +57,52 @@ export function assertMaxConcurrentTasksConfigAllowed(role: UserRole, value: num
   }
 }
 
-/** 校验 n 在 [1, MAX] 内，且非 sysadmin 只能为 1 */
-export function assertImageCountAllowed(role: UserRole, count: number): void {
-  if (!Number.isInteger(count) || count < DEFAULT_IMAGE_COUNT || count > MAX_SYSADMIN_IMAGE_COUNT) {
+export function defaultMaxImagesPerGenerationForRole(role: UserRole): number | null {
+  if (role === "sysadmin") return null;
+  return DEFAULT_IMAGE_COUNT;
+}
+
+export function maxConfigurableImagesPerGenerationForRole(role: UserRole): number | null {
+  if (role === "sysadmin") return null;
+  return MAX_CONFIGURABLE_IMAGE_COUNT;
+}
+
+export function resolveMaxImagesPerGenerationForRole(
+  role: UserRole,
+  configured: number | null | undefined
+): number | null {
+  const fallback = defaultMaxImagesPerGenerationForRole(role);
+  const max = maxConfigurableImagesPerGenerationForRole(role);
+  if (fallback === null || max === null) return null;
+  if (configured === null || configured === undefined) return fallback;
+  if (!Number.isInteger(configured) || configured < 1) return fallback;
+  return Math.min(configured, max);
+}
+
+export function assertMaxImagesPerGenerationConfigAllowed(role: UserRole, value: number): void {
+  const max = maxConfigurableImagesPerGenerationForRole(role);
+  if (max === null) return;
+  if (!Number.isInteger(value) || value < DEFAULT_IMAGE_COUNT || value > max) {
+    throw appError("VALIDATION_ERROR", `Max images per generation must be between 1 and ${max}`);
+  }
+}
+
+/** 校验 n 在角色允许范围内。sysadmin 自身最多 200，admin/user 按账号配置最多 20。 */
+export function assertImageCountAllowed(
+  role: UserRole,
+  count: number,
+  configuredMaxImagesPerGeneration?: number | null
+): void {
+  const effectiveMax =
+    role === "sysadmin"
+      ? MAX_SYSADMIN_IMAGE_COUNT
+      : (resolveMaxImagesPerGenerationForRole(role, configuredMaxImagesPerGeneration) ??
+        DEFAULT_IMAGE_COUNT);
+  if (!Number.isInteger(count) || count < DEFAULT_IMAGE_COUNT || count > effectiveMax) {
     throw appError(
       "VALIDATION_ERROR",
-      `Image count must be between ${DEFAULT_IMAGE_COUNT} and ${MAX_SYSADMIN_IMAGE_COUNT}`
+      `Image count must be between ${DEFAULT_IMAGE_COUNT} and ${effectiveMax}`
     );
-  }
-  if (role !== "sysadmin" && count !== DEFAULT_IMAGE_COUNT) {
-    throw appError("VALIDATION_ERROR", "Only system administrators can customize image count");
   }
 }
 
@@ -72,8 +110,9 @@ export function assertImageCountAllowed(role: UserRole, count: number): void {
 export function resolveImageCountForRole(
   role: UserRole,
   _mode: SessionMode,
-  requestedCount: number
+  requestedCount: number,
+  configuredMaxImagesPerGeneration?: number | null
 ): number {
-  assertImageCountAllowed(role, requestedCount);
+  assertImageCountAllowed(role, requestedCount, configuredMaxImagesPerGeneration);
   return requestedCount;
 }

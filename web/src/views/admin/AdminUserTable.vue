@@ -27,7 +27,7 @@ const emit = defineEmits<{
 <template>
   <div class="panel overflow-hidden" :aria-busy="loading">
     <div class="thin-scrollbar max-h-[calc(100vh-10rem)] overflow-auto">
-      <table class="w-full min-w-[82rem] border-collapse text-sm">
+      <table class="w-full min-w-[88rem] border-collapse text-sm">
         <thead class="sticky top-0 z-10 bg-muted text-left text-muted-foreground">
           <tr>
             <th class="w-16 p-3">{{ t("common.sequence") }}</th>
@@ -35,6 +35,7 @@ const emit = defineEmits<{
             <th class="p-3">{{ t("adminUsers.role") }}</th>
             <th class="p-3">{{ t("sysadmin.providerKeyGroup") }}</th>
             <th class="p-3">{{ t("adminUsers.maxConcurrentTasks") }}</th>
+            <th class="p-3">{{ t("adminUsers.maxImagesPerGeneration") }}</th>
             <th class="p-3">{{ t("common.quota") }}</th>
             <th class="p-3">{{ t("adminUsers.lastLoginAt") }}</th>
             <th class="p-3">{{ t("adminUsers.lastGenerationAt") }}</th>
@@ -77,6 +78,7 @@ const emit = defineEmits<{
               </p>
             </td>
             <td class="p-3">{{ user.maxConcurrentTasks ?? (user.role === "admin" ? 10 : 5) }}</td>
+            <td class="p-3">{{ user.maxImagesPerGeneration ?? 1 }}</td>
             <td class="p-3">{{ user.usedQuota ?? 0 }} / {{ user.allocatedQuota ?? "∞" }}</td>
             <td class="p-3 text-muted-foreground">{{ formatDateTime(user.lastLoginAt) }}</td>
             <td class="p-3">
@@ -100,7 +102,6 @@ const emit = defineEmits<{
             <td class="p-3">
               <div class="flex flex-wrap justify-end gap-2">
                 <Button
-                  v-if="authIsSysadmin"
                   class="h-8 text-xs"
                   variant="secondary"
                   type="button"

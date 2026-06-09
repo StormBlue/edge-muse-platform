@@ -408,6 +408,7 @@
     "taskCount": "任务数",
     "remainingQuota": "剩余配额",
     "maxConcurrentTasks": "最大同时任务数",
+    "maxImagesPerGeneration": "单次生成张数上限",
     "statusShare": "状态占比",
     "modeShare": "模式占比",
     "thirtyDayTrend": "30 日趋势",

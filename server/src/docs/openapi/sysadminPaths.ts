@@ -51,6 +51,7 @@ export const sysadminPaths = {
           nickname: { type: "string", minLength: 1 },
           providerKeyGroupId: { type: "string", minLength: 1 },
           maxConcurrentTasks: { type: "integer", minimum: 1, maximum: 15, default: 10 },
+          maxImagesPerGeneration: { type: "integer", minimum: 1, maximum: 20, default: 1 },
           quota: {
             type: "integer",
             nullable: true,
@@ -89,6 +90,7 @@ export const sysadminPaths = {
           status: { type: "string", enum: ["active", "disabled"] },
           providerKeyGroupId: { type: "string", minLength: 1 },
           maxConcurrentTasks: { type: "integer", minimum: 1, maximum: 15 },
+          maxImagesPerGeneration: { type: "integer", minimum: 1, maximum: 20 },
           quota: {
             type: "integer",
             nullable: true,

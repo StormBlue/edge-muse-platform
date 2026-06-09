@@ -44,6 +44,7 @@ export type User = {
   preferredProviderKeyId?: string | null;
   providerKeyGroupId?: string | null;
   maxConcurrentTasks?: number | null;
+  maxImagesPerGeneration?: number | null;
 };
 /** 剩余额度等；`allocatedQuota` 为 null 表示不限制（仅后端 sysadmin 语义） */
 export type Quota = {

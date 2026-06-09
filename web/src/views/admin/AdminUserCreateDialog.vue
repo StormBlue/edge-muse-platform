@@ -84,6 +84,16 @@ const emit = defineEmits<{ submit: [] }>();
       />
     </label>
     <label class="block text-sm font-medium">
+      <span>{{ t("adminUsers.maxImagesPerGeneration") }}</span>
+      <Input
+        v-model.number="form.maxImagesPerGeneration"
+        class="mt-1.5 h-10"
+        max="20"
+        min="1"
+        type="number"
+      />
+    </label>
+    <label class="block text-sm font-medium">
       <span>{{ t("adminUsers.initialQuota") }}</span>
       <Input v-model.number="form.quota" class="mt-1.5 h-10" type="number" />
     </label>

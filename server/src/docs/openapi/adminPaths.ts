@@ -122,6 +122,13 @@ export const adminPaths = {
             maximum: 15,
             description: "admin 最大 15，普通 user 最大 10。"
           },
+          maxImagesPerGeneration: {
+            type: "integer",
+            minimum: 1,
+            maximum: 20,
+            default: 1,
+            description: "账号单次生成张数上限。admin/user 均为 1-20。"
+          },
           quota: {
             type: "integer",
             nullable: true,
@@ -170,6 +177,12 @@ export const adminPaths = {
             maximum: 15,
             description:
               "admin 最大 15，普通 user 最大 10；普通 admin 只能编辑下属 user，因此最大 10。"
+          },
+          maxImagesPerGeneration: {
+            type: "integer",
+            minimum: 1,
+            maximum: 20,
+            description: "账号单次生成张数上限。普通 admin 只能编辑下属 user。"
           },
           quota: {
             type: "integer",

@@ -8,6 +8,7 @@ export type AdminCreateUserForm = {
   email: string;
   providerKeyGroupId: string;
   maxConcurrentTasks: number;
+  maxImagesPerGeneration: number;
   quota: number;
 };
 
@@ -16,6 +17,7 @@ export type AdminEditUserForm = {
   status: "active" | "disabled";
   providerKeyGroupId: string;
   maxConcurrentTasks: number;
+  maxImagesPerGeneration: number;
   quota: number | null;
   password: string;
 };
@@ -38,6 +40,7 @@ export function createDefaultAdminUserForm(
     email: "",
     providerKeyGroupId: isSysadmin ? (groups[0]?.id ?? "") : "",
     maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1,
     quota: 10
   };
 }
@@ -48,6 +51,7 @@ export function createDefaultAdminEditForm(): AdminEditUserForm {
     status: "active",
     providerKeyGroupId: "",
     maxConcurrentTasks: 5,
+    maxImagesPerGeneration: 1,
     quota: 0,
     password: ""
   };

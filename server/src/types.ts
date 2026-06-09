@@ -30,6 +30,8 @@ export type AuthUser = {
   providerKeyGroupId?: string | null;
   /** 允许同时处于 queued/running 的生成任务数；sysadmin 不受此字段限制。 */
   maxConcurrentTasks?: number | null;
+  /** 单次生成张数上限；admin/user 默认 1，sysadmin 自身不受此字段限制。 */
+  maxImagesPerGeneration?: number | null;
 };
 
 /** 等价于 `wrangler` 里声明的 `Env`，含 D1、R2、KV、Secrets 等 */

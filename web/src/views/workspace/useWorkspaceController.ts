@@ -167,6 +167,12 @@ export function useWorkspaceController() {
   });
   const limitHighResolutionCount = computed(() => isMicuProvider.value);
   const maxReferenceFiles = computed(() => providerCapabilities.value?.maxReferenceImages ?? 5);
+  const maxImagesPerGeneration = computed(() => {
+    if (auth.isSysadmin) return 200;
+    const configured = auth.user?.maxImagesPerGeneration ?? 1;
+    return Math.max(1, Math.min(20, Math.floor(configured)));
+  });
+  const allowCustomImageCount = computed(() => auth.isSysadmin || maxImagesPerGeneration.value > 1);
 
   let restoringActiveGeneration = false;
 
@@ -404,6 +410,8 @@ export function useWorkspaceController() {
     providerSizeOptions,
     limitHighResolutionCount,
     maxReferenceFiles,
+    maxImagesPerGeneration,
+    allowCustomImageCount,
     hasRunningTask,
     status,
     newSession,

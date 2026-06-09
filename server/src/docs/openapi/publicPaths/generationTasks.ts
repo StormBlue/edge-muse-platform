@@ -56,9 +56,10 @@ export const generationTaskPaths = {
           n: {
             type: "integer",
             minimum: 1,
-            maximum: 4,
+            maximum: 200,
             default: 1,
-            description: "请求张数；非 sysadmin 角色会按策略压到 1。"
+            description:
+              "请求张数；sysadmin 最多 200，admin/user 按账号 `maxImagesPerGeneration` 限制，最高可配置 20。"
           },
           model: {
             type: "string",

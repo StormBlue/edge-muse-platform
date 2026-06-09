@@ -8,7 +8,12 @@ import { audit } from "../../lib/audit";
 import { appError } from "../../lib/errors";
 import { newId, now } from "../../lib/id";
 import { hashPassword } from "../../lib/password";
-import { assertMaxConcurrentTasksConfigAllowed } from "../../lib/generationPolicy";
+import {
+  assertMaxConcurrentTasksConfigAllowed,
+  assertMaxImagesPerGenerationConfigAllowed,
+  DEFAULT_IMAGE_COUNT,
+  MAX_CONFIGURABLE_IMAGE_COUNT
+} from "../../lib/generationPolicy";
 import { resolveProviderKeyGroup } from "../../lib/providerKeyGroups";
 import { optionalEmailSchema, usernameSchema, type SysadminRouter } from "./common";
 
@@ -25,6 +30,12 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         nickname: z.string().min(1),
         providerKeyGroupId: z.string().min(1),
         maxConcurrentTasks: z.number().int().min(1).max(15).default(10),
+        maxImagesPerGeneration: z
+          .number()
+          .int()
+          .min(DEFAULT_IMAGE_COUNT)
+          .max(MAX_CONFIGURABLE_IMAGE_COUNT)
+          .default(DEFAULT_IMAGE_COUNT),
         quota: z.number().int().min(0).nullable()
       })
     ),
@@ -39,6 +50,7 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       if (existing) throw appError("VALIDATION_ERROR", "Username or email already exists");
 
       assertMaxConcurrentTasksConfigAllowed("admin", body.maxConcurrentTasks);
+      assertMaxImagesPerGenerationConfigAllowed("admin", body.maxImagesPerGeneration);
       await getAssignableProviderKeyGroup(c.env, body.providerKeyGroupId);
 
       const id = newId("adm");
@@ -56,6 +68,7 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
           preferredProviderKeyId: null,
           providerKeyGroupId: body.providerKeyGroupId,
           maxConcurrentTasks: body.maxConcurrentTasks,
+          maxImagesPerGeneration: body.maxImagesPerGeneration,
           locale: "zh-CN",
           status: "active",
           createdAt: timestamp,
@@ -85,6 +98,7 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         providerKeyGroupName: providerKeyGroups.name,
         providerKeyGroupProviderId: providerKeyGroups.providerId,
         maxConcurrentTasks: users.maxConcurrentTasks,
+        maxImagesPerGeneration: users.maxImagesPerGeneration,
         allocatedQuota: quotas.allocatedQuota,
         usedQuota: quotas.usedQuota
       })
@@ -105,6 +119,12 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         status: z.enum(["active", "disabled"]).optional(),
         providerKeyGroupId: z.string().min(1).optional(),
         maxConcurrentTasks: z.number().int().min(1).max(15).optional(),
+        maxImagesPerGeneration: z
+          .number()
+          .int()
+          .min(DEFAULT_IMAGE_COUNT)
+          .max(MAX_CONFIGURABLE_IMAGE_COUNT)
+          .optional(),
         quota: z.number().int().min(0).nullable().optional(),
         password: z.string().min(8).optional()
       })
@@ -119,6 +139,9 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       if (body.maxConcurrentTasks !== undefined) {
         assertMaxConcurrentTasksConfigAllowed("admin", body.maxConcurrentTasks);
       }
+      if (body.maxImagesPerGeneration !== undefined) {
+        assertMaxImagesPerGenerationConfigAllowed("admin", body.maxImagesPerGeneration);
+      }
       if (
         body.providerKeyGroupId !== undefined &&
         body.providerKeyGroupId !== admin.providerKeyGroupId
@@ -131,6 +154,7 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
         status?: "active" | "disabled";
         providerKeyGroupId?: string;
         maxConcurrentTasks?: number;
+        maxImagesPerGeneration?: number;
         passwordHash?: string;
         updatedAt: number;
       } = { updatedAt: timestamp };
@@ -139,6 +163,8 @@ export function registerSysadminAdminRoutes(sysadminRoutes: SysadminRouter) {
       if (changedProviderKeyGroupId) userUpdate.providerKeyGroupId = changedProviderKeyGroupId;
       if (body.maxConcurrentTasks !== undefined)
         userUpdate.maxConcurrentTasks = body.maxConcurrentTasks;
+      if (body.maxImagesPerGeneration !== undefined)
+        userUpdate.maxImagesPerGeneration = body.maxImagesPerGeneration;
       if (body.password !== undefined) userUpdate.passwordHash = await hashPassword(body.password);
       if (Object.keys(userUpdate).length > 1) {
         await getDb(c.env).update(users).set(userUpdate).where(eq(users.id, adminId));

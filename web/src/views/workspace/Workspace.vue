@@ -44,6 +44,8 @@ const {
   providerSizeOptions,
   limitHighResolutionCount,
   maxReferenceFiles,
+  maxImagesPerGeneration,
+  allowCustomImageCount,
   hasRunningTask,
   status,
   newSession,
@@ -92,7 +94,8 @@ const {
           :initial-size="currentGenerationSettings.size"
           :generating="hasRunningTask"
           :loading="inputLoading"
-          :allow-custom-count="auth.isSysadmin"
+          :allow-custom-count="allowCustomImageCount"
+          :max-custom-count="maxImagesPerGeneration"
           :read-only="oneShotTaskLocked"
           :size-options="providerSizeOptions"
           :limit-high-resolution-count="limitHighResolutionCount"

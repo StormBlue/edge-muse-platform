@@ -132,10 +132,15 @@ generateRoutes.post(
       });
       throw appError("VALIDATION_ERROR", "Reference image required for image-to-image");
     }
-    // 非 sysadmin 的 n 会被压到 1；sysadmin 仍受服务商能力校验约束。
+    // sysadmin 自身最多 200；admin/user 按账号配置的单次生成张数上限校验。
     const body = {
       ...generateBody,
-      n: resolveImageCountForRole(user.role, generateBody.mode, generateBody.n),
+      n: resolveImageCountForRole(
+        user.role,
+        generateBody.mode,
+        generateBody.n,
+        user.maxImagesPerGeneration
+      ),
       referenceImageIds
     };
     logInfo("generate.request.normalized", {
@@ -292,7 +297,7 @@ generateRoutes.post("/tasks/:id/retry", requireAuth, async (c) => {
   const params = generateSchema.parse(JSON.parse(task.params));
   const retryParams = {
     ...params,
-    n: resolveImageCountForRole(user.role, params.mode, params.n)
+    n: resolveImageCountForRole(user.role, params.mode, params.n, user.maxImagesPerGeneration)
   };
   const result = await createGenerateTask(c.env, {
     userId: user.id,

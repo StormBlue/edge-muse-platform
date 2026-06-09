@@ -79,10 +79,21 @@ const emit = defineEmits<{ submit: [] }>();
       />
     </label>
     <label class="block text-sm font-medium">
+      <span>{{ t("adminUsers.maxImagesPerGeneration") }}</span>
+      <Input
+        v-model.number="editForm.maxImagesPerGeneration"
+        class="mt-1.5 h-10"
+        max="20"
+        min="1"
+        required
+        type="number"
+      />
+    </label>
+    <label v-if="isSysadmin" class="block text-sm font-medium">
       <span>{{ t("sysadmin.totalQuota") }}</span>
       <Input v-model.number="editForm.quota" class="mt-1.5 h-10" min="0" type="number" />
     </label>
-    <label class="block text-sm font-medium">
+    <label v-if="isSysadmin" class="block text-sm font-medium">
       <span>{{ t("sysadmin.passwordOptional") }}</span>
       <Input v-model="editForm.password" class="mt-1.5 h-10" minlength="8" type="password" />
     </label>
