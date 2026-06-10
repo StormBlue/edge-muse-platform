@@ -38,13 +38,24 @@ const emit = defineEmits<{
 
 <template>
   <Dialog :open="open" @update:open="emit('update:open', $event)">
-    <DialogContent :class="cn('sm:max-w-md', props.contentClass)" prevent-outside-close>
-      <DialogHeader>
+    <DialogContent
+      :class="cn('form-dialog-content sm:max-w-md', props.contentClass)"
+      prevent-outside-close
+    >
+      <DialogHeader class="shrink-0 px-6 pb-4 pt-6">
         <DialogTitle>{{ title }}</DialogTitle>
       </DialogHeader>
-      <form class="flex flex-col gap-3" :aria-busy="saving" @submit.prevent="emit('submit')">
-        <slot />
-        <DialogFooter class="mt-1">
+      <form
+        class="flex min-h-0 flex-1 flex-col overflow-hidden"
+        :aria-busy="saving"
+        @submit.prevent="emit('submit')"
+      >
+        <div
+          class="form-dialog-body thin-scrollbar grid min-h-0 flex-1 auto-rows-min gap-3 overflow-y-auto overscroll-contain px-6 pb-4"
+        >
+          <slot />
+        </div>
+        <DialogFooter class="shrink-0 border-t border-border px-6 py-4">
           <DialogClose as-child>
             <Button variant="secondary" type="button" :disabled="saving">
               {{ cancelLabel }}
@@ -59,3 +70,27 @@ const emit = defineEmits<{
     </DialogContent>
   </Dialog>
 </template>
+
+<style scoped>
+:global(.form-dialog-content) {
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  padding: 0 !important;
+}
+
+:global(.form-dialog-body) {
+  min-height: 0;
+  max-height: calc(100dvh - 13rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 640px) {
+  :global(.form-dialog-body) {
+    max-height: calc(100dvh - 12rem);
+  }
+}
+</style>
