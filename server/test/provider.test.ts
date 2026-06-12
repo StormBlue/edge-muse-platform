@@ -342,7 +342,9 @@ describe("provider response parsing", () => {
         const form = init.body as FormData;
         expect(form.get("response_format")).toBe("b64_json");
         expect(form.get("size")).toBe("1024x1024");
-        expect(form.get("image")).toBeInstanceOf(File);
+        const image = form.get("image") as File;
+        expect(image).toBeInstanceOf(File);
+        expect(image.name).toBe("image-1.png");
         return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
           status: 200,
           headers: { "Content-Type": "application/json" }
@@ -361,6 +363,48 @@ describe("provider response parsing", () => {
     });
 
     expect(response.images[0]?.kind).toBe("base64");
+  });
+
+  it("sends multiple Micu reference images as multipart image array fields", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        expect(init.body).toBeInstanceOf(FormData);
+        const form = init.body as FormData;
+        expect(form.get("image")).toBeNull();
+        const images = form.getAll("image[]") as File[];
+        expect(images).toHaveLength(3);
+        expect(images.map((image) => image.name)).toEqual([
+          "image-1.png",
+          "image-2.jpg",
+          "image-3.webp"
+        ]);
+        expect(images.map((image) => image.type)).toEqual([
+          "image/png",
+          "image/jpeg",
+          "image/webp"
+        ]);
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "blend visual references",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "1024x1024",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai",
+      referenceImages: [
+        { bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" },
+        { bytes: new Uint8Array([5, 6, 7, 8]), mime: "image/jpeg" },
+        { bytes: new Uint8Array([9, 10, 11, 12]), mime: "image/webp" }
+      ]
+    });
   });
 
   it("omits size for Micu Auto image-to-image requests", async () => {
@@ -423,6 +467,49 @@ describe("provider response parsing", () => {
       apiKey: "key",
       baseUrl: "https://www.micuapi.ai",
       referenceImages: [{ bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" }]
+    });
+
+    expect(response.images[0]?.kind).toBe("base64");
+  });
+
+  it("uses Micu chat completions for 2K image-to-image with multiple references", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        expect(url).toBe("https://www.micuapi.ai/v1/chat/completions");
+        expect(init.method).toBe("POST");
+        const body = JSON.parse(String(init.body)) as {
+          model: string;
+          messages: Array<{
+            content: Array<{ type: string; image_url?: { url: string } }>;
+          }>;
+        };
+        expect(body.model).toBe("gpt-image-2-pro");
+        const content = body.messages[0]?.content ?? [];
+        expect(content.filter((part) => part.type === "image_url")).toHaveLength(2);
+        expect(content[1]?.image_url?.url).toMatch(/^data:image\/png;base64,/);
+        expect(content[2]?.image_url?.url).toMatch(/^data:image\/jpeg;base64,/);
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: `done ![image](data:image/png;base64,${png})` } }]
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      })
+    );
+
+    const response = await provider.generate({
+      prompt: "enhance detail",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "2048x2048",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai",
+      referenceImages: [
+        { bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" },
+        { bytes: new Uint8Array([5, 6, 7, 8]), mime: "image/jpeg" }
+      ]
     });
 
     expect(response.images[0]?.kind).toBe("base64");

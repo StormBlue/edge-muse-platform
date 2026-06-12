@@ -52,6 +52,11 @@ describe("provider capability validation", () => {
     expect(micuImpl.supportedModes).toEqual(["image2image", "text2image"]);
   });
 
+  it("declares the platform reference image limit for Cubence and Micu", () => {
+    expect(providerImpl.maxReferenceImages).toBe(5);
+    expect(micuImpl.maxReferenceImages).toBe(5);
+  });
+
   it("uses current built-in provider sizes for capability snapshots", () => {
     const capabilities = providerCapabilitiesFromResolvedGroup({
       group: {
@@ -97,6 +102,30 @@ describe("provider capability validation", () => {
         referenceImageIds: ["img_1", "img_2", "img_3", "img_4", "img_5", "img_6"]
       })
     ).toThrow("Cubence accepts at most 5 reference image");
+  });
+
+  it("allows Micu image-to-image with the platform reference image limit", () => {
+    expect(() =>
+      assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
+        prompt: "replace background",
+        mode: "image2image",
+        size: "1024x1024",
+        n: 1,
+        referenceImageIds: ["img_1", "img_2", "img_3", "img_4", "img_5"]
+      })
+    ).not.toThrow();
+  });
+
+  it("rejects Micu image-to-image beyond the platform reference image limit", () => {
+    expect(() =>
+      assertProviderSupportsGenerateParams(micuProvider, micuImpl, {
+        prompt: "replace background",
+        mode: "image2image",
+        size: "1024x1024",
+        n: 1,
+        referenceImageIds: ["img_1", "img_2", "img_3", "img_4", "img_5", "img_6"]
+      })
+    ).toThrow("Micu accepts at most 5 reference image");
   });
 
   it("rejects sizes outside the provider allow-list", () => {

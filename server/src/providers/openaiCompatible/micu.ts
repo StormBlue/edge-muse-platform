@@ -16,15 +16,16 @@ import { parsedCompatibleResponse } from "./response";
 /**
  * 米醋当前代理形态：
  * - `/v1/responses` 实测不可用，直接跳过，避免每张图多一次 404。
- * - 文生图与单参考图图生图强制 `response_format=b64_json`，减少临时 URL 过期/下载失败。
+ * - 文生图与图生图强制 `response_format=b64_json`，减少临时 URL 过期/下载失败。
  * - 图生图主路 `/v1/images/edits`，端点不可用/代理 503 时按测试页回落嵌图 chat/completions。
+ * - 2K 单参考图保留米醋 `reference_image` 捷径；2K 多参考图走 chat 多模态，避免静默丢图。
  */
 export class MicuImagesProvider implements ImageProvider {
   id = "micu_images";
   name = "Micu Images";
   supportedSizes = [...MICU_IMAGE_SIZE_PRESETS];
   supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
-  maxReferenceImages = 1;
+  maxReferenceImages = 5;
 
   /** 以 GET /v1/models 探测密钥是否可用 */
   async health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean> {
@@ -116,21 +117,33 @@ export class MicuImagesProvider implements ImageProvider {
   }
 
   private async micuEdit(req: GenerateRequest): Promise<GenerateResponse> {
-    const referenceImage = req.referenceImages?.[0];
-    if (!referenceImage)
+    const referenceImages = req.referenceImages ?? [];
+    if (!referenceImages.length)
       throw new ProviderError("PROVIDER_VALIDATION_ERROR", "Reference image required");
-    if (isMicuHighResolutionSize(req.size)) return this.micuReferenceImage(req, referenceImage);
+    if (isMicuHighResolutionSize(req.size)) {
+      if (referenceImages.length === 1) return this.micuReferenceImage(req, referenceImages[0]);
+      logInfo("provider.micu.high_resolution_multi_reference_chat", {
+        ...req.logContext,
+        providerAdapter: this.id,
+        size: req.size,
+        referenceImageCount: referenceImages.length
+      });
+      return this.micuChat(req);
+    }
     const model = resolveMicuRequestModel(req, this.id);
     const form = new FormData();
     form.set("model", model);
     form.set("prompt", req.prompt);
     if (shouldSendSize(req.size)) form.set("size", req.size);
     form.set("response_format", "b64_json");
-    form.set(
-      "image",
-      new Blob([toArrayBuffer(referenceImage.bytes)], { type: referenceImage.mime }),
-      fileNameForMime(referenceImage.mime)
-    );
+    const imageFieldName = referenceImages.length > 1 ? "image[]" : "image";
+    referenceImages.forEach((image, index) => {
+      form.append(
+        imageFieldName,
+        new Blob([toArrayBuffer(image.bytes)], { type: image.mime }),
+        fileNameForMime(image.mime, index)
+      );
+    });
     const baseUrl = req.baseUrl.replace(/\/$/, "");
     const json = await providerMultipartFetch(`${baseUrl}/v1/images/edits`, req.apiKey, form, {
       ...req.logContext,
@@ -139,7 +152,7 @@ export class MicuImagesProvider implements ImageProvider {
       mode: req.mode,
       model,
       size: req.size,
-      referenceImageCount: req.referenceImages?.length ?? 0
+      referenceImageCount: referenceImages.length
     });
     return parsedCompatibleResponse(json, req.logContext, {
       providerAdapter: this.id,
@@ -200,10 +213,11 @@ function resolveMicuRequestModel(req: GenerateRequest, providerAdapter: string):
   return model;
 }
 
-function fileNameForMime(mime: string): string {
-  if (mime.includes("jpeg") || mime.includes("jpg")) return "image.jpg";
-  if (mime.includes("webp")) return "image.webp";
-  return "image.png";
+function fileNameForMime(mime: string, index: number): string {
+  const suffix = index + 1;
+  if (mime.includes("jpeg") || mime.includes("jpg")) return `image-${suffix}.jpg`;
+  if (mime.includes("webp")) return `image-${suffix}.webp`;
+  return `image-${suffix}.png`;
 }
 
 function shouldSendSize(size: string): boolean {
