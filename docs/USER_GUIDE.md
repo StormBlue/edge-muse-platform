@@ -6,7 +6,7 @@
 2. Open **工作台** or **AI 图像生成** from the sidebar.
 3. Choose an available mode. The visible modes and sizes follow the provider key assigned to your account.
 4. Enter a prompt, choose size and image count, then click **生成**.
-5. For 图生图, drag, paste, or select reference images. Large images are compressed before upload. Some providers have stricter limits; Cubence currently accepts one reference image for image-to-image.
+5. For 图生图, drag, paste, or select reference images. Large images are compressed before upload. The visible upload limit follows the provider key assigned to your account.
 6. Click a generated image to open the viewer. The viewer supports zoom, previous/next image, download, prompt copy, and message deletion.
 
 ## History

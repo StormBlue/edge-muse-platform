@@ -5,6 +5,7 @@
  * - 不先尝试 `/v1/responses`，文生图直接走 `/v1/images/generations`。
  * - 图生图直接走 multipart 的 `/v1/images/edits`。
  * - 只声明文生图和图生图，任务创建阶段会提前拦截不支持的模式。
+ * - 图生图允许平台通用的多参考图数量，multipart 中按 OpenAI 数组语法追加 `image[]`。
  */
 import { logError, logInfo, logWarn, urlSummary } from "../lib/log";
 import { toArrayBuffer } from "../lib/encoding";
@@ -37,8 +38,7 @@ export class OpenAIImagesProvider implements ImageProvider {
   name = "OpenAI Images";
   supportedSizes = DEFAULT_SIZES;
   supportedModes: ImageProvider["supportedModes"] = ["image2image", "text2image"];
-  /** Cubence 文档只展示一个 `image` 字段，首版按单参考图严格处理。 */
-  maxReferenceImages = 1;
+  maxReferenceImages = 5;
 
   /** 基础鉴权探测：不消耗图片额度，但不能完全证明 Cubence share group 已配置。 */
   async health(req: Pick<GenerateRequest, "apiKey" | "baseUrl" | "model">): Promise<boolean> {
@@ -133,18 +133,20 @@ export class OpenAIImagesProvider implements ImageProvider {
       );
     }
 
-    const image = referenceImages[0];
     const form = new FormData();
     form.set("model", req.model);
     form.set("prompt", req.prompt);
     form.set("n", "1");
     if (shouldSendSize(req.size)) form.set("size", req.size);
-    // FormData 的第三个参数保留文件名；Cubence/OpenAI Images edits 会据此识别上传文件。
-    form.set(
-      "image",
-      new Blob([toArrayBuffer(image.bytes)], { type: image.mime }),
-      fileNameForMime(image.mime)
-    );
+    const imageFieldName = referenceImages.length > 1 ? "image[]" : "image";
+    referenceImages.forEach((image, index) => {
+      // FormData 的第三个参数保留文件名；Cubence/OpenAI Images edits 会据此识别上传文件。
+      form.append(
+        imageFieldName,
+        new Blob([toArrayBuffer(image.bytes)], { type: image.mime }),
+        fileNameForMime(image.mime, index)
+      );
+    });
 
     const baseUrl = req.baseUrl.replace(/\/$/, "");
     const json = await providerMultipartFetch(
@@ -156,8 +158,12 @@ export class OpenAIImagesProvider implements ImageProvider {
         model: req.model,
         promptLength: req.prompt.length,
         imageCount: referenceImages.length,
-        imageBytes: image.bytes.byteLength,
-        imageMime: image.mime
+        totalImageBytes: referenceImages.reduce(
+          (total, image) => total + image.bytes.byteLength,
+          0
+        ),
+        imageBytes: referenceImages.map((image) => image.bytes.byteLength),
+        imageMimes: referenceImages.map((image) => image.mime)
       },
       {
         ...req.logContext,
@@ -358,10 +364,11 @@ function imageKindCounts(images: ProviderImage[]): Record<string, number> {
   }, {});
 }
 
-function fileNameForMime(mime: string): string {
-  if (mime.includes("jpeg") || mime.includes("jpg")) return "reference.jpg";
-  if (mime.includes("webp")) return "reference.webp";
-  return "reference.png";
+function fileNameForMime(mime: string, index: number): string {
+  const suffix = index + 1;
+  if (mime.includes("jpeg") || mime.includes("jpg")) return `reference-${suffix}.jpg`;
+  if (mime.includes("webp")) return `reference-${suffix}.webp`;
+  return `reference-${suffix}.png`;
 }
 
 function shouldSendSize(size: string): boolean {

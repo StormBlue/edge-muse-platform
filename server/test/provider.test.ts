@@ -504,7 +504,7 @@ describe("provider response parsing", () => {
         expect(form.get("size")).toBe("1024x1024");
         const image = form.get("image") as File;
         expect(image).toBeInstanceOf(File);
-        expect(image.name).toBe("reference.png");
+        expect(image.name).toBe("reference-1.png");
         expect(image.type).toBe("image/png");
         expect(image.size).toBeGreaterThan(0);
         return new Response(JSON.stringify({ created: 1735200000, data: [{ b64_json: png }] }), {
@@ -526,6 +526,48 @@ describe("provider response parsing", () => {
 
     expect(response.images).toHaveLength(1);
     expect(response.images[0]?.kind).toBe("base64");
+  });
+
+  it("sends multiple OpenAI Images reference images as multipart image array fields", async () => {
+    const provider = new OpenAIImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        expect(init.body).toBeInstanceOf(FormData);
+        const form = init.body as FormData;
+        expect(form.get("image")).toBeNull();
+        const images = form.getAll("image[]") as File[];
+        expect(images).toHaveLength(3);
+        expect(images.map((image) => image.name)).toEqual([
+          "reference-1.png",
+          "reference-2.jpg",
+          "reference-3.webp"
+        ]);
+        expect(images.map((image) => image.type)).toEqual([
+          "image/png",
+          "image/jpeg",
+          "image/webp"
+        ]);
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "blend visual references",
+      mode: "image2image",
+      model: "gpt-image-2",
+      size: "auto",
+      apiKey: "key",
+      baseUrl: "https://api-dmit.cubence.com",
+      referenceImages: [
+        { bytes: new Uint8Array([1, 2, 3, 4]), mime: "image/png" },
+        { bytes: new Uint8Array([5, 6, 7, 8]), mime: "image/jpeg" },
+        { bytes: new Uint8Array([9, 10, 11, 12]), mime: "image/webp" }
+      ]
+    });
   });
 
   it("omits size for OpenAI Images Auto image-to-image requests", async () => {

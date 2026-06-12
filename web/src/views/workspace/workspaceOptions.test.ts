@@ -53,7 +53,7 @@ describe("workspace size options", () => {
       model: "gpt-image-2",
       supportedModes: ["image2image", "text2image"],
       supportedSizes: ["1024x1024", "2048x2048"],
-      maxReferenceImages: 1
+      maxReferenceImages: 5
     });
 
     expect(options.map((option) => option.value)).toEqual(["auto", "1024x1024", "2048x2048"]);

@@ -75,16 +75,28 @@ describe("provider capability validation", () => {
     expect(capabilities.supportedSizes).toContain("1760x2480");
   });
 
-  it("rejects Cubence image-to-image with more than one reference image", () => {
+  it("allows Cubence image-to-image with the platform reference image limit", () => {
     expect(() =>
       assertProviderSupportsGenerateParams(cubenceProvider, providerImpl, {
         prompt: "replace background",
         mode: "image2image",
         size: "1024x1024",
         n: 1,
-        referenceImageIds: ["img_1", "img_2"]
+        referenceImageIds: ["img_1", "img_2", "img_3", "img_4", "img_5"]
       })
-    ).toThrow("Cubence accepts at most 1 reference image");
+    ).not.toThrow();
+  });
+
+  it("rejects Cubence image-to-image beyond the platform reference image limit", () => {
+    expect(() =>
+      assertProviderSupportsGenerateParams(cubenceProvider, providerImpl, {
+        prompt: "replace background",
+        mode: "image2image",
+        size: "1024x1024",
+        n: 1,
+        referenceImageIds: ["img_1", "img_2", "img_3", "img_4", "img_5", "img_6"]
+      })
+    ).toThrow("Cubence accepts at most 5 reference image");
   });
 
   it("rejects sizes outside the provider allow-list", () => {
