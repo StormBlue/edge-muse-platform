@@ -403,10 +403,17 @@ defineEmits<{
     flex: 0 0 auto;
   }
 
-  .audit-detail-images,
+  .audit-detail-images {
+    min-height: 0;
+    height: auto;
+  }
+
+  .audit-detail-images :deep([data-slot="scroll-area-viewport"]) {
+    max-height: min(62dvh, 44rem);
+  }
+
   .audit-detail-empty {
-    min-height: 18rem;
-    height: min(62dvh, 44rem);
+    min-height: 12rem;
   }
 }
 

@@ -381,11 +381,18 @@ const emit = defineEmits<{
     flex-direction: column;
   }
 
-  .history-detail-images,
-  .history-detail-empty {
-    min-height: 18rem;
-    height: min(62dvh, 44rem);
+  .history-detail-images {
+    min-height: 0;
+    height: auto;
     flex: 0 0 auto;
+  }
+
+  .history-detail-images :deep([data-slot="scroll-area-viewport"]) {
+    max-height: min(62dvh, 44rem);
+  }
+
+  .history-detail-empty {
+    min-height: 12rem;
   }
 
   .history-detail-failure {
