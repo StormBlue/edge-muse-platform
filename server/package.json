@@ -20,18 +20,18 @@
     "sysadmin:create:remote": "node scripts/create-sysadmin.mjs"
   },
   "dependencies": {
-    "@hono/zod-validator": "0.8.0",
-    "@scalar/hono-api-reference": "0.10.20",
+    "@hono/zod-validator": "0.9.1",
+    "@scalar/hono-api-reference": "0.12.0",
     "drizzle-orm": "0.45.2",
-    "hono": "4.12.23",
-    "zod": "4.4.3"
+    "hono": "4.13.5",
+    "zod": "4.5.4"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "4.20260608.1",
+    "@cloudflare/workers-types": "5.20260904.1",
     "drizzle-kit": "0.31.10",
-    "miniflare": "4.20260603.0",
+    "miniflare": "4.20260730.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.8",
-    "wrangler": "4.98.0"
+    "vitest": "5.0.0",
+    "wrangler": "4.129.0"
   }
 }

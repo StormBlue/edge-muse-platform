@@ -43,7 +43,7 @@ pnpm build
 | CI     | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)         | 安装、lint、typecheck、test、build                                                     |
 | Deploy | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | `main` 推送：`build` → `db:migrate:remote` → `deploy`（需 GitHub Environment secrets） |
 
-CI 使用 Node **24**（与 deploy 工作流一致）；本地可使用 `.nvmrc` 指定版本。
+CI 使用 Node **24**（与 deploy 工作流一致）；本地使用 `.nvmrc` 固定的 **24.20.0**。pnpm 版本由根 `package.json` 的 `packageManager` 固定；workspace 启用 `saveExact`，新增及升级直接依赖时保存精确版本。
 
 ## 相关文档
 
