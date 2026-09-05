@@ -23,7 +23,7 @@ const emit = defineEmits<{
   <div v-if="!sessions.length" class="panel p-8 text-center text-sm text-muted-foreground">
     {{ t("sysadmin.noSessions") }}
   </div>
-  <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+  <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
     <button
       v-for="(session, index) in sessions"
       :key="session.id"

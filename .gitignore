@@ -7,6 +7,7 @@ dist/
 !.env.example
 coverage/
 playwright-report/
+output/playwright/
 .playwright-cli/
 .playwright-mcp/
 test-results/

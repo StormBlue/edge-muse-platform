@@ -66,7 +66,6 @@ const emit = defineEmits<{
   .desktop-case-detail {
     display: block;
     min-height: 0;
-    overflow: hidden;
   }
 }
 </style>

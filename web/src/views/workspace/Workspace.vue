@@ -156,7 +156,7 @@ const {
   min-height: 0;
 }
 
-@media (min-width: 1024px) {
+@container app-content (min-width: 60rem) {
   .workspace-page {
     height: calc(100dvh - 6rem);
     min-height: 0;

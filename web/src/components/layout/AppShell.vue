@@ -7,13 +7,14 @@
  * - **路由高亮**：`isActiveNav` 用路径前三段前缀匹配，避免 `/sysadmin/foo` 与子路径全等失败。
  */
 import { RouterLink } from "vue-router";
-import type { HTMLAttributes } from "vue";
-import { LogOut, Menu, Settings } from "@lucide/vue";
+import { computed, nextTick, ref, watch, type HTMLAttributes } from "vue";
+import { FocusScope } from "reka-ui";
+import { LogOut, Menu, Settings, X } from "@lucide/vue";
 import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePageScroll } from "./usePageScroll";
 import {
   Select,
   SelectContent,
@@ -43,6 +44,8 @@ const {
   isDesktopSidebar,
   quotaLabel,
   visibleNav,
+  mobileNav,
+  pageTitle,
   themeOptions,
   currentTheme,
   themeTitle,
@@ -56,7 +59,19 @@ const {
   logout
 } = useAppShellController();
 
-const mainBaseClass = "mx-auto w-full max-w-none px-3 pb-24 pt-3 sm:px-4 lg:px-5 lg:pb-5";
+const mainBaseClass = "app-main mx-auto w-full max-w-[160rem] px-3 pt-3 sm:px-4 lg:px-5 lg:pb-5";
+const sidebar = ref<HTMLElement | null>(null);
+const viewport = ref<HTMLElement | null>(null);
+const mobileSidebarOpen = computed(() => !isDesktopSidebar.value && ui.sidebarOpen);
+usePageScroll(viewport);
+let previousFocus: HTMLElement | null = null;
+watch(mobileSidebarOpen, async (open) => {
+  if (open)
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  await nextTick();
+  if (open) sidebar.value?.querySelector<HTMLElement>("button, a[href]")?.focus();
+  else if (previousFocus?.isConnected) previousFocus.focus();
+});
 
 function updateLocale(value: unknown) {
   if (!value) return;
@@ -74,68 +89,94 @@ function updateLocale(value: unknown) {
       :aria-label="t('shell.closeSidebar')"
       @click="ui.closeSidebar()"
     />
-    <aside
-      id="app-sidebar"
-      class="app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col transition-[transform,width] duration-200 ease-out lg:static lg:translate-x-0"
-      :class="[
-        ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full',
-        ui.sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
-      ]"
+    <FocusScope
+      as-child
+      :trapped="mobileSidebarOpen"
+      :loop="mobileSidebarOpen"
+      @mount-auto-focus.prevent
+      @unmount-auto-focus.prevent
     >
-      <div
-        class="flex h-16 items-center gap-3 px-4"
-        :class="ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''"
+      <aside
+        id="app-sidebar"
+        ref="sidebar"
+        :inert="!isDesktopSidebar && !ui.sidebarOpen"
+        :aria-hidden="!isDesktopSidebar && !ui.sidebarOpen ? true : undefined"
+        :role="mobileSidebarOpen ? 'dialog' : undefined"
+        :aria-modal="mobileSidebarOpen ? true : undefined"
+        :aria-label="t('shell.openSidebar')"
+        class="app-sidebar fixed inset-y-0 left-0 z-40 flex w-64 flex-col transition-[transform,width] duration-200 ease-out lg:static lg:translate-x-0"
+        :class="[
+          ui.sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+          ui.sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'
+        ]"
+        @keydown.esc.prevent="ui.closeSidebar()"
       >
-        <BrandMark class="size-9 shrink-0 rounded-lg shadow-sm" />
-        <div class="min-w-0" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
-          <p class="text-sm font-semibold">Edge Muse</p>
-          <p class="text-xs text-muted-foreground">{{ t("shell.subtitle") }}</p>
-        </div>
-      </div>
-      <nav class="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-3">
-        <RouterLink
-          v-for="item in visibleNav"
-          :key="item.to"
-          :to="item.to"
-          class="app-nav-link flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-muted-foreground transition"
-          :class="[
-            isActiveNav(item.to) ? 'app-nav-link--active text-foreground' : '',
-            ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
-          ]"
-          :title="item.label"
-          :aria-label="item.label"
-          @click="closeMobileSidebar"
-        >
-          <component :is="item.icon" class="h-4 w-4 shrink-0" />
-          <span class="truncate" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
-            {{ item.label }}
-          </span>
-        </RouterLink>
-      </nav>
-      <div class="p-3" :class="ui.sidebarCollapsed ? 'lg:flex lg:justify-center lg:p-3' : ''">
         <div
-          class="app-user-card rounded-lg border border-border p-3"
-          :class="ui.sidebarCollapsed ? 'lg:hidden' : ''"
+          class="flex h-16 items-center gap-3 px-4"
+          :class="ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''"
         >
-          <p class="truncate text-sm font-semibold">{{ auth.user?.nickname }}</p>
-          <p class="truncate text-xs text-muted-foreground">{{ auth.user?.email }}</p>
-          <div class="mt-3 flex items-center justify-between text-xs">
-            <span class="text-muted-foreground">{{ t("common.quota") }}</span>
-            <span class="font-mono">{{ quotaLabel }}</span>
+          <Button
+            v-if="!isDesktopSidebar"
+            variant="ghost"
+            size="icon"
+            class="ml-auto order-last"
+            :aria-label="t('shell.closeSidebar')"
+            @click="ui.closeSidebar()"
+          >
+            <X class="size-4" />
+          </Button>
+          <BrandMark class="size-9 shrink-0 rounded-lg shadow-sm" />
+          <div class="min-w-0" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
+            <p class="text-sm font-semibold">Edge Muse</p>
+            <p class="text-xs text-muted-foreground">{{ t("shell.subtitle") }}</p>
           </div>
         </div>
-        <div
-          v-if="ui.sidebarCollapsed"
-          class="hidden size-10 items-center justify-center rounded-lg border border-border bg-card text-sm font-semibold shadow-sm lg:flex"
-          :title="userSummaryTitle"
-          :aria-label="userSummaryTitle"
-        >
-          {{ userInitial }}
+        <nav class="thin-scrollbar flex-1 space-y-1 overflow-y-auto px-3 py-3">
+          <RouterLink
+            v-for="item in visibleNav"
+            :key="item.to"
+            :to="item.to"
+            class="app-nav-link flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-muted-foreground transition"
+            :class="[
+              isActiveNav(item.to) ? 'app-nav-link--active text-foreground' : '',
+              ui.sidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+            ]"
+            :title="item.label"
+            :aria-label="item.label"
+            :aria-current="isActiveNav(item.to) ? 'page' : undefined"
+            @click="closeMobileSidebar"
+          >
+            <component :is="item.icon" class="h-4 w-4 shrink-0" />
+            <span class="truncate" :class="ui.sidebarCollapsed ? 'lg:hidden' : ''">
+              {{ item.label }}
+            </span>
+          </RouterLink>
+        </nav>
+        <div class="p-3" :class="ui.sidebarCollapsed ? 'lg:flex lg:justify-center lg:p-3' : ''">
+          <div
+            class="app-user-card rounded-lg border border-border p-3"
+            :class="ui.sidebarCollapsed ? 'lg:hidden' : ''"
+          >
+            <p class="truncate text-sm font-semibold">{{ auth.user?.nickname }}</p>
+            <p class="truncate text-xs text-muted-foreground">{{ auth.user?.email }}</p>
+            <div class="mt-3 flex items-center justify-between text-xs">
+              <span class="text-muted-foreground">{{ t("common.quota") }}</span>
+              <span class="font-mono">{{ quotaLabel }}</span>
+            </div>
+          </div>
+          <div
+            v-if="ui.sidebarCollapsed"
+            class="hidden size-10 items-center justify-center rounded-lg border border-border bg-card text-sm font-semibold shadow-sm lg:flex"
+            :title="userSummaryTitle"
+            :aria-label="userSummaryTitle"
+          >
+            {{ userInitial }}
+          </div>
         </div>
-      </div>
-    </aside>
+      </aside>
+    </FocusScope>
 
-    <div class="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div class="flex min-h-0 min-w-0 flex-1 flex-col" :inert="mobileSidebarOpen">
       <header
         class="app-header z-30 flex h-16 shrink-0 items-center justify-between px-3 backdrop-blur sm:px-4"
       >
@@ -151,20 +192,25 @@ function updateLocale(value: unknown) {
         >
           <Menu class="h-4 w-4" />
         </Button>
-        <div class="hidden min-w-0 flex-1 px-4 text-sm text-muted-foreground lg:block">
-          {{ t("shell.tagline") }}
+        <div class="hidden min-w-0 flex-1 truncate px-4 text-sm font-medium sm:block">
+          {{ pageTitle }}
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2">
           <AnnouncementBell />
-          <Select :model-value="ui.locale" @update:model-value="updateLocale">
-            <SelectTrigger class="h-9 w-20 px-2 text-sm sm:w-24">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="zh-CN">中文</SelectItem>
-              <SelectItem value="en-US">EN</SelectItem>
-            </SelectContent>
-          </Select>
+          <div class="w-20 shrink-0 sm:w-24">
+            <Select :model-value="ui.locale" @update:model-value="updateLocale">
+              <SelectTrigger
+                class="h-9 w-20 shrink-0 px-2 text-sm sm:w-24"
+                :aria-label="t('common.language')"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="zh-CN">中文</SelectItem>
+                <SelectItem value="en-US">EN</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Popover v-model:open="themeMenuOpen">
             <PopoverTrigger as-child>
               <Button
@@ -195,22 +241,34 @@ function updateLocale(value: unknown) {
             </PopoverContent>
           </Popover>
           <RouterLink
-            class="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-secondary px-4 py-2 text-sm font-medium text-secondary-foreground shadow-xs transition-all hover:bg-secondary/80 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            class="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 focus-visible:ring-[3px] focus-visible:ring-ring/50"
             to="/settings/profile"
             :title="t('common.settings')"
+            :aria-label="t('common.settings')"
           >
             <Settings class="h-4 w-4" />
           </RouterLink>
-          <Button variant="secondary" type="button" :title="t('common.logout')" @click="logout">
+          <Button
+            variant="secondary"
+            size="icon"
+            type="button"
+            :aria-label="t('common.logout')"
+            :title="t('common.logout')"
+            @click="logout"
+          >
             <LogOut class="h-4 w-4" />
           </Button>
         </div>
       </header>
-      <ScrollArea v-if="shellProps.contentScrollable" class="min-h-0 flex-1">
+      <div
+        v-if="shellProps.contentScrollable"
+        ref="viewport"
+        class="app-content thin-scrollbar min-h-0 flex-1 overflow-y-auto"
+      >
         <main :class="cn(mainBaseClass, shellProps.mainClass)">
           <slot />
         </main>
-      </ScrollArea>
+      </div>
       <main
         v-else
         :class="cn(mainBaseClass, 'min-h-0 flex-1 overflow-hidden', shellProps.mainClass)"
@@ -219,25 +277,52 @@ function updateLocale(value: unknown) {
       </main>
     </div>
 
-    <nav class="app-mobile-nav fixed inset-x-3 bottom-3 z-40 grid gap-1 rounded-lg p-1 lg:hidden">
+    <nav
+      :inert="mobileSidebarOpen"
+      class="app-mobile-nav fixed inset-x-3 z-30 grid gap-1 rounded-lg p-1 lg:hidden"
+    >
       <RouterLink
-        v-for="item in visibleNav.slice(0, 5)"
+        v-for="item in mobileNav"
         :key="item.to"
         :to="item.to"
         class="app-mobile-nav-link"
         :class="isActiveNav(item.to) ? 'app-mobile-nav-link--active' : ''"
         :aria-label="item.label"
+        :aria-current="isActiveNav(item.to) ? 'page' : undefined"
         :title="item.label"
         @click="closeMobileSidebar"
       >
         <component :is="item.icon" class="h-4 w-4" />
         <span class="truncate">{{ item.label }}</span>
       </RouterLink>
+      <button
+        type="button"
+        class="app-mobile-nav-link"
+        :aria-label="t('shell.openSidebar')"
+        aria-controls="app-sidebar"
+        :aria-expanded="ui.sidebarOpen"
+        @click="ui.toggleSidebar()"
+      >
+        <Menu class="size-4" />
+        <span>{{ t("shell.more") }}</span>
+      </button>
     </nav>
   </div>
 </template>
 
 <style scoped>
+.app-main {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+}
+.app-content {
+  container: app-content / inline-size;
+  scrollbar-gutter: stable;
+}
+@media (min-width: 1024px) {
+  .app-main {
+    padding-bottom: 1.25rem;
+  }
+}
 .app-shell {
   background:
     linear-gradient(180deg, color-mix(in oklch, var(--card), transparent 25%), transparent 10rem),
@@ -273,6 +358,7 @@ function updateLocale(value: unknown) {
 }
 
 .app-mobile-nav {
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   border: 1px solid color-mix(in oklch, var(--border), transparent 18%);
   background: color-mix(in oklch, var(--surface-strong), transparent 5%);

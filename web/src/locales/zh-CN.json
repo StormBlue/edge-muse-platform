@@ -1,5 +1,6 @@
 {
   "common": {
+    "language": "语言",
     "appName": "Edge Muse",
     "login": "登录",
     "loginLoading": "登录中",
@@ -150,6 +151,7 @@
     }
   },
   "shell": {
+    "more": "更多",
     "subtitle": "图像运营",
     "tagline": "创建、审阅并治理图像生成任务。",
     "openSidebar": "打开导航栏",

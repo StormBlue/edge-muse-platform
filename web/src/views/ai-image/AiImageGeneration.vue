@@ -169,7 +169,7 @@ const {
   display: none;
 }
 
-@media (min-width: 1024px) {
+@container app-content (min-width: 67rem) {
   .ai-image-page {
     height: calc(100dvh - 6rem);
     min-height: 0;
@@ -237,12 +237,6 @@ const {
 
   .ai-image-grid--generating {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-@media (min-width: 1024px) {
-  .ai-image-grid--selecting {
-    grid-template-columns: minmax(22rem, 0.86fr) minmax(24rem, 0.74fr);
   }
 }
 </style>

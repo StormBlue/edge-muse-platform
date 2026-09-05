@@ -119,6 +119,24 @@ export function useAppShellController() {
   });
 
   const visibleNav = computed(() => nav.value.filter((entry) => entry.show));
+  const mobileNav = computed(() => {
+    const primaryPaths = auth.isSysadmin
+      ? ["/sysadmin/dashboard", "/ai-image", "/history", "/admin/users"]
+      : ["/ai-image", "/workspace", "/history", "/admin/users"];
+    return primaryPaths.flatMap((path) => visibleNav.value.filter((item) => item.to === path));
+  });
+  const pageTitle = computed(() => {
+    if (route.path === "/settings/profile") return t("settings.profileTitle");
+    if (route.path === "/settings/security") return t("settings.securityTitle");
+    return visibleNav.value.find((item) => isActiveNav(item.to))?.label ?? "Edge Muse";
+  });
+  watch(
+    pageTitle,
+    (title) => {
+      document.title = `${title} · Edge Muse`;
+    },
+    { immediate: true }
+  );
   const themeOptions = computed(() => [
     { value: "auto" as ThemeMode, label: t("theme.system"), icon: Monitor },
     { value: "light" as ThemeMode, label: t("theme.light"), icon: Sun },
@@ -145,7 +163,9 @@ export function useAppShellController() {
   }
 
   function isActiveNav(to: string) {
-    return route.path.startsWith(to.split("/").slice(0, 3).join("/"));
+    if (to === "/sysadmin/users/_/sessions")
+      return /^\/sysadmin\/users\/[^/]+\/sessions$/.test(route.path);
+    return route.path === to || route.path.startsWith(`${to}/`);
   }
 
   function syncSidebarMode() {
@@ -199,7 +219,7 @@ export function useAppShellController() {
 
   async function logout() {
     await auth.logout();
-    await router.push("/login");
+    await router.replace("/login");
   }
 
   watch(
@@ -246,6 +266,8 @@ export function useAppShellController() {
     isDesktopSidebar,
     quotaLabel,
     visibleNav,
+    mobileNav,
+    pageTitle,
     themeOptions,
     currentTheme,
     themeTitle,

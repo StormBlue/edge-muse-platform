@@ -1,5 +1,6 @@
 {
   "common": {
+    "language": "Language",
     "appName": "Edge Muse",
     "login": "Login",
     "loginLoading": "Logging in",
@@ -150,6 +151,7 @@
     }
   },
   "shell": {
+    "more": "More",
     "subtitle": "Image operations",
     "tagline": "Create, review, and govern image generation tasks.",
     "openSidebar": "Open navigation",

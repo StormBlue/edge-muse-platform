@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, Plus, Sparkles, Wifi } from "@lucide/vue";
+import { Loader2, Plus, Sparkles } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 
@@ -35,12 +35,6 @@ const { t } = useI18n();
         <Plus class="h-4 w-4" />
         {{ t("workspace.newGeneration") }}
       </Button>
-      <div
-        class="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground"
-      >
-        <Wifi class="h-3.5 w-3.5" />
-        {{ t("workspace.websocket") }}: {{ websocketStatus }}
-      </div>
       <div
         v-if="hasRunningTask"
         class="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-foreground"
