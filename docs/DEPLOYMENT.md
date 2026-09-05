@@ -38,12 +38,16 @@ pnpm build
 
 ## CI/CD
 
-| 工作流 | 文件                                                              | 行为                                                                                   |
-| ------ | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| CI     | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)         | 安装、lint、typecheck、test、build                                                     |
-| Deploy | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | `main` 推送：`build` → `db:migrate:remote` → `deploy`（需 GitHub Environment secrets） |
+| 工作流 | 文件                                                              | 行为                                                                                                      |
+| ------ | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| CI     | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)         | PR 及 `develop` / `main` 推送：安装、types、lint、typecheck、test、build                                  |
+| Deploy | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | 仅 `main` 推送的 CI 成功后调用：`build` → `db:migrate:remote` → `deploy`（需 GitHub Environment secrets） |
 
-CI 使用 Node **24**（与 deploy 工作流一致）；本地使用 `.nvmrc` 固定的 **24.20.0**。pnpm 版本由根 `package.json` 的 `packageManager` 固定；workspace 启用 `saveExact`，新增及升级直接依赖时保存精确版本。
+CI 与部署都读取 `.nvmrc`，与本地使用同一固定 Node 版本 **24.20.0**。pnpm 版本由根 `package.json` 的 `packageManager` 固定；workspace 启用 `saveExact`，新增及升级直接依赖时保存精确版本。
+
+Actions 固定为 `actions/checkout@v7.0.1`、`actions/setup-node@v7.0.0`、`pnpm/action-setup@v6.1.0`；后者提供 pnpm 12 原生可执行包支持。使用 GitHub 托管的 `ubuntu-latest` runner，依赖安装保持 `--frozen-lockfile`。
+
+Deploy 是 CI 通过 `needs: ci` 调用的可复用工作流，检出同次运行的提交 SHA；PR 和 `develop` 不会触发生产部署。生产部署使用 `production` Environment secrets，并以 `production-deploy` 并发组串行执行，不中断已经开始的迁移或部署。迁移前和发布前分别核对远程 `main` 的当前 SHA，已被新提交替代的运行会失败并停止后续步骤。若 `main` 在迁移完成后推进，旧运行将跳过发布；数据库迁移仍需保持向后兼容，已执行的迁移不会自动回滚。
 
 ## 相关文档
 
