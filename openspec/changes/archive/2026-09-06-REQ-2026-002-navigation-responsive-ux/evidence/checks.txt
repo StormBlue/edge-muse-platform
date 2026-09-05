@@ -1,0 +1,37 @@
+Environment: Node 24.20.0, pnpm 12.3.4, macOS arm64, Chromium 152.
+Implementation revision: 452debbdfa88211fae2686163cf153f1ad23b7f0.
+
+Commands observed:
+- pnpm install --frozen-lockfile: exit 0; no lockfile drift.
+- pnpm peers check: exit 0; no peer issues.
+- pnpm typecheck: exit 0, server and web.
+- pnpm lint: exit 0. An initial local run included a temporary browser script and failed no-unused-expressions; moved the non-module capture to .txt and reran successfully.
+- pnpm -F web exec vitest run: 33 files / 158 tests passed.
+- Server 22 files / 176 tests passed after dependency overrides; no server implementation changed in this UX milestone.
+- pnpm build: exit 0, frontend production build and Worker dry-run. Final detail CSS also passed pnpm -F web build.
+- GitHub Linux CI 33986971942 and 33987245956: success. Install, types, lint, typecheck, tests, build all succeeded. Develop deployment was skipped as intended.
+- actionlint 1.7.12 with ShellCheck 0.11.0: passed. Workflow structural assertions and 8 stale-SHA rejection scenarios passed.
+- git diff --check: passed.
+
+Browser matrix observed on local seeded sysadmin account:
+Routes: /workspace, /ai-image, /ai-image?mode=blank, /history, /admin/users, /settings/profile, /settings/security, /sysadmin/dashboard, /sysadmin/keys, /sysadmin/settings, /sysadmin/generation-entry, /sysadmin/prompt-cases, /sysadmin/announcements, /sysadmin/users/_/sessions.
+Viewports: 390x844, 1366x768, 1920x1080, 3840x2160.
+56 captures: zero document/content horizontal overflow; zero pageerror events. No completed broken img elements at capture time. Remote case images may still load asynchronously; persisted local history images were visually verified.
+Additional /workspace and /ai-image at 320x740, 1024x768, 1180x768: 6 captures, no horizontal overflow or clipped header buttons.
+Visual inspection confirmed desktop framing, compact mobile management actions, and mobile details with content-sized previews. Screenshots retained locally under output/playwright (ignored generated artifacts).
+
+Interactive observations:
+- History list -> detail -> return -> browser forward -> browser back produced list/detail/list using the original history entries, no added loop.
+- Mobile management menu exposed detail/edit/quota/password/status commands.
+- 18 successive Tab presses stayed in the mobile sidebar. Escape closed it, restored opener focus, and sidebar.inert was true.
+- Settings header link -> profile -> security succeeded, old-password field reachable.
+- Direct /ai-image?mode=blank survived reload; return button navigated to /ai-image.
+- Detail previews rendered local images; short-image whitespace removed while long-preview scroll remains bounded.
+
+Integrated independent reviews:
+- Navigation/settings review identified all-user sentinel and stale filtered results; both corrected and regression-tested.
+- Shell review identified colspan empty/loading row hiding and keyboard/pointer scroll-cancellation gaps; both corrected. Seven scroll-restoration tests pass.
+- Workspace/session and creation-route races covered by targeted tests; no unresolved findings.
+- 39 frontend/user-guide local links resolve; documentation synchronized. docs-architect is not integrated (no .docs-architect.json), so configuration-based impact/check/index is unavailable; no new documentation system was initialized.
+
+Limits: Local browser checks use sysadmin with existing data. Role guards are covered by existing automated tests. Real provider generation, physical phone keyboards, and Safari were not exercised. Main integration/release follows this verification commit; final Git/CI state is reported separately.
