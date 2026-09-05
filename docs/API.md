@@ -9,7 +9,7 @@ All paths are under `/api`.
 | System           | `GET /health`, `GET /config`, `GET /captcha/altcha/challenge`, `GET /docs`, `GET /openapi.json`                                                                                      |
 | Auth             | `POST /auth/login`, `POST /auth/logout`, `POST /auth/refresh`, `POST /auth/password/change`                                                                                          |
 | Current user     | `GET /me`, `PATCH /me`                                                                                                                                                               |
-| Generate         | `POST /generate`, `GET /tasks/:id`, `POST /tasks/:id/retry`, `POST /tasks/:id/cancel`, `GET /ws/task/:id`                                                                            |
+| Generate         | `POST /generate`, `GET /tasks`, `GET /tasks/:id`, `POST /tasks/:id/retry`, `POST /tasks/:id/cancel`, `GET /ws/task/:id`                                                              |
 | Sessions         | `GET/POST /sessions`, `GET/PATCH/DELETE /sessions/:id`, `GET /sessions/:id/messages`, message delete, active task                                                                    |
 | History          | `GET /history`, `GET /history/:id`                                                                                                                                                   |
 | Images           | `GET /i/:imageId`, `POST /uploads`                                                                                                                                                   |
@@ -47,15 +47,35 @@ Authentication notes:
 - `/api/me` and auth bootstrap responses include `generationTargets`. `default` uses the account's current provider key group; `micu_grok` is returned only when the Micu Grok provider group is configured and the current user is a sysadmin or an explicitly granted admin.
 - `POST /generate` accepts `generationTargetId` (`default` or `micu_grok`). The selected target controls the provider key group and final model; the common task/session/history/audit pipeline is unchanged.
 - `POST /generate` creates a queued task and returns `202` immediately. The provider key is selected later by the group queue; if no group/key is available the request returns `PROVIDER_ERROR`.
-- `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded` or `failed`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
+- `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded`, `failed` or `cancelled`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.
 
-Prompt cases:
+## Task activity and cancellation
+
+The precise schemas are maintained in [`generationTasks.ts`](../server/src/docs/openapi/publicPaths/generationTasks.ts).
+
+- `GET /tasks?scope=recent|active&limit=20&cursor=...` returns `{ items, activeCount, nextCursor }`. `scope` defaults to `recent`; limit is 1–50. Pagination uses descending queued time plus task ID, so equal timestamps do not skip records. All results belong to the authenticated user, including for sysadmins, and exclude deleted sessions/messages.
+- Each summary includes task/session/message identity, title, prompt, parsed generation parameters, timestamps in Unix milliseconds, real phase, `canCancel`, generated `images`, accessible `referenceImages`, errors, `retryOf`, and actual quota totals. It does not expose provider keys or raw upstream responses.
+- `phase` maps unassigned queued tasks to `queued`, assigned queued tasks to `starting`, and running tasks to `generating`; terminal phases are `succeeded`, `failed`, and `cancelled`. The API does not invent a progress percentage or a persisted saving phase.
+- `quota.precharged` and `quota.refunded` come from `task_charge` and `task_refund` ledger entries. `quota.consumed` is the nonnegative net charge, including the reservation while a task is active; it is not a separate final billing event. Uncharged sysadmin tasks show zero values.
+- `GET /tasks/:id` preserves the existing `{ task }` detail and adds `summary` using the same contract. The summary is `null` when its session/message is deleted; the existing raw task access behavior remains compatible.
+- `POST /tasks/:id/cancel` returns `{ ok: true }`. Only queued tasks can transition to cancelled, including assigned tasks not yet claimed by execution. Task state, assistant message state and the outstanding ledger refund commit atomically in D1. Repeated cancellation of an already-cancelled task succeeds without a second refund. If execution wins the race, cancellation returns `VALIDATION_ERROR`; clients must refresh the task and quota.
+- The formal WebSocket URL returned by generation is `/ws/task/:id`, outside the `/api` prefix. The existing `/api/ws/task/:id` handler is retained for compatibility.
+
+## Result reuse
+
+- `POST /generate` accepts optional `sourceTaskId` and `sourceImageId`, stored in the existing task parameters JSON. The source task must be owned and visible; a source image must be an owned, undeleted generated image belonging to that source task. These fields record lineage and do not replace `referenceImageIds`.
+- Image-to-image `referenceImageIds` may contain the user's undeleted uploaded references or generated results. Reusing a generated result preserves its original task/session association and does not re-upload its bytes. The current provider's mode, size and reference limits still apply.
+- Reusing parameters creates a new task only after an explicit `POST /generate`. `POST /tasks/:id/retry` remains limited to failed tasks and records the original task in `retryOf`.
+
+## Prompt cases
 
 - `GET /prompt-cases` returns a paged lightweight response: `{ items, pageInfo, facets }`. Query params: `locale` (default `zh-CN`), `limit` (default `60`, max `100`), `cursor`, `category`, `mode`, `size`, `featured`, and `search`.
 - Public list items intentionally omit `promptTemplate`; use `GET /prompt-cases/:id?locale=...` to fetch the complete published case before applying a prompt or sending case context to the assistant.
 - Public list sorting is stable: featured first, then `sortOrder`, `updatedAt desc`, and `id`. Cursor values are opaque and tied to the current filter set; changing filters restarts from the first page.
 - `facets.categories`, `facets.sizes`, and `facets.modes` are computed server-side from published cases and should be used for the `/ai-image` filter UI instead of deriving global options from the current page only.
+
+The AI studio opens its editor directly and requests this list when the user opens the case picker. Assistant responses from `POST /prompt-assistant/turn` are suggestions for explicit review; generation requires a separate user submission.
 
 ## Related docs
 

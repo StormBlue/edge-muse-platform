@@ -1,5 +1,7 @@
 # AI 图像生成页面与生成入口方案
 
+> **历史设计说明**：本方案的页面布局已被当前 Studio 创作器取代，以下正文保留当时的设计与实现记录。当前行为以 [`FRONTEND.md`](../FRONTEND.md) 为准：默认进入编辑器，案例按需打开，助手建议由用户显式采纳，任务与结果复用共享当前生成管线。
+
 状态：implemented
 日期：2026-05-06
 关联任务（已归档）：[`../archive/ai-image-generation-page-tasks.md`](../archive/ai-image-generation-page-tasks.md)

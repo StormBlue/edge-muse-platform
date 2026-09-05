@@ -1,0 +1,76 @@
+Observed on 2026-09-06 Asia/Shanghai. Implementation revision:
+9c469300d3bb179aef61a898b42b5bfa299b1038
+
+Commands and results:
+- pnpm -F web test: 34 files, 214 tests passed; exit 0.
+- pnpm lint: exit 0. A temporary browser script initially triggered no-unused-expressions;
+  it was moved to an ignored .txt capture, then the aggregate lint passed.
+- pnpm typecheck: server tsc and web vue-tsc both passed; exit 0.
+- pnpm build: 2789 frontend modules transformed; Vite build and Wrangler dry-run passed.
+- git diff --check: passed.
+- Server code is unchanged since M1; its 182 passed tests are captured in m1-server.txt.
+- Expected tooling warning: Vite's future native config loader does not support __dirname.
+
+Regression coverage observed:
+- Studio: URL/case races, private account state and undo invalidation, source lineage,
+  capability adjustment, no re-upload of generated references, failed input retention,
+  explicit assistant acceptance/undo, late submit/retry responses, terminal monotonicity,
+  missing-reference submission block and confirmation, partial-image failures,
+  case preview separated from applied creation context.
+- Workspace/session: submit/retry mutex, same-account late observation without navigation,
+  different-account response suppression, store response guards before message writes,
+  old finally cannot reset a newer request, missing original references require action.
+- Task store: synchronous observation of fast terminal tasks, account epoch isolation,
+  deleted recent-page refresh, visible polling, cancellation and quota refresh.
+- Assistant: editable suggestion, selected-paragraph append, conflict confirmation,
+  aborted/stale responses, failed input retention, explicit acceptance preserves size.
+
+Browser runtime:
+- Existing local pnpm dev: Vite localhost:5173, Worker localhost:8787.
+- Playwright CLI Chromium session edgeux, local sysadmin account.
+- Completed local tasks and real images used for result/reuse/reference/comparison.
+- Real case list/details and remote thumbnails rendered successfully.
+- Paid /generate and assistant turn calls were mocked only for deterministic UI acceptance;
+  task/cancel responses for that browser-only task were fixtures. No paid provider call made.
+- One explicit Generate click created one request. Cancelled status showed confirmed refund 1.
+- Assistant never overwrote the prompt automatically; explicit acceptance and undo worked.
+- Cases could be opened, previewed and applied on mobile. Keyboard back/close restored focus.
+- Tab ArrowRight/Home worked; task dialog Escape restored opener focus.
+- Checked editor at 320x640, 390x844, 768x1024, 1024x768, 1366x768, 1920x1080,
+  3840x2160; no document horizontal overflow. English also checked at 320x640.
+- Checked comparison at 390 and 1920; task dialog at 320, 390 and 1366; assistant at 390/1366.
+- Real images were checked complete with naturalWidth > 0 before final captures.
+- 0 page errors in final core smoke. Development i18n root-fallback warnings remain;
+  observed labels resolved correctly. Physical devices and Safari were not exercised.
+- Earlier captures exposed Portal root styling/scrolling and animation timing problems;
+  root dialog CSS, focus handling and stable screenshot waits fixed these before final capture.
+
+Retained representative screenshots (same evidence directory):
+studio-result-1920.png, studio-editor-320.png, studio-cases-390.png, studio-tasks-320.png.
+Other temporary screenshots and CLI scripts remain ignored under output/playwright/.
+
+Independent review disposition:
+- Integrated, security/privacy and UX review completed. All identified findings resolved.
+- Fixed Workspace retry double submission/account leakage, missing reference restoration,
+  assistant changing image size, Studio stale responses/private undo, partial failure visibility,
+  task rapid completion observation, deleted-page retention and terminal regression.
+- Final reviewer rechecked fixes and related tests; no remaining blocking finding.
+- AST production reachability review identified 17 replaced modules and 4 dedicated tests;
+  those were removed, keeping all shared case/assistant code and meaningful coverage.
+
+Documentation sync:
+- Updated ARCHITECTURE plus FRONTEND, USER_GUIDE, API, RELIABILITY, EXPERIMENTS, QUALITY_SCORE.
+- Updated historical design notice and fixed 6 deleted-source links to immutable 4e5332e URLs.
+- 141 local links in the seven current docs resolved. No docs-architect config exists;
+  impact/check/index reported missing_config, so no framework/index was initialized.
+- Historical pagination plan references five already-missing review-round reports;
+  these predate this change. No reports were fabricated or historical outcomes rewritten.
+- No D1 migration required. Source lineage stays in backward-compatible params JSON.
+  Rollback is an application revision rollback; no destructive schema rollback is needed.
+
+Git milestones:
+- a003cc9: M1 task/cancellation/source APIs, pushed develop; CI 33990204908 success.
+- bbe8bc9: M2 Studio/task center/recreation, pushed develop.
+- 9c46930: case-preview regression fix, pushed develop.
+- Final documentation/close commit and main publication follow these implementation captures;
+  remote delivery is checked separately after push, not inferred from local build success.

@@ -33,13 +33,17 @@
 - **`generation_events`**：`route`、`eventName`、`caseId`、`taskId`、`metadata`（JSON 字符串，经 sanitize）、`isSysadminPreview`。
 - **`generation_feature_grants`**：实验生成能力授权，当前 `feature='micu_grok_image'`，按 admin 用户维度启停；sysadmin 不依赖该表。
 
+再创作的 `sourceTaskId` / `sourceImageId` 保存在 `tasks.params` JSON；失败重试仍使用 `tasks.retry_of`。这些标识表达作品来源，不增加分流实验或新的归因统计表，也不能代替图片权限校验。
+
 事件名全集以 `generationEventNameSchema` / `generationClientEventNameSchema` 为准（同文件）。
 
 ## 前端
 
 - 路由守卫与侧栏：`web/src/router/routeGuard.ts`、`web/src/components/layout/useAppShellController.ts`、`generationEntryEvents.ts`。
 - 管理 UI：[`web/src/views/sysadmin/GenerationEntry.vue`](../web/src/views/sysadmin/GenerationEntry.vue)。
-- 生成目标选择：工作台 [`ChatInput.vue`](../web/src/components/chat/ChatInput.vue) 与 AI 图像页 [`AiImagePromptComposer.vue`](../web/src/views/ai-image/AiImagePromptComposer.vue) 读取 `auth.generationTargets`；只有多个目标时展示选择器。
+- 生成目标选择：工作台 [`ChatInput.vue`](../web/src/components/chat/ChatInput.vue) 与 AI 图像页 [`StudioEditor.vue`](../web/src/views/ai-image/StudioEditor.vue) 读取 `auth.generationTargets`；创作器显示目标及模型，所有参数继续受账号当前能力约束。
+- `/ai-image` 默认打开编辑器，案例通过按需选择器或 `/ai-image/cases/:caseId` 进入；助手建议由用户明确采纳后才进入编辑器，采纳不等于提交任务。`useAiImageGenerationTracking` 沿用既有事件名，任务提交与终态仍由服务端关联。
+- 任务查看 `?task=:id` 与再创作 `?sourceTask=:id&reuse=params|reference` 不改变入口开关。图片操作优先进入已开放的 AI 图像页，否则进入工作台；仅查看或预填不会自动产生生成任务。
 
 ## 相关文档
 

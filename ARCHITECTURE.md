@@ -46,7 +46,15 @@ flowchart LR
 
 ## 生图任务管线（模块化）
 
-[`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 为对外稳定导出面；实现按目录拆分在 [`server/src/lib/tasks/`](server/src/lib/tasks/)（`create`、`dispatch`、`run`、`recovery`、`failure` 等）。路由、Workflow、DO 仅需依赖 `tasks.ts`，不需关心子路径。
+[`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 为生成与调度管线的稳定导出面；实现按目录拆分在 [`server/src/lib/tasks/`](server/src/lib/tasks/)（`create`、`dispatch`、`run`、`recovery`、`failure` 等）。任务路由另使用 [`list.ts`](server/src/lib/tasks/list.ts) 提供本人精简列表及详情，使用 [`state.ts`](server/src/lib/tasks/state.ts) 原子取消 queued 任务并退还账本余额。
+
+## 前端创作与任务观察
+
+- [`useImageStudio.ts`](web/src/views/ai-image/useImageStudio.ts) 独立拥有 AI 创作器的表单、案例上下文、来源与结果，通过 [`studioContext.ts`](web/src/views/ai-image/studioContext.ts) 供编辑器、结果区与按需案例选择器共享。该状态不写入工作台会话 store，也不持久化未提交草稿。
+- [`taskActivity.ts`](web/src/stores/taskActivity.ts) 在应用根生命周期内观察本人任务，以精简 HTTP 查询补偿 WebSocket，提供跨页面任务中心、取消及应用内完成通知；不会自动改变当前会话。观察状态与请求版本按账号隔离。
+- 参数复用和结果参考复用通过 URL 传递来源 ID，目标页重新读取授权详情，再显式提交新任务。`sourceTaskId` / `sourceImageId` 存于现有 `tasks.params`，图片保留原任务与会话归属；无需新增来源表或重复上传生成图片。
+
+布局、助手建议审阅与移动交互见 [`docs/FRONTEND.md`](docs/FRONTEND.md)。
 
 ## 生成入口与行为事件
 
@@ -62,7 +70,7 @@ flowchart LR
 1. 浏览器调用 `POST /api/generate`（[`server/src/routes/generate.ts`](server/src/routes/generate.ts)）→ 创建 queued 任务、预扣配额、返回 `taskId` / WebSocket URL。
 2. `GenerateQueue` 按用户 key group 选择未满载 provider key，写入 `provider_key_id` / `assigned_at`，再启动 Workflow 或 `waitUntil`。
 3. Workflow 或 `waitUntil` 执行 [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts) 导出的生成管线（实现见 `lib/tasks/*`）→ 调 provider → 图片入 R2 → 更新消息附件。
-4. 任务事件经 `TaskRoom` 广播，前端 [`web/src/composables/useTaskWebSocket.ts`](web/src/composables/useTaskWebSocket.ts) / [`web/src/stores/session.ts`](web/src/stores/session.ts) 合并状态；终态释放 slot 并唤醒同 group 队列。
+4. 任务事件经 `TaskRoom` 广播；工作台由 [`session.ts`](web/src/stores/session.ts) 合并消息，AI 创作器由 WebSocket 触发精简详情回读，全局任务中心另轮询补偿。终态释放 slot 并唤醒同 group 队列。
 
 ## 横切关注点
 

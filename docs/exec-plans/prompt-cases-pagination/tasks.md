@@ -306,9 +306,9 @@ graph TD
 
 **关联文件 / 模块**:
 
-- [`web/src/views/ai-image/PromptCaseDetail.vue`](../../../web/src/views/ai-image/PromptCaseDetail.vue)
+- [`web/src/views/ai-image/PromptCaseDetail.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/PromptCaseDetail.vue)
 - [`web/src/views/ai-image/AiImageGeneration.vue`](../../../web/src/views/ai-image/AiImageGeneration.vue)
-- [`web/src/views/ai-image/AiImagePromptPanel.vue`](../../../web/src/views/ai-image/AiImagePromptPanel.vue)
+- [`web/src/views/ai-image/AiImagePromptPanel.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/AiImagePromptPanel.vue)
 
 **验收**:
 
@@ -335,7 +335,7 @@ graph TD
 
 **关联文件 / 模块**:
 
-- [`web/src/views/ai-image/PromptCaseGallery.vue`](../../../web/src/views/ai-image/PromptCaseGallery.vue)
+- [`web/src/views/ai-image/PromptCaseGallery.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/PromptCaseGallery.vue)
 - [`web/src/views/ai-image/AiImageGeneration.vue`](../../../web/src/views/ai-image/AiImageGeneration.vue)
 
 **验收**:

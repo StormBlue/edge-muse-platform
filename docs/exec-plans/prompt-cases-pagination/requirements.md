@@ -310,13 +310,13 @@ AI 图像生成页的案例库已经从最初的几十条增长到 1000+ 条。�
 
 ### 6.2 前端模块
 
-| 模块                                                                                                    | 调整                                    |
-| ------------------------------------------------------------------------------------------------------- | --------------------------------------- |
-| [`web/src/types/promptCases.ts`](../../../web/src/types/promptCases.ts)                                 | 增加 `PromptCaseListItem`、分页响应类型 |
-| [`web/src/api/promptCases.ts`](../../../web/src/api/promptCases.ts)                                     | 增加分页参数、详情 API                  |
-| [`web/src/views/ai-image/useAiImageCases.ts`](../../../web/src/views/ai-image/useAiImageCases.ts)       | 改为分页状态机与详情缓存                |
-| [`web/src/views/ai-image/PromptCaseGallery.vue`](../../../web/src/views/ai-image/PromptCaseGallery.vue) | 增加加载更多状态与事件                  |
-| [`web/src/views/ai-image/PromptCaseDetail.vue`](../../../web/src/views/ai-image/PromptCaseDetail.vue)   | 支持详情加载中/失败状态                 |
+| 模块                                                                                                                                                                                         | 调整                                    |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| [`web/src/types/promptCases.ts`](../../../web/src/types/promptCases.ts)                                                                                                                      | 增加 `PromptCaseListItem`、分页响应类型 |
+| [`web/src/api/promptCases.ts`](../../../web/src/api/promptCases.ts)                                                                                                                          | 增加分页参数、详情 API                  |
+| [`web/src/views/ai-image/useAiImageCases.ts`](../../../web/src/views/ai-image/useAiImageCases.ts)                                                                                            | 改为分页状态机与详情缓存                |
+| [`web/src/views/ai-image/PromptCaseGallery.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/PromptCaseGallery.vue) | 增加加载更多状态与事件                  |
+| [`web/src/views/ai-image/PromptCaseDetail.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/PromptCaseDetail.vue)   | 支持详情加载中/失败状态                 |
 
 ### 6.3 架构图
 
@@ -419,7 +419,7 @@ pnpm -F web typecheck
 - 当前用户端路由：[`server/src/routes/promptCases.ts`](../../../server/src/routes/promptCases.ts)
 - 当前领域逻辑：[`server/src/lib/promptCases.ts`](../../../server/src/lib/promptCases.ts)
 - 当前前端控制器：[`web/src/views/ai-image/useAiImageCases.ts`](../../../web/src/views/ai-image/useAiImageCases.ts)
-- 当前卡片列表：[`web/src/views/ai-image/PromptCaseGallery.vue`](../../../web/src/views/ai-image/PromptCaseGallery.vue)
+- 当前卡片列表：[`web/src/views/ai-image/PromptCaseGallery.vue`](https://github.com/StormBlue/edge-muse-platform/blob/4e5332e24d3d954958b7b59d28beb52bcbfa00af/web/src/views/ai-image/PromptCaseGallery.vue)
 
 ---
 
