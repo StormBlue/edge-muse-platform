@@ -11,7 +11,11 @@ import { refundQuota, tryConsumeQuota } from "../quota";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
-import { assertReferenceImagesAccessible, attachReferenceImagesToTask } from "./references";
+import {
+  assertGenerationSourceAccessible,
+  assertReferenceImagesAccessible,
+  attachReferenceImagesToTask
+} from "./references";
 import type { AppBindings, GenerateParams, UserRole } from "../../types";
 import type { ActiveGenerationTask } from "./types";
 
@@ -121,6 +125,7 @@ export async function createGenerateTask(
   const user = await db.query.users.findFirst({ where: eq(users.id, input.userId) });
   if (!user) throw appError("UNAUTHORIZED", "User missing");
   await assertNoActiveGenerationTask(env, { userId: user.id, role: user.role });
+  await assertGenerationSourceAccessible(env, input.userId, input.params);
   const referenceImageIds =
     input.params.mode === "image2image" ? [...new Set(input.params.referenceImageIds ?? [])] : [];
   if (input.params.mode === "image2image" && referenceImageIds.length === 0) {

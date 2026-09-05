@@ -1,0 +1,22 @@
+Observed 2026-09-06, develop working tree based on 4e5332e24d3d954958b7b59d28beb52bcbfa00af.
+
+pnpm -F server test: exit 0.
+Batch 1: 13 files / 100 tests passed.
+Batch 2: 1 file / 27 tests passed.
+Batch 3: 4 files / 36 tests passed.
+Batch 4: 3 files / 9 tests passed.
+Batch 5: 1 file / 10 tests passed.
+Total: 22 files, 182 tests passed.
+
+Independent security/privacy and concurrency review by a separate agent inspected
+server list/detail ownership, generated reference ownership and provenance,
+sourceTaskId/sourceImageId validation before quota deduction, cancellation D1
+batch atomicity and ledger refund, parameterized cursor parsing.
+No unresolved security/privacy finding. Review found cancelled sessions were not
+deletable; server/history terminal guards and sessionDeletion tests were fixed.
+Focused independent apiPermissions run: 27 passed.
+
+Coverage includes refund idempotence, running-claim winner, D1 batch rollback,
+foreign source/reference denial, source provenance retention, deleted rows and
+bounded pagination. No new SQL schema migration required. Actual provider
+billing is not part of these tests; provider requests use existing test doubles.

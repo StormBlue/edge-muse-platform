@@ -1,4 +1,4 @@
-import { now } from "../id";
+import { newId, now } from "../id";
 import { logError, logInfo } from "../log";
 import type { AppBindings, TaskStatus } from "../../types";
 import {
@@ -121,19 +121,35 @@ export async function cancelQueuedGenerateTask(
   }
 ): Promise<CancelQueuedTaskResult | null> {
   const finishedAt = input.finishedAt ?? now();
-  const result = await env.DB.prepare(
-    `UPDATE tasks
+  const refundId = newId("qt");
+  // D1 batch 保证事务原子性：账本退款与 queued 取消一起提交，排除并发执行认领。
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO quota_transactions (id, user_id, delta, reason, operator_id, task_id, created_at)
+       SELECT ?1, t.user_id, -SUM(q.delta), 'task_refund', t.user_id, t.id, ?2
+       FROM tasks t JOIN quota_transactions q ON q.task_id = t.id AND q.user_id = t.user_id
+       WHERE t.id = ?3 AND t.status = 'queued'
+         AND q.reason IN ('task_charge', 'task_refund')
+       GROUP BY t.id HAVING SUM(q.delta) < 0`
+    ).bind(refundId, finishedAt, input.taskId),
+    env.DB.prepare(
+      `UPDATE quotas SET used_quota = MAX(used_quota - (
+         SELECT delta FROM quota_transactions WHERE id = ?1), 0), updated_at = ?2
+       WHERE user_id = (SELECT user_id FROM quota_transactions WHERE id = ?1)`
+    ).bind(refundId, finishedAt),
+    env.DB.prepare(
+      `UPDATE tasks
      SET status = 'cancelled',
          finished_at = ?1
      WHERE id = ?2
        AND status = 'queued'`
-  )
-    .bind(finishedAt, input.taskId)
-    .run();
-  if ((result.meta.changes ?? 0) === 0) return null;
-  await env.DB.prepare("UPDATE messages SET status = 'cancelled' WHERE id = ?1")
-    .bind(input.messageId)
-    .run();
+    ).bind(finishedAt, input.taskId),
+    env.DB.prepare(
+      `UPDATE messages SET status = 'cancelled' WHERE id = ?1
+       AND EXISTS (SELECT 1 FROM tasks WHERE id = ?2 AND status = 'cancelled')`
+    ).bind(input.messageId, input.taskId)
+  ]);
+  if ((results[2].meta.changes ?? 0) === 0) return null;
   return {
     taskId: input.taskId,
     messageId: input.messageId,

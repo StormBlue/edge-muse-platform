@@ -3,7 +3,35 @@ import { getDb } from "../../db/client";
 import { imageObjects } from "../../db/schema";
 import { appError } from "../errors";
 import { logInfo, logWarn } from "../log";
-import type { AppBindings } from "../../types";
+import type { AppBindings, GenerateParams } from "../../types";
+
+/** 来源仅为血缘信息；仍须校验本人归属，不能用它绕过参考图权限。 */
+export async function assertGenerationSourceAccessible(
+  env: AppBindings,
+  userId: string,
+  params: GenerateParams
+) {
+  if (params.sourceTaskId) {
+    const source = await env.DB.prepare(
+      `SELECT t.id FROM tasks t JOIN sessions s ON s.id = t.session_id
+       JOIN messages m ON m.id = t.message_id
+       WHERE t.id = ?1 AND t.user_id = ?2 AND s.deleted_at IS NULL AND m.deleted_at IS NULL`
+    )
+      .bind(params.sourceTaskId, userId)
+      .first();
+    if (!source) throw appError("VALIDATION_ERROR", "Source task not found or inaccessible");
+  }
+  if (params.sourceImageId) {
+    const source = await env.DB.prepare(
+      `SELECT id FROM image_objects WHERE id = ?1 AND owner_user_id = ?2
+       AND is_reference = 0 AND deleted_at IS NULL AND task_id = ?3`
+    )
+      .bind(params.sourceImageId, userId, params.sourceTaskId ?? null)
+      .first();
+    if (!source)
+      throw appError("VALIDATION_ERROR", "Source image does not belong to the source task");
+  }
+}
 
 /** 将用户上传的参考图行打上 sessionId/taskId，便于联查与权限 */
 export async function attachReferenceImagesToTask(
@@ -37,7 +65,7 @@ export async function attachReferenceImagesToTask(
   });
 }
 
-/** 建任务前：参考图须属于本人且 is_reference=1 未删 */
+/** 建任务前：参考图须属于本人且未删；允许复用生成结果，保留原始归属。 */
 export async function assertReferenceImagesAccessible(
   env: AppBindings,
   input: { ownerUserId: string; referenceImageIds: string[] }
@@ -50,7 +78,6 @@ export async function assertReferenceImagesAccessible(
       and(
         inArray(imageObjects.id, input.referenceImageIds),
         eq(imageObjects.ownerUserId, input.ownerUserId),
-        eq(imageObjects.isReference, true),
         isNull(imageObjects.deletedAt)
       )
     );

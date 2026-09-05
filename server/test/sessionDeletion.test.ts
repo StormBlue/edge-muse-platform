@@ -62,6 +62,21 @@ describe("session deletion", () => {
     await expectDeletedAt(context, "ses_running", null);
   });
 
+  it("deletes sessions containing only cancelled or otherwise terminal tasks", async () => {
+    for (const [sessionId, taskStatuses] of [
+      ["ses_cancelled", ["cancelled"]],
+      ["ses_cancel_then_done", ["cancelled", "succeeded", "failed"]]
+    ] as const) {
+      await seedSession(context, { sessionId, taskStatuses: [...taskStatuses] });
+      const response = await app.request(`/${sessionId}`, { method: "DELETE" }, context.env);
+      expect(response.status).toBe(200);
+      const row = await context.env.DB.prepare("SELECT deleted_at FROM sessions WHERE id = ?1")
+        .bind(sessionId)
+        .first<{ deleted_at: number | null }>();
+      expect(row?.deleted_at).not.toBeNull();
+    }
+  });
+
   it("rejects empty sessions without generated tasks", async () => {
     await seedSession(context, { sessionId: "ses_empty", taskStatuses: [] });
 

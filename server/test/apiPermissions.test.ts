@@ -5,7 +5,12 @@ import { adminRoutes } from "../src/routes/admin";
 import { generateRoutes } from "../src/routes/generate";
 import { sysadminRoutes } from "../src/routes/sysadmin";
 import { signJwt } from "../src/lib/jwt";
-import { cancelQueuedGenerateTask } from "../src/lib/tasks/state";
+import { cancelQueuedGenerateTask, claimGenerateTask } from "../src/lib/tasks/state";
+import {
+  assertGenerationSourceAccessible,
+  assertReferenceImagesAccessible,
+  attachReferenceImagesToTask
+} from "../src/lib/tasks/references";
 import {
   CUBENCE_PROVIDER_ID,
   MICU_GROK_PROVIDER_ID,
@@ -518,6 +523,240 @@ describe("provider key group API permissions", () => {
     expect(row).toEqual({ task_status: "cancelled", message_status: "cancelled" });
   });
 
+  it("refunds only the outstanding ledger charge once and prevents a later execution claim", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_refund",
+      messageId: "msg_refund",
+      status: "queued"
+    });
+    await seedTaskCharge(context.env, "tsk_refund", 3);
+    await context.env.DB.batch([
+      context.env.DB.prepare("UPDATE tasks SET assigned_at = 100 WHERE id = 'tsk_refund'"),
+      context.env.DB.prepare("UPDATE quotas SET used_quota = 7 WHERE user_id = 'usr_managed'"),
+      context.env.DB
+        .prepare(`INSERT INTO quota_transactions (id,user_id,delta,reason,operator_id,task_id,created_at)
+        VALUES ('qt_partial','usr_managed',1,'task_refund','usr_managed','tsk_refund',1)`)
+    ]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await app.request(
+        "/api/tasks/tsk_refund/cancel",
+        { method: "POST", headers: await jsonHeaders("usr_managed") },
+        context.env
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(await claimGenerateTask(context.env, "tsk_refund", 200)).toBe(false);
+    expect(
+      await context.env.DB.prepare(
+        "SELECT used_quota FROM quotas WHERE user_id = 'usr_managed'"
+      ).first()
+    ).toEqual({ used_quota: 5 });
+    const detail = await app.request(
+      "/api/tasks/tsk_refund",
+      { headers: await jsonHeaders("usr_managed") },
+      context.env
+    );
+    expect(await detail.json()).toMatchObject({
+      task: { status: "cancelled" },
+      summary: {
+        status: "cancelled",
+        canCancel: false,
+        quota: { precharged: 3, refunded: 3, consumed: 0 }
+      }
+    });
+  });
+
+  it("does not refund a running task or another user's task", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_running_charge",
+      messageId: "msg_running_charge",
+      status: "running"
+    });
+    await seedTaskCharge(context.env, "tsk_running_charge", 2);
+    const forbidden = await app.request(
+      "/api/tasks/tsk_running_charge/cancel",
+      { method: "POST", headers: await jsonHeaders("sys_owner") },
+      context.env
+    );
+    expect(forbidden.status).toBe(403);
+    const running = await app.request(
+      "/api/tasks/tsk_running_charge/cancel",
+      { method: "POST", headers: await jsonHeaders("usr_managed") },
+      context.env
+    );
+    expect(running.status).toBe(400);
+    expect(
+      await context.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM quota_transactions WHERE reason = 'task_refund'"
+      ).first()
+    ).toEqual({ count: 0 });
+  });
+
+  it("rolls back refund and quota when cancellation persistence fails", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_atomic",
+      messageId: "msg_atomic",
+      status: "queued"
+    });
+    await seedTaskCharge(context.env, "tsk_atomic", 2);
+    await context.env.DB.exec(
+      "CREATE TRIGGER fail_cancel BEFORE UPDATE OF status ON tasks WHEN NEW.status = 'cancelled' BEGIN SELECT RAISE(ABORT, 'test persistence failure'); END"
+    );
+    await expect(
+      cancelQueuedGenerateTask(context.env, {
+        taskId: "tsk_atomic",
+        messageId: "msg_atomic",
+        sessionId: "ses_tsk_atomic",
+        providerKeyGroupId: "grp_perm"
+      })
+    ).rejects.toThrow();
+    expect(
+      await context.env.DB.prepare("SELECT status FROM tasks WHERE id = 'tsk_atomic'").first()
+    ).toEqual({ status: "queued" });
+    expect(
+      await context.env.DB.prepare(
+        "SELECT used_quota FROM quotas WHERE user_id = 'usr_managed'"
+      ).first()
+    ).toEqual({ used_quota: 2 });
+    expect(
+      await context.env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM quota_transactions WHERE reason = 'task_refund'"
+      ).first()
+    ).toEqual({ count: 0 });
+  });
+
+  it("lists only owned visible tasks, paginates tied timestamps, and reports real phases", async () => {
+    for (const id of ["a", "b", "c"])
+      await seedSessionAndTask(context.env, {
+        taskId: `tsk_${id}`,
+        messageId: `msg_${id}`,
+        status: "queued"
+      });
+    await context.env.DB.prepare("UPDATE tasks SET assigned_at = 100 WHERE id = 'tsk_c'").run();
+    await context.env.DB.prepare("UPDATE messages SET deleted_at = 100 WHERE id = 'msg_a'").run();
+    const headers = await jsonHeaders("usr_managed");
+    const first = await app.request("/api/tasks?limit=1&scope=active", { headers }, context.env);
+    const body = (await first.json()) as {
+      items: Array<Record<string, unknown>>;
+      nextCursor: string;
+      activeCount: number;
+    };
+    expect(body.activeCount).toBe(2);
+    expect(body.items).toHaveLength(1);
+    expect(body.items[0]).toMatchObject({
+      id: "tsk_c",
+      phase: "starting",
+      canCancel: true,
+      quota: { precharged: 0, refunded: 0, consumed: 0 }
+    });
+    expect(body.items[0]).not.toHaveProperty("providerKeyId");
+    const next = await app.request(
+      `/api/tasks?limit=1&scope=active&cursor=${encodeURIComponent(body.nextCursor)}`,
+      { headers },
+      context.env
+    );
+    expect(await next.json()).toMatchObject({
+      items: [{ id: "tsk_b", phase: "queued" }],
+      nextCursor: null
+    });
+    const other = await app.request(
+      "/api/tasks",
+      { headers: await jsonHeaders("sys_owner") },
+      context.env
+    );
+    expect(await other.json()).toEqual({ items: [], nextCursor: null, activeCount: 0 });
+    expect((await app.request("/api/tasks", {}, context.env)).status).toBe(401);
+    expect((await app.request("/api/tasks?limit=51", { headers }, context.env)).status).toBe(400);
+    expect((await app.request("/api/tasks?cursor=invalid", { headers }, context.env)).status).toBe(
+      400
+    );
+  });
+
+  it("allows an owned result as reference without moving its provenance and validates lineage", async () => {
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_source",
+      messageId: "msg_source",
+      status: "queued"
+    });
+    await context.env.DB.prepare(
+      `INSERT INTO image_objects
+      (id,task_id,session_id,owner_user_id,r2_key,mime,byte_size,sha256,is_reference,created_at)
+      VALUES ('img_source','tsk_source','ses_tsk_source','usr_managed','source.png','image/png',10,'sha',0,1)`
+    ).run();
+    await expect(
+      assertReferenceImagesAccessible(context.env, {
+        ownerUserId: "usr_managed",
+        referenceImageIds: ["img_source"]
+      })
+    ).resolves.toBeUndefined();
+    const params = {
+      prompt: "variation",
+      mode: "image2image" as const,
+      n: 1,
+      size: "auto",
+      sourceTaskId: "tsk_source",
+      sourceImageId: "img_source"
+    };
+    await expect(
+      assertGenerationSourceAccessible(context.env, "usr_managed", params)
+    ).resolves.toBeUndefined();
+    await expect(
+      assertGenerationSourceAccessible(context.env, "usr_other", params)
+    ).rejects.toThrow();
+    await expect(
+      assertGenerationSourceAccessible(context.env, "usr_managed", {
+        ...params,
+        sourceTaskId: undefined
+      })
+    ).rejects.toThrow();
+    await attachReferenceImagesToTask(context.env, {
+      ownerUserId: "usr_managed",
+      sessionId: "other",
+      taskId: "other",
+      referenceImageIds: ["img_source"]
+    });
+    expect(
+      await context.env.DB.prepare(
+        "SELECT task_id,session_id,is_reference FROM image_objects WHERE id = 'img_source'"
+      ).first()
+    ).toEqual({ task_id: "tsk_source", session_id: "ses_tsk_source", is_reference: 0 });
+    await seedSessionAndTask(context.env, {
+      taskId: "tsk_variation",
+      messageId: "msg_variation",
+      status: "queued"
+    });
+    await context.env.DB.prepare("UPDATE tasks SET params = ?1 WHERE id = 'tsk_variation'")
+      .bind(JSON.stringify({ ...params, referenceImageIds: ["img_source"] }))
+      .run();
+    const detail = await app.request(
+      "/api/tasks/tsk_variation",
+      {
+        headers: await jsonHeaders("usr_managed")
+      },
+      context.env
+    );
+    expect(await detail.json()).toMatchObject({
+      summary: {
+        images: [],
+        referenceImages: [{ id: "img_source", url: "/api/i/img_source", taskId: "tsk_source" }],
+        params: {
+          sourceTaskId: "tsk_source",
+          sourceImageId: "img_source",
+          referenceImageIds: ["img_source"]
+        }
+      }
+    });
+    await context.env.DB.prepare(
+      "UPDATE image_objects SET deleted_at = 2 WHERE id = 'img_source'"
+    ).run();
+    await expect(
+      assertReferenceImagesAccessible(context.env, {
+        ownerUserId: "usr_managed",
+        referenceImageIds: ["img_source"]
+      })
+    ).rejects.toThrow();
+  });
+
   it("does not cancel a task that changed status after access check", async () => {
     await seedSessionAndTask(context.env, {
       taskId: "tsk_cancel_race",
@@ -577,6 +816,16 @@ async function jsonHeaders(userId: string): Promise<HeadersInit> {
     Authorization: `Bearer ${await accessToken(userId)}`,
     "Content-Type": "application/json"
   };
+}
+
+async function seedTaskCharge(env: AppBindings, taskId: string, amount: number) {
+  await env.DB.batch([
+    env.DB.prepare("UPDATE quotas SET used_quota = ?1 WHERE user_id = 'usr_managed'").bind(amount),
+    env.DB.prepare(
+      `INSERT INTO quota_transactions (id,user_id,delta,reason,operator_id,task_id,created_at)
+      VALUES (?1,'usr_managed',?2,'task_charge','usr_managed',?3,1)`
+    ).bind(`qt_${taskId}`, -amount, taskId)
+  ]);
 }
 
 async function accessToken(userId: string): Promise<string> {

@@ -107,4 +107,6 @@ export type GenerateParams = {
   model?: string;
   generationTargetId?: string;
   referenceImageIds?: string[];
+  sourceTaskId?: string;
+  sourceImageId?: string;
 };

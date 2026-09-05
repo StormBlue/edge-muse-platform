@@ -15,6 +15,80 @@ import {
   validationError
 } from "../helpers";
 
+const taskSummarySchema = {
+  type: "object",
+  required: [
+    "id",
+    "sessionId",
+    "messageId",
+    "title",
+    "status",
+    "phase",
+    "prompt",
+    "params",
+    "queuedAt",
+    "startedAt",
+    "finishedAt",
+    "canCancel",
+    "images",
+    "referenceImages",
+    "quota"
+  ],
+  properties: {
+    id: { type: "string" },
+    sessionId: { type: "string" },
+    messageId: { type: "string" },
+    title: { type: "string" },
+    status: ref("TaskStatus"),
+    phase: {
+      type: "string",
+      enum: ["queued", "starting", "generating", "succeeded", "failed", "cancelled"]
+    },
+    prompt: { type: "string" },
+    params: {
+      type: "object",
+      properties: {
+        prompt: { type: "string" },
+        mode: ref("GenerationMode"),
+        size: { type: "string" },
+        n: { type: "integer" },
+        model: { type: "string" },
+        generationTargetId: { type: "string" },
+        referenceImageIds: { type: "array", items: { type: "string" } },
+        sourceTaskId: { type: "string" },
+        sourceImageId: { type: "string" }
+      },
+      additionalProperties: false
+    },
+    queuedAt: { type: "integer", description: "Unix 毫秒时间戳。" },
+    startedAt: { type: "integer", nullable: true },
+    finishedAt: { type: "integer", nullable: true },
+    errorCode: { type: "string", nullable: true },
+    errorMessage: { type: "string", nullable: true },
+    retryOf: { type: "string", nullable: true },
+    canCancel: {
+      type: "boolean",
+      description: "响应时尚未被执行器认领；取消请求仍可能因并发启动而失败。"
+    },
+    images: { type: "array", items: ref("ImageAttachment") },
+    referenceImages: { type: "array", items: ref("ImageAttachment") },
+    quota: {
+      type: "object",
+      required: ["precharged", "refunded", "consumed"],
+      properties: {
+        precharged: { type: "integer", description: "账本实际预扣张数；sysadmin 无扣费时为 0。" },
+        refunded: { type: "integer", description: "账本实际退还张数。" },
+        consumed: {
+          type: "integer",
+          description: "预扣减已退款的净额；任务进行中包含冻结的预扣额度，不代表最终消耗。"
+        }
+      },
+      additionalProperties: false
+    }
+  },
+  additionalProperties: false
+};
+
 export const generationTaskPaths = {
   "/api/generate": {
     post: {
@@ -69,7 +143,13 @@ export const generationTaskPaths = {
             type: "array",
             maxItems: 5,
             items: { type: "string" },
-            description: "图生图参考图 ID。仅 `mode=image2image` 使用，服务端会去重并校验归属。"
+            description:
+              "图生图参考图 ID。允许本人未删除的上传图或生成结果；仅 `mode=image2image` 使用，服务端会去重并校验归属。"
+          },
+          sourceTaskId: { type: "string", description: "可选再创作来源任务，必须属于本人且可见。" },
+          sourceImageId: {
+            type: "string",
+            description: "可选来源生成图片，必须属于 sourceTaskId；不代替 referenceImageIds。"
           },
           generationEvent: ref("GenerationEventAttachment")
         },
@@ -97,6 +177,48 @@ export const generationTaskPaths = {
       }
     }
   },
+  "/api/tasks": {
+    get: {
+      tags: ["Generation"],
+      operationId: "listMyTasks",
+      summary: "读取本人的进行中或最近任务",
+      description:
+        "按排队时间和 ID 倒序分页，排除已删除会话或消息。返回真实阶段与实际配额流水汇总，不包含 provider 密钥或原始响应。",
+      security: authSecurity,
+      parameters: [
+        {
+          name: "scope",
+          in: "query",
+          schema: { type: "string", enum: ["active", "recent"], default: "recent" }
+        },
+        {
+          name: "limit",
+          in: "query",
+          schema: { type: "integer", minimum: 1, maximum: 50, default: 20 }
+        },
+        {
+          name: "cursor",
+          in: "query",
+          schema: { type: "string" },
+          description: "上一页返回的 nextCursor。"
+        }
+      ],
+      responses: {
+        "200": jsonResponse("任务列表。", {
+          type: "object",
+          required: ["items", "activeCount", "nextCursor"],
+          properties: {
+            items: { type: "array", items: taskSummarySchema },
+            activeCount: { type: "integer" },
+            nextCursor: { type: "string", nullable: true }
+          },
+          additionalProperties: false
+        }),
+        ...validationError,
+        ...commonErrors
+      }
+    }
+  },
   "/api/tasks/{id}": {
     get: {
       tags: ["Generation"],
@@ -109,7 +231,14 @@ export const generationTaskPaths = {
         "200": jsonResponse("任务详情。", {
           type: "object",
           required: ["task"],
-          properties: { task: ref("Task") },
+          properties: {
+            task: ref("Task"),
+            summary: {
+              ...taskSummarySchema,
+              nullable: true,
+              description: "精简任务视图。会话或消息已删除时为 null，task 字段保持原有兼容行为。"
+            }
+          },
           additionalProperties: false
         }),
         ...commonErrors
@@ -122,7 +251,7 @@ export const generationTaskPaths = {
       operationId: "cancelTask",
       summary: "取消排队中的任务",
       description:
-        "要求登录和 CSRF。只有 `queued` 状态的任务可取消；取消成功会把任务状态写为 `cancelled` 并向已连接 WebSocket 推送 `task.update`。",
+        "要求登录和 CSRF。只有尚未被执行器认领为 running 的 queued 任务可取消。任务状态、消息状态和账本剩余预扣额度退款在同一 D1 事务中提交，再推送 task.update。重复取消已取消任务返回成功且不会再次退款；并发启动获胜时返回校验错误。",
       security: csrfSecurity,
       parameters: [pathParam("id", "任务 ID。")],
       responses: {

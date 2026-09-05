@@ -13,7 +13,7 @@ import { defaultSessionTitle } from "../../lib/sessionTitle";
 import { findActiveGenerationTaskForUser } from "../../lib/tasks";
 import { modeSchema, settingsSchema, type SessionRouter } from "./common";
 
-const deletableSessionTaskStatuses = new Set(["succeeded", "failed"]);
+const deletableSessionTaskStatuses = new Set(["succeeded", "failed", "cancelled"]);
 
 export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
   // POST /api/sessions：新建会话行，标题缺省用 `defaultSessionTitle`。
@@ -159,7 +159,7 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
     ) {
       throw appError(
         "VALIDATION_ERROR",
-        "Only generated sessions whose tasks have succeeded or failed can be deleted"
+        "Only generated sessions whose tasks have completed, failed or been cancelled can be deleted"
       );
     }
     const timestamp = now();

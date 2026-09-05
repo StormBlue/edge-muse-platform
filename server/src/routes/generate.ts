@@ -34,6 +34,7 @@ import {
   releaseGenerateTaskSlot
 } from "../lib/tasks";
 import { cancelQueuedGenerateTask } from "../lib/tasks/state";
+import { listUserTasks } from "../lib/tasks/list";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rateLimit";
 import type { WaitUntilContext } from "../lib/tasks/types";
@@ -85,6 +86,8 @@ const generateSchema = z.object({
   n: z.number().int().min(1).max(MAX_SYSADMIN_IMAGE_COUNT).default(1),
   model: z.string().optional(),
   referenceImageIds: z.array(z.string()).max(5).optional(),
+  sourceTaskId: z.string().trim().min(1).max(120).optional(),
+  sourceImageId: z.string().trim().min(1).max(120).optional(),
   /** AI 图像生成页的提交事件由服务端在任务启动前写入，避免 WS 结果事件先到导致归因回退。 */
   generationEvent: generateGenerationEventSchema
 });
@@ -240,15 +243,35 @@ generateRoutes.post(
   }
 );
 
+generateRoutes.get(
+  "/tasks",
+  requireAuth,
+  zValidator(
+    "query",
+    z.object({
+      scope: z.enum(["active", "recent"]).default("recent"),
+      limit: z.coerce.number().int().min(1).max(50).default(20),
+      cursor: z.string().max(500).optional()
+    })
+  ),
+  async (c) => c.json(await listUserTasks(c.env, c.get("user").id, c.req.valid("query")))
+);
+
 // ---------- 单任务只读；`assertTaskAccess` 保证属于当前用户 ----------
 generateRoutes.get("/tasks/:id", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
-  return c.json({ task });
+  const result = await listUserTasks(c.env, c.get("user").id, {
+    scope: "recent",
+    limit: 1,
+    taskId: task.id
+  });
+  return c.json({ task, summary: result.items[0] ?? null });
 });
 
 // ---------- 仅 `queued` 可取消；写库 cancelled 并推 task.update 给已连上的 WS ----------
 generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
   const task = await assertTaskAccess(c.env, c.req.param("id"), c.get("user"));
+  if (task.status === "cancelled") return c.json({ ok: true });
   if (task.status !== "queued")
     throw appError("VALIDATION_ERROR", "Only queued tasks can be cancelled");
   const cancelled = await cancelQueuedGenerateTask(c.env, {
@@ -258,6 +281,8 @@ generateRoutes.post("/tasks/:id/cancel", requireAuth, async (c) => {
     providerKeyGroupId: task.providerKeyGroupId
   });
   if (!cancelled) {
+    const current = await assertTaskAccess(c.env, task.id, c.get("user"));
+    if (current.status === "cancelled") return c.json({ ok: true });
     throw appError("VALIDATION_ERROR", "Only queued tasks can be cancelled");
   }
   const executionCtx = executionContextFromHono(c);
