@@ -91,6 +91,7 @@ export const useSessionStore = defineStore("sessions", {
     sessionsLoading: false,
     /** 向上滚动加载更早消息时的 loading */
     olderMessagesLoading: false,
+    messageLoadVersion: 0,
     /** 会话列表分页游标（毫秒时间戳，由后端定义） */
     nextSessionCursor: null as number | null,
     /** 消息分页：更早一屏的游标 */
@@ -102,6 +103,10 @@ export const useSessionStore = defineStore("sessions", {
       state.sessions.find((session) => session.id === state.currentSessionId) ?? null
   },
   actions: {
+    invalidateMessageLoads() {
+      this.messageLoadVersion += 1;
+      this.olderMessagesLoading = false;
+    },
     /** 新建或更新侧栏中的会话卡片（active-generation 返回时也会调用） */
     upsertSession(session: Session) {
       const index = this.sessions.findIndex((item) => item.id === session.id);
@@ -112,7 +117,7 @@ export const useSessionStore = defineStore("sessions", {
       }
     },
     /** 首屏拉取会话列表；若尚未选中会话则默认选第一条 */
-    async loadSessions() {
+    async loadSessions(selectFirst = true) {
       this.sessionsLoading = true;
       try {
         const body = await apiFetch<{ items: Session[]; nextCursor: number | null }>("/sessions");
@@ -121,7 +126,9 @@ export const useSessionStore = defineStore("sessions", {
       } finally {
         this.sessionsLoading = false;
       }
-      if (!this.currentSessionId && this.sessions[0]) this.currentSessionId = this.sessions[0].id;
+      if (selectFirst && !this.currentSessionId && this.sessions[0]) {
+        this.currentSessionId = this.sessions[0].id;
+      }
     },
     /** 查询是否有排队/运行中的任务，并合并涉及的会话信息（用于重连 WebSocket） */
     async loadActiveGeneration() {
@@ -155,6 +162,7 @@ export const useSessionStore = defineStore("sessions", {
     },
     /** 创建新会话并切到该会话，清空当前消息流与消息游标 */
     async createSession(mode: SessionMode = "image2image") {
+      this.invalidateMessageLoads();
       const body = await apiFetch<{ session: Session }>("/sessions", {
         method: "POST",
         body: JSON.stringify({ mode, settings: { size: "auto", n: 1 } })
@@ -167,21 +175,29 @@ export const useSessionStore = defineStore("sessions", {
     },
     /** 切换会话时拉取该会话最新一页消息（时间倒序接口返回后转为正序展示） */
     async loadMessages(sessionId: string) {
+      this.invalidateMessageLoads();
+      const version = this.messageLoadVersion;
+      this.currentSessionId = sessionId;
+      this.messages = [];
+      this.nextMessageCursor = null;
       const body = await apiFetch<{ items: Message[]; nextCursor: number | null }>(
         `/sessions/${sessionId}/messages`
       );
-      this.currentSessionId = sessionId;
+      if (version !== this.messageLoadVersion || this.currentSessionId !== sessionId) return;
       this.messages = body.items.map(normalizeMessageAttachments);
       this.nextMessageCursor = body.nextCursor;
     },
     /** 向上无限滚动：在头部拼接更早的消息，`nextMessageCursor` 递减 */
     async loadOlderMessages() {
       if (!this.currentSessionId || !this.nextMessageCursor || this.olderMessagesLoading) return;
+      const sessionId = this.currentSessionId;
+      const version = this.messageLoadVersion;
       this.olderMessagesLoading = true;
       try {
         const body = await apiFetch<{ items: Message[]; nextCursor: number | null }>(
-          `/sessions/${this.currentSessionId}/messages?cursor=${this.nextMessageCursor}`
+          `/sessions/${sessionId}/messages?cursor=${this.nextMessageCursor}`
         );
+        if (version !== this.messageLoadVersion || this.currentSessionId !== sessionId) return;
         const existingIds = new Set(this.messages.map((message) => message.id));
         const older = body.items
           .map(normalizeMessageAttachments)
@@ -189,7 +205,7 @@ export const useSessionStore = defineStore("sessions", {
         this.messages = [...older, ...this.messages];
         this.nextMessageCursor = body.nextCursor;
       } finally {
-        this.olderMessagesLoading = false;
+        if (version === this.messageLoadVersion) this.olderMessagesLoading = false;
       }
     },
     /**

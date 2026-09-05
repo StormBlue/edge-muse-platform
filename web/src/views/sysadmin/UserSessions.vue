@@ -30,6 +30,7 @@ const {
   pageInput,
   total,
   loading,
+  loadError,
   detailLoading,
   activeMessageIndex,
   totalPages,
@@ -159,6 +160,10 @@ function updateUserFilter(value: unknown) {
         <Loader2 class="h-4 w-4 animate-spin" />
         {{ t("common.loading") }}
       </div>
+      <div v-else-if="loadError" role="alert" class="space-y-3 py-8 text-center text-sm">
+        <p class="break-words text-destructive">{{ loadError }}</p>
+        <Button variant="secondary" @click="loadSessions(page)">{{ t("common.retry") }}</Button>
+      </div>
       <UserSessionsTable
         v-else
         :format-date-time="formatDateTime"
@@ -172,6 +177,7 @@ function updateUserFilter(value: unknown) {
       />
 
       <PaginationControls
+        v-if="!loadError"
         v-model:page-input="pageInput"
         input-id="audit-page-jump"
         :page="page"

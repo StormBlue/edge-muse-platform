@@ -80,6 +80,7 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
     locale: computed(() => ui.locale)
   });
   let loadSeq = 0;
+  let applySeq = 0;
   let filterReloadTimer: ReturnType<typeof setTimeout> | null = null;
 
   const supportedModes = computed(() => {
@@ -242,24 +243,30 @@ export function useAiImageCases(options: UseAiImageCasesOptions = {}) {
 
   async function applyCasePrompt(
     item: PromptCaseListItem | PromptCase | string,
-    options: { toastSuccess?: boolean } = {}
+    options: { toastSuccess?: boolean; isCurrent?: () => boolean } = {}
   ) {
+    const seq = ++applySeq;
     const id = typeof item === "string" ? item : item.id;
+    const isCurrent = () => seq === applySeq && (options.isCurrent?.() ?? true);
     applyingCaseId.value = id;
     try {
       const detail = await ensureCaseDetail(item);
+      if (!isCurrent()) return null;
       const result = selectCase(detail);
       if (options.toastSuccess !== false) toast.success(t("aiImage.promptFilled"));
       return result;
     } catch (error) {
+      if (!isCurrent()) return null;
       toast.error(errorMessage(error, t("aiImage.caseDetailLoadFailed")));
       throw error;
     } finally {
-      if (applyingCaseId.value === id) applyingCaseId.value = null;
+      if (seq === applySeq) applyingCaseId.value = null;
     }
   }
 
   function startBlankCase() {
+    applySeq += 1;
+    applyingCaseId.value = null;
     caseContextId.value = null;
     clearPrompt({ discardResetTarget: true });
   }

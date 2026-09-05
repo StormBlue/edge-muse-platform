@@ -27,6 +27,7 @@ const {
   pageInput,
   total,
   loading,
+  loadError,
   detailLoading,
   selectedSession,
   selectedImage,
@@ -104,6 +105,7 @@ async function confirmDeleteSession() {
       :format-date-time="formatDateTime"
       :items="items"
       :loading="loading"
+      :load-error="loadError"
       :page="page"
       :session-image-count-label="sessionImageCountLabel"
       :session-status-label="sessionStatusLabel"

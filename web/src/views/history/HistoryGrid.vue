@@ -19,6 +19,7 @@ const props = defineProps<{
   formatDateTime: (value?: number | null) => string;
   items: HistorySession[];
   loading: boolean;
+  loadError?: string;
   order: string;
   page: number;
   pageInput: string;
@@ -88,10 +89,14 @@ function updateOrder(value: unknown) {
     <Loader2 class="h-4 w-4 animate-spin" />
     {{ t("common.loading") }}
   </div>
+  <div v-else-if="loadError" role="alert" class="space-y-3 py-8 text-center text-sm">
+    <p class="break-words text-destructive">{{ loadError }}</p>
+    <Button variant="secondary" @click="emit('load', page)">{{ t("common.retry") }}</Button>
+  </div>
   <div v-else-if="!items.length" class="panel p-8 text-center text-sm text-muted-foreground">
     {{ t("history.noHistory") }}
   </div>
-  <div v-else class="grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+  <div v-else class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,18rem),1fr))] gap-3">
     <button
       v-for="session in items"
       :key="session.id"
@@ -140,6 +145,7 @@ function updateOrder(value: unknown) {
   </div>
 
   <PaginationControls
+    v-if="!loadError"
     v-model:page-input="pageInputModel"
     input-id="history-page-jump"
     :page="page"

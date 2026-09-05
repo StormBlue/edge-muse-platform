@@ -286,6 +286,47 @@ describe("useAiImageCases", () => {
     expect(mocks.toastSuccess).toHaveBeenCalledWith("aiImage.promptFilled");
   });
 
+  it("ignores a pending detail when a newer case has been applied", async () => {
+    let resolveDetail!: (item: PromptCase) => void;
+    mocks.getPublishedPromptCase.mockReturnValueOnce(
+      new Promise<PromptCase>((resolve) => {
+        resolveDetail = resolve;
+      })
+    );
+    const cases = useAiImageCases();
+    const pending = cases.applyCasePrompt("old");
+    await cases.applyCasePrompt(promptCase({ id: "new", promptTemplate: "new prompt" }));
+    resolveDetail(promptCase({ id: "old", promptTemplate: "old prompt" }));
+    expect(await pending).toBeNull();
+    expect(cases.finalPrompt.value).toBe("new prompt");
+    expect(cases.caseContext.value?.id).toBe("new");
+  });
+
+  it("does not fill a blank flow with an obsolete detail response", async () => {
+    let resolveDetail!: (item: PromptCase) => void;
+    mocks.getPublishedPromptCase.mockReturnValueOnce(
+      new Promise<PromptCase>((resolve) => {
+        resolveDetail = resolve;
+      })
+    );
+    const cases = useAiImageCases();
+    const pending = cases.applyCasePrompt("old");
+    cases.startBlankCase();
+    cases.setPrompt("blank draft", "user");
+    resolveDetail(promptCase({ id: "old" }));
+    expect(await pending).toBeNull();
+    expect(cases.finalPrompt.value).toBe("blank draft");
+    expect(cases.caseContext.value).toBeNull();
+  });
+
+  it("does not apply details after the requesting route has changed", async () => {
+    const cases = useAiImageCases();
+    const result = await cases.applyCasePrompt(promptCase(), { isCurrent: () => false });
+    expect(result).toBeNull();
+    expect(cases.finalPrompt.value).toBe("");
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+  });
+
   it("keeps automatic previews out of assistant case context until the user selects a case", () => {
     const first = promptCaseListItem({ id: "first" });
     const second = promptCaseListItem({ id: "second" });

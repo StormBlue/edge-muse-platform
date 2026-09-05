@@ -5,49 +5,70 @@
  */
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { toast } from "vue-sonner";
-import AppShell from "@/components/layout/AppShell.vue";
+import { Loader2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiFetch } from "@/api/client";
+import SettingsLayout from "./SettingsLayout.vue";
+import { useSettingsSave } from "./useSettingsSave";
 
 const oldPassword = ref("");
 const newPassword = ref("");
 const { t } = useI18n();
+const { saving, error, success, save: saveSettings } = useSettingsSave();
 
 /** POST 成功后清空输入，降低误提交与屏幕残留风险 */
 async function save() {
-  await apiFetch("/auth/password/change", {
-    method: "POST",
-    body: JSON.stringify({ oldPassword: oldPassword.value, newPassword: newPassword.value })
-  });
-  toast.success(t("settings.passwordChanged"));
-  oldPassword.value = "";
-  newPassword.value = "";
+  if (!oldPassword.value.length || newPassword.value.length < 8) return;
+  await saveSettings(async () => {
+    await apiFetch("/auth/password/change", {
+      method: "POST",
+      body: JSON.stringify({ oldPassword: oldPassword.value, newPassword: newPassword.value })
+    });
+    oldPassword.value = "";
+    newPassword.value = "";
+  }, "settings.passwordChanged");
 }
 </script>
 
 <template>
-  <AppShell>
-    <div class="max-w-xl">
-      <h1 class="mb-4 text-xl font-semibold">{{ t("settings.securityTitle") }}</h1>
-      <form class="panel space-y-4 p-5" @submit.prevent="save">
-        <Input
-          v-model="oldPassword"
-          class="h-11 px-3"
-          :placeholder="t('settings.oldPassword')"
-          type="password"
-        />
-        <Input
-          v-model="newPassword"
-          class="h-11 px-3"
-          :placeholder="t('settings.newPassword')"
-          type="password"
-        />
-        <Button type="submit">
-          {{ t("settings.changePassword") }}
-        </Button>
-      </form>
-    </div>
-  </AppShell>
+  <SettingsLayout :title="t('settings.securityTitle')">
+    <form class="space-y-4" :aria-busy="saving" @submit.prevent="save">
+      <label for="settings-old-password" class="block text-sm font-medium">{{
+        t("settings.oldPassword")
+      }}</label>
+      <Input
+        id="settings-old-password"
+        v-model="oldPassword"
+        name="oldPassword"
+        autocomplete="current-password"
+        required
+        :disabled="saving"
+        class="h-11 px-3"
+        :placeholder="t('settings.oldPassword')"
+        type="password"
+      />
+      <label for="settings-new-password" class="block text-sm font-medium">{{
+        t("settings.newPassword")
+      }}</label>
+      <Input
+        id="settings-new-password"
+        v-model="newPassword"
+        name="newPassword"
+        autocomplete="new-password"
+        required
+        minlength="8"
+        :disabled="saving"
+        class="h-11 px-3"
+        :placeholder="t('settings.newPassword')"
+        type="password"
+      />
+      <p v-if="error" role="alert" class="break-words text-sm text-destructive">{{ error }}</p>
+      <p role="status" class="text-sm text-muted-foreground">{{ success }}</p>
+      <Button type="submit" class="min-h-11" :disabled="saving">
+        <Loader2 v-if="saving" class="h-4 w-4 animate-spin" aria-hidden="true" />
+        {{ t("settings.changePassword") }}
+      </Button>
+    </form>
+  </SettingsLayout>
 </template>

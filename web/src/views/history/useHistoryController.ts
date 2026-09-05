@@ -1,8 +1,9 @@
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
+import { listDetailEntryState, returnToList } from "@/lib/listDetailNavigation";
 import {
   isSameStringQuery,
   queryPositiveInt,
@@ -40,6 +41,7 @@ export function useHistoryController() {
   const pageSize = 12;
   const total = ref(0);
   const loading = ref(false);
+  const loadError = ref("");
   const detailLoading = ref(false);
   const selectedSession = ref<HistorySession | null>(null);
   const detailMessages = ref<HistoryMessage[]>([]);
@@ -84,11 +86,18 @@ export function useHistoryController() {
   );
 
   let syncingListQuery = false;
+  let listRequest = 0;
+  let detailRequest = 0;
 
-  onMounted(async () => {
-    await load(page.value, { syncRoute: false });
+  onMounted(() => {
+    void load(page.value, { syncRoute: false });
     const sessionId = getRouteSessionId();
-    if (sessionId) await loadDetail(sessionId);
+    if (sessionId) void loadDetail(sessionId);
+  });
+
+  onBeforeUnmount(() => {
+    listRequest += 1;
+    detailRequest += 1;
   });
 
   watch(
@@ -98,7 +107,14 @@ export function useHistoryController() {
       const nextPage = readRoutePage();
       const nextQ = queryString(route.query.q).trim();
       const nextOrder = readRouteOrder();
-      if (page.value === nextPage && q.value === nextQ && order.value === nextOrder) return;
+      if (
+        !loading.value &&
+        !loadError.value &&
+        page.value === nextPage &&
+        q.value === nextQ &&
+        order.value === nextOrder
+      )
+        return;
       q.value = nextQ;
       order.value = nextOrder;
       await load(nextPage, { syncRoute: false });
@@ -112,9 +128,7 @@ export function useHistoryController() {
       if (sessionId) {
         await loadDetail(sessionId);
       } else {
-        selectedSession.value = null;
-        detailMessages.value = [];
-        selectedImage.value = null;
+        clearDetail();
       }
     }
   );
@@ -132,9 +146,12 @@ export function useHistoryController() {
   });
 
   async function load(nextPage = page.value, options: { syncRoute?: boolean } = {}) {
+    const request = ++listRequest;
     const targetPage = sanitizePage(nextPage);
     if (options.syncRoute !== false) await replaceListQuery(targetPage);
+    if (request !== listRequest) return;
     loading.value = true;
+    loadError.value = "";
     try {
       const params = new URLSearchParams({
         order: order.value,
@@ -148,11 +165,20 @@ export function useHistoryController() {
         pageSize: number;
         total: number;
       }>(`/history?${params.toString()}`);
+      if (request !== listRequest) return;
       items.value = body.items;
       page.value = body.page;
       total.value = body.total;
+    } catch (error) {
+      if (request === listRequest) {
+        items.value = [];
+        total.value = 0;
+        page.value = targetPage;
+        loadError.value = errorMessage(error) || t("common.failed");
+        toast.error(loadError.value);
+      }
     } finally {
-      loading.value = false;
+      if (request === listRequest) loading.value = false;
     }
   }
 
@@ -173,7 +199,8 @@ export function useHistoryController() {
   }
 
   async function backToGrid() {
-    await pushHistoryQuery(historyListQuery(page.value, null));
+    clearDetail();
+    await returnToList(router, route, historyListQuery(page.value, null));
   }
 
   async function deleteSelectedSession() {
@@ -188,10 +215,7 @@ export function useHistoryController() {
     items.value = items.value.filter((item) => item.id !== session.id);
     total.value = Math.max(total.value - 1, 0);
     toast.success(t("history.sessionDeleted"));
-    await pushHistoryQuery(historyListQuery(page.value, null));
-    selectedSession.value = null;
-    detailMessages.value = [];
-    selectedImage.value = null;
+    await replaceDetailWithGrid();
     if (items.value.length === 0 && page.value > 1) {
       await load(page.value - 1);
     } else {
@@ -201,18 +225,39 @@ export function useHistoryController() {
 
   /** GET /history/:id 拉会话头 + 全消息；后端已合并 D1 持久化图片，前端只做展示。 */
   async function loadDetail(sessionId: string) {
+    const request = ++detailRequest;
+    detailMessages.value = [];
+    selectedImage.value = null;
     detailLoading.value = true;
     try {
       const body = await apiFetch<{
         session: HistorySession;
         messages: HistoryMessage[];
-      }>(`/history/${sessionId}`);
+      }>(`/history/${encodeURIComponent(sessionId)}`);
+      if (request !== detailRequest || getRouteSessionId() !== sessionId) return;
       selectedSession.value = body.session;
       detailMessages.value = body.messages;
       activeResultIndex.value = 0;
+    } catch (error) {
+      if (request !== detailRequest || getRouteSessionId() !== sessionId) return;
+      toast.error(errorMessage(error) || t("common.failed"));
+      await replaceDetailWithGrid();
     } finally {
-      detailLoading.value = false;
+      if (request === detailRequest) detailLoading.value = false;
     }
+  }
+
+  function clearDetail() {
+    detailRequest += 1;
+    detailLoading.value = false;
+    selectedSession.value = null;
+    detailMessages.value = [];
+    selectedImage.value = null;
+  }
+
+  async function replaceDetailWithGrid() {
+    clearDetail();
+    await returnToList(router, route, historyListQuery(page.value, null), true);
   }
 
   function getRouteSessionId() {
@@ -253,7 +298,7 @@ export function useHistoryController() {
   async function pushHistoryQuery(query: StringQuery) {
     syncingListQuery = true;
     try {
-      await router.push({ path: "/history", query });
+      await router.push({ path: "/history", query, state: listDetailEntryState(route) });
     } finally {
       syncingListQuery = false;
     }
@@ -335,6 +380,7 @@ export function useHistoryController() {
     pageInput,
     total,
     loading,
+    loadError,
     detailLoading,
     selectedSession,
     selectedImage,

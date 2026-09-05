@@ -174,7 +174,8 @@ export function useWorkspaceController() {
   });
   const allowCustomImageCount = computed(() => auth.isSysadmin || maxImagesPerGeneration.value > 1);
 
-  let restoringActiveGeneration = false;
+  let routeLoadVersion = 0;
+  let disposed = false;
 
   const { status, connect, disconnect } = useTaskWebSocket((payload) => {
     sessions.applyTaskEvent(payload);
@@ -195,33 +196,25 @@ export function useWorkspaceController() {
   });
 
   onMounted(async () => {
-    // 先拉会话列表，再尝试恢复中断任务或按路由加载消息。
-    await sessions.loadSessions();
-    const restored = await restoreActiveGenerationIfNeeded();
-    const routeSessionId = currentRouteSessionId();
-    if (!restored && routeSessionId) {
-      await sessions.loadMessages(routeSessionId);
-    } else if (!restored) {
-      resetWorkspaceDraft();
+    const version = routeLoadVersion;
+    try {
+      await sessions.loadSessions(false);
+      if (!disposed && version === routeLoadVersion) await loadRouteSession();
+    } catch (error) {
+      if (!disposed && version === routeLoadVersion) reportLoadError(error);
     }
   });
 
   onBeforeUnmount(() => {
+    disposed = true;
+    routeLoadVersion += 1;
+    sessions.invalidateMessageLoads();
     disconnect();
   });
 
   watch(
     () => route.params.sessionId,
-    async (id) => {
-      if (restoringActiveGeneration) return;
-      const restored = await restoreActiveGenerationIfNeeded();
-      if (restored) return;
-      if (typeof id === "string") {
-        await sessions.loadMessages(id);
-      } else {
-        resetWorkspaceDraft();
-      }
-    }
+    () => void loadRouteSession()
   );
 
   watch(
@@ -282,9 +275,9 @@ export function useWorkspaceController() {
 
   async function newSession() {
     if (!auth.isSysadmin && hasRunningTask.value) {
-      await restoreActiveGenerationIfNeeded();
       return;
     }
+    routeLoadVersion += 1;
     disconnect();
     resetWorkspaceDraft();
     await router.push("/workspace");
@@ -300,32 +293,48 @@ export function useWorkspaceController() {
     return typeof route.params.sessionId === "string" ? route.params.sessionId : null;
   }
 
-  /**
-   * 刷新进入时恢复 queued/running 任务：拉消息、连 WS，并把路由修正到真实会话。
-   * sysadmin 可多任务并行，不主动抢占到某一个进行中任务。
-   */
-  async function restoreActiveGenerationIfNeeded() {
-    if (auth.isSysadmin || restoringActiveGeneration) return false;
-    const active = await sessions.loadActiveGeneration();
-    if (!active) return false;
-    await openActiveGeneration(active);
-    return true;
-  }
-
-  async function openActiveGeneration(active: ActiveGeneration) {
-    restoringActiveGeneration = true;
+  async function loadRouteSession() {
+    const version = ++routeLoadVersion;
+    const routeSessionId = currentRouteSessionId();
+    const isCurrent = () => !disposed && version === routeLoadVersion;
+    disconnect();
+    sessions.invalidateMessageLoads();
+    selectedImage.value = null;
     try {
-      await sessions.loadMessages(active.sessionId);
-      connect(`/ws/task/${active.taskId}`);
-      if (currentRouteSessionId() !== active.sessionId) {
-        await router.replace(`/workspace/s/${active.sessionId}`);
+      if (routeSessionId) {
+        await sessions.loadMessages(routeSessionId);
+        if (!isCurrent()) return;
+        const running = sessions.messages.find(isGeneratingMessage);
+        if (running?.taskId) connect(`/ws/task/${running.taskId}`);
+        return;
       }
-    } finally {
-      restoringActiveGeneration = false;
+      resetWorkspaceDraft();
+      if (auth.isSysadmin) return;
+      const active = await sessions.loadActiveGeneration();
+      if (!isCurrent() || !active) return;
+      await openActiveGeneration(active);
+    } catch (error) {
+      if (isCurrent()) reportLoadError(error);
     }
   }
 
+  async function openActiveGeneration(active: ActiveGeneration) {
+    const version = ++routeLoadVersion;
+    await sessions.loadMessages(active.sessionId);
+    if (disposed || version !== routeLoadVersion) return;
+    connect(`/ws/task/${active.taskId}`);
+    if (currentRouteSessionId() !== active.sessionId) {
+      await router.replace(`/workspace/s/${active.sessionId}`);
+    }
+  }
+
+  function reportLoadError(error: unknown) {
+    const body = error as { error?: { message?: string } } | null;
+    toast.error(body?.error?.message || t("common.failed"));
+  }
+
   function resetWorkspaceDraft() {
+    sessions.invalidateMessageLoads();
     sessions.currentSessionId = null;
     sessions.messages = [];
     sessions.nextMessageCursor = null;

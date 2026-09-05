@@ -1,7 +1,9 @@
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
+import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
+import { listDetailEntryState, returnToList } from "@/lib/listDetailNavigation";
 import { isSameStringQuery, queryString } from "@/lib/routeQuery";
 import { useAuthStore } from "@/stores/auth";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
@@ -58,6 +60,7 @@ export function useUserSessionsController() {
   const pageSize = 12;
   const total = ref(0);
   const loading = ref(false);
+  const loadError = ref("");
   const detailLoading = ref(false);
   const activeMessageIndex = ref(0);
 
@@ -92,6 +95,9 @@ export function useUserSessionsController() {
     ])
   );
   let syncingListRoute = false;
+  let listRequest = 0;
+  let detailRequest = 0;
+  let disposed = false;
 
   watch(page, (value) => {
     pageInput.value = String(value);
@@ -127,26 +133,33 @@ export function useUserSessionsController() {
     }
   );
 
-  onMounted(async () => {
+  onMounted(() => {
     void loadUserOptions();
-    await loadSessions(page.value, { syncRoute: false });
+    void loadSessions(page.value, { syncRoute: false });
     const sessionId = readUserSessionsRouteSessionId(route.query);
-    if (sessionId) await loadDetail(sessionId);
+    if (sessionId) void loadDetail(sessionId);
+  });
+
+  onBeforeUnmount(() => {
+    disposed = true;
+    listRequest += 1;
+    detailRequest += 1;
   });
 
   /** 顶栏提交：必要时改路由到 `/users/:id/sessions` 再拉表。 */
   async function submitFilters() {
-    const normalizedUserId = userId.value.trim();
+    const normalizedUserId = userId.value === "__all_users__" ? "" : userId.value.trim();
+    userId.value = normalizedUserId;
     const routeUserId = normalizedUserId || "_";
     const currentRouteUserId = typeof route.params.userId === "string" ? route.params.userId : "";
     if (currentRouteUserId !== routeUserId) {
+      clearDetail();
       await replaceListRoute(
         `/sysadmin/users/${encodeURIComponent(routeUserId)}/sessions`,
         1,
         null
       );
       await loadSessions(1, { syncRoute: false });
-      clearDetail();
       return;
     }
     await loadSessions(1);
@@ -156,6 +169,7 @@ export function useUserSessionsController() {
   async function loadUserOptions() {
     try {
       const body = await apiFetch<{ items: UserOption[] }>("/sysadmin/users");
+      if (disposed) return;
       userOptions.value = body.items;
     } catch {
       userOptions.value = [];
@@ -164,11 +178,14 @@ export function useUserSessionsController() {
 
   /** 拉左表；`userId` 空时用路由占位 `_` 表示全量/未指定。 */
   async function loadSessions(nextPage = page.value, options: { syncRoute?: boolean } = {}) {
+    const request = ++listRequest;
     const normalizedUserId = userId.value.trim();
     userId.value = normalizedUserId;
     const targetPage = sanitizeUserSessionsPage(nextPage);
     if (options.syncRoute !== false) await replaceListQuery(targetPage);
+    if (request !== listRequest) return;
     loading.value = true;
+    loadError.value = "";
     try {
       const params = new URLSearchParams({
         page: String(targetPage),
@@ -182,11 +199,19 @@ export function useUserSessionsController() {
         pageSize: number;
         total: number;
       }>(`/sysadmin/users/${encodeURIComponent(routeUserId)}/sessions?${params.toString()}`);
+      if (request !== listRequest) return;
       sessions.value = body.items;
       page.value = body.page;
       total.value = body.total;
+    } catch (error) {
+      if (request === listRequest) {
+        sessions.value = [];
+        total.value = 0;
+        page.value = targetPage;
+        loadError.value = reportLoadError(error);
+      }
     } finally {
-      loading.value = false;
+      if (request === listRequest) loading.value = false;
     }
   }
 
@@ -209,22 +234,39 @@ export function useUserSessionsController() {
   }
 
   async function backToTable() {
-    await pushListRoute(route.path, page.value, null);
+    clearDetail();
+    await returnToList(router, route, buildUserSessionsListQuery({ page: page.value, q: q.value }));
   }
 
   /** 拉单会话的 session 头 + 全量消息，供右侧审计。 */
   async function loadDetail(sessionId: string) {
+    const request = ++detailRequest;
+    messages.value = [];
+    selectedImage.value = null;
     detailLoading.value = true;
     try {
       const body = await apiFetch<{
         session: AuditSession;
         messages: AuditMessage[];
       }>(`/sysadmin/sessions/${encodeURIComponent(sessionId)}/detail`);
+      if (request !== detailRequest || readUserSessionsRouteSessionId(route.query) !== sessionId)
+        return;
       selectedSession.value = body.session;
       messages.value = body.messages.map(normalizeAuditMessageAttachments);
       activeMessageIndex.value = 0;
+    } catch (error) {
+      if (request !== detailRequest || readUserSessionsRouteSessionId(route.query) !== sessionId)
+        return;
+      reportLoadError(error);
+      clearDetail();
+      await returnToList(
+        router,
+        route,
+        buildUserSessionsListQuery({ page: page.value, q: q.value }),
+        true
+      );
     } finally {
-      detailLoading.value = false;
+      if (request === detailRequest) detailLoading.value = false;
     }
   }
 
@@ -233,10 +275,19 @@ export function useUserSessionsController() {
   }
 
   function clearDetail() {
+    detailRequest += 1;
+    detailLoading.value = false;
     selectedSession.value = null;
     messages.value = [];
     selectedImage.value = null;
     activeMessageIndex.value = 0;
+  }
+
+  function reportLoadError(error: unknown) {
+    const message = (error as { error?: { message?: unknown } } | null)?.error?.message;
+    const text = typeof message === "string" && message ? message : t("common.failed");
+    toast.error(text);
+    return text;
   }
 
   async function replaceListQuery(nextPage = page.value) {
@@ -274,7 +325,11 @@ export function useUserSessionsController() {
     const query = buildUserSessionsListQuery({ page: nextPage, q: q.value, sessionId });
     syncingListRoute = true;
     try {
-      await router[method]({ path, query });
+      await router[method]({
+        path,
+        query,
+        ...(method === "push" ? { state: listDetailEntryState(route) } : {})
+      });
     } finally {
       syncingListRoute = false;
     }
@@ -356,6 +411,7 @@ export function useUserSessionsController() {
     pageInput,
     total,
     loading,
+    loadError,
     detailLoading,
     activeMessageIndex,
     totalPages,

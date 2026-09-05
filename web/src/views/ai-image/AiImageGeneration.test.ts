@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => ({
   generation: null as unknown,
   cases: null as unknown,
   authStore: null as unknown,
-  route: null as unknown as { params: Record<string, string | undefined> },
+  route: null as unknown as {
+    params: Record<string, string | undefined>;
+    query: Record<string, string>;
+  },
+  routerBack: vi.fn(),
   routerPush: vi.fn(),
   routerReplace: vi.fn(),
   trackGenerationEvent: vi.fn()
@@ -104,6 +108,7 @@ vi.mock("vue-router", () => ({
   useRoute: () => mocks.route,
   useRouter: () => ({
     push: mocks.routerPush,
+    back: mocks.routerBack,
     replace: mocks.routerReplace
   })
 }));
@@ -126,7 +131,9 @@ vi.mock("./useAiImageCases", () => ({
 describe("AiImageGeneration", () => {
   beforeEach(() => {
     mocks.trackGenerationEvent.mockReset();
-    mocks.route = reactive({ params: {} });
+    mocks.route = reactive({ params: {}, query: {} });
+    mocks.routerBack.mockReset();
+    window.history.replaceState({}, "");
     mocks.routerPush.mockReset();
     mocks.routerReplace.mockReset();
     mocks.authStore = authStore();
@@ -224,6 +231,72 @@ describe("AiImageGeneration", () => {
 
     expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="select-case"]').exists()).toBe(true);
+  });
+
+  it("opens blank creation directly from its URL", async () => {
+    mocks.route.query = { mode: "blank" };
+    const wrapper = mount(AiImageGeneration);
+    await nextTick();
+    await nextTick();
+    expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="select-case"]').exists()).toBe(false);
+  });
+
+  it("gives blank creation a URL that cannot reopen the previous case on refresh", async () => {
+    const wrapper = mount(AiImageGeneration);
+    await nextTick();
+    await nextTick();
+    wrapper.findComponent({ name: "AiImageCasePickerPanel" }).vm.$emit("startBlankAssistantFlow");
+    expect(mocks.routerPush).toHaveBeenCalledWith({ path: "/ai-image", query: { mode: "blank" } });
+  });
+
+  it("defers incoming case navigation until a running generation has finished", async () => {
+    const generation = mocks.generation as ReturnType<typeof generationState>;
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    generation.hasRunningTask.value = true;
+    cases.items.value = [promptCase({ id: "next" })];
+    mocks.route.params = { caseId: "next" };
+    const wrapper = mount(AiImageGeneration);
+    await nextTick();
+    await nextTick();
+    expect(cases.applyCasePrompt).not.toHaveBeenCalled();
+    expect(generation.clearActiveResult).not.toHaveBeenCalled();
+    generation.hasRunningTask.value = false;
+    await nextTick();
+    await nextTick();
+    expect(cases.caseContext.value?.id).toBe("next");
+    expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(true);
+  });
+
+  it("preserves edited prompts when going back to the list and forward to the same case", async () => {
+    const cases = mocks.cases as ReturnType<typeof casesState>;
+    const selected = promptCase();
+    cases.items.value = [selected];
+    const wrapper = mount(AiImageGeneration);
+    await nextTick();
+    await wrapper.get('[data-testid="select-case"]').trigger("click");
+    await wrapper.get('[data-testid="apply-case"]').trigger("click");
+    mocks.route.params = { caseId: selected.id };
+    await nextTick();
+    cases.setPrompt("edited draft", "user");
+    mocks.route.params = {};
+    await nextTick();
+    mocks.route.params = { caseId: selected.id };
+    await nextTick();
+    expect(cases.finalPrompt.value).toBe("edited draft");
+    expect(cases.applyCasePrompt).toHaveBeenCalledTimes(1);
+    expect(wrapper.find('[data-testid="prompt-panel"]').exists()).toBe(true);
+  });
+
+  it("returns to the prior list history entry instead of pushing a list-case loop", async () => {
+    mocks.route.query = { mode: "blank" };
+    window.history.replaceState({ back: "/ai-image" }, "");
+    const wrapper = mount(AiImageGeneration);
+    await nextTick();
+    await nextTick();
+    wrapper.findComponent({ name: "AiImageGenerationHeader" }).vm.$emit("back");
+    expect(mocks.routerBack).toHaveBeenCalledOnce();
+    expect(mocks.routerPush).not.toHaveBeenCalled();
   });
 
   it("does not attribute user-written prompts to the selected case", async () => {
@@ -397,7 +470,9 @@ function casesState() {
     selectedMode: ref<PromptCaseMode>("text2image"),
     size: ref(""),
     sizes: computed(() => []),
-    applyCasePrompt: vi.fn(async (item: PromptCase) => {
+    applyCasePrompt: vi.fn(async (input: PromptCase | string) => {
+      const item =
+        typeof input === "string" ? items.value.find((item) => item.id === input)! : input;
       selected.value = item;
       caseContext.value = item;
       finalPrompt.value = item.promptTemplate;
