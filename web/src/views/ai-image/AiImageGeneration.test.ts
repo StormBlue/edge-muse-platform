@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, type VueWrapper } from "@vue/test-utils";
 import { apiFetch } from "@/api/client";
 import AiImageGeneration from "./AiImageGeneration.vue";
-import { mountStudio, task } from "./studioTestUtils";
+import { mountStudio, promptCase, task } from "./studioTestUtils";
 
 vi.mock("@/api/client", () => ({ apiFetch: vi.fn() }));
 let wrapper: VueWrapper;
@@ -26,6 +26,29 @@ afterEach(() => {
 });
 
 describe("AI image studio page", () => {
+  it("does not change the creation context when merely previewing a case", async () => {
+    vi.mocked(apiFetch).mockImplementation(async (path) => {
+      if (path.startsWith("/prompt-cases/")) return { item: promptCase() } as never;
+      return {
+        items: [promptCase()],
+        facets: { categories: [], modes: [], sizes: [] },
+        pageInfo: { nextCursor: null, hasMore: false, limit: 60 }
+      } as never;
+    });
+    ({ wrapper } = await mountStudio("/ai-image", AiImageGeneration));
+    await wrapper.get('[data-testid="studio-prompt"]').setValue("原有创作");
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "选择案例")!
+      .trigger("click");
+    await flushPromises();
+    document.querySelector<HTMLButtonElement>(".studio-case-card")!.click();
+    await flushPromises();
+    expect(wrapper.find(".image-studio-context").exists()).toBe(false);
+    expect(
+      (wrapper.get('[data-testid="studio-prompt"]').element as HTMLTextAreaElement).value
+    ).toBe("原有创作");
+  });
   it("keeps partial results alongside the failure reason and retry action", async () => {
     vi.mocked(apiFetch).mockResolvedValueOnce({
       summary: {

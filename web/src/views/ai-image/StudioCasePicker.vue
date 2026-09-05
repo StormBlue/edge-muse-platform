@@ -16,7 +16,8 @@ watch(
   }
 );
 async function selectCase(item: Parameters<typeof s.cases.previewCase>[0]) {
-  s.cases.previewCase(item, { userSelected: true });
+  // 浏览案例不改变创作或助手上下文；只有“应用案例”才提交选择。
+  s.cases.previewCase(item);
   showDetail.value = true;
   await nextTick();
   if (window.matchMedia("(max-width: 700px)").matches)
