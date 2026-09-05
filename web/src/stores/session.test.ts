@@ -15,6 +15,63 @@ describe("session store task events", () => {
     mockedApiFetch.mockReset();
   });
 
+  it("returns accepted task identity without mutating a departed view", async () => {
+    const sessions = useSessionStore();
+    const result = {
+      taskId: "accepted",
+      sessionId: "old-session",
+      messageId: "old-message",
+      wsUrl: "/ws/accepted",
+      title: "task"
+    };
+    mockedApiFetch.mockResolvedValueOnce(result);
+    const accepted = await sessions.generate(
+      { prompt: "prompt", mode: "text2image", size: "auto", n: 1 },
+      { canApply: () => false }
+    );
+    expect(accepted).toEqual(result);
+    expect(sessions.sessions).toHaveLength(0);
+    expect(sessions.messages).toHaveLength(0);
+    expect(sessions.currentSessionId).toBeNull();
+    expect(sessions.loading).toBe(false);
+  });
+
+  it("keeps new generation loading owned by the newest request", async () => {
+    const sessions = useSessionStore();
+    const resolvers: Array<(value: unknown) => void> = [];
+    mockedApiFetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        })
+    );
+    const input = { prompt: "prompt", mode: "text2image" as const, size: "auto", n: 1 };
+    const first = sessions.generate(input);
+    sessions.invalidateMessageLoads();
+    const second = sessions.generate(input);
+    resolvers[0]!({
+      taskId: "old",
+      sessionId: "old-session",
+      messageId: "old-message",
+      title: "old",
+      wsUrl: "/ws/old"
+    });
+    await first;
+    expect(sessions.loading).toBe(true);
+    expect(sessions.messages).toHaveLength(0);
+    resolvers[1]!({
+      taskId: "new",
+      sessionId: "new-session",
+      messageId: "new-message",
+      title: "new",
+      wsUrl: "/ws/new"
+    });
+    await second;
+    expect(sessions.loading).toBe(false);
+    expect(sessions.currentSessionId).toBe("new-session");
+    expect(sessions.messages.at(-1)?.taskId).toBe("new");
+  });
+
   it("creates sessions in image to image mode by default", async () => {
     mockedApiFetch.mockResolvedValueOnce({
       session: {

@@ -75,7 +75,7 @@ export function useHistoryController() {
       resultMessages.value.length > 0 &&
       resultMessages.value.every((message) => {
         const status = taskStatusValue(message);
-        return status === "succeeded" || status === "failed";
+        return status === "succeeded" || status === "failed" || status === "cancelled";
       })
   );
   const detailImages = computed(() =>

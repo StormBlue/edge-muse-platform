@@ -13,7 +13,10 @@ defineProps<{
   resultImages: ImageAttachment[];
   hasRunningTask: boolean;
   generationStatusLabel: string;
-  generationProgress: number;
+  generationProgress: number | null;
+  generationElapsed?: string;
+  retryable?: boolean;
+  retryLoading?: boolean;
   generationPrompt: string;
   failedTitle: string;
   failedMessage: string;
@@ -81,6 +84,9 @@ const { t } = useI18n();
         </p>
       </div>
       <Button
+        v-if="retryable !== false"
+        :disabled="retryLoading"
+        :aria-busy="retryLoading"
         class="h-9 border-destructive/30 text-destructive"
         variant="secondary"
         type="button"
@@ -116,10 +122,17 @@ const { t } = useI18n();
             <Loader2 class="h-4 w-4 animate-spin text-primary" />
             {{ t("workspace.generatingNewResult") }}
             <span class="ml-auto text-xs tabular-nums text-muted-foreground">
-              {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+              {{
+                generationProgress !== null
+                  ? t("workspace.generationProgress", { percent: generationProgress })
+                  : generationElapsed
+              }}
             </span>
           </div>
-          <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+          <div
+            v-if="generationProgress !== null"
+            class="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15"
+          >
             <div
               class="h-full rounded-full bg-primary transition-all duration-500"
               :style="{ width: `${generationProgress}%` }"
@@ -167,10 +180,15 @@ const { t } = useI18n();
         <div class="flex items-center justify-between text-xs text-muted-foreground">
           <span>{{ t("workspace.generationHint") }}</span>
           <span class="tabular-nums">
-            {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+            {{
+              generationProgress !== null
+                ? t("workspace.generationProgress", { percent: generationProgress })
+                : generationElapsed
+            }}
           </span>
         </div>
         <div
+          v-if="generationProgress !== null"
           class="mt-2 overflow-hidden rounded-full bg-primary/15"
           :class="compact ? 'h-2' : 'h-2.5'"
         >

@@ -6,6 +6,7 @@ import {
   prepareReferenceImageFiles
 } from "@/utils/referenceImageFiles";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
+import { recreationMessages } from "@/components/image/recreationMessages";
 
 export type ChatInputSizeOption = {
   value: string;
@@ -26,9 +27,11 @@ export type ChatInputSubmitValue = {
   size: string;
   n: number;
   files: File[];
+  referenceImages?: ImageAttachment[];
 };
 
 export type ChatInputProps = {
+  notice?: string;
   loading?: boolean;
   generating?: boolean;
   mode: SessionMode;
@@ -38,6 +41,9 @@ export type ChatInputProps = {
   initialGenerationTargetId?: string;
   initialSize?: string;
   initialCount?: number;
+  initialPrompt?: string;
+  initialReferenceImages?: ImageAttachment[];
+  initialReferenceCount?: number;
   allowCustomCount?: boolean;
   maxCustomCount?: number;
   referenceCount?: number;
@@ -63,13 +69,15 @@ const defaultMaxReferenceFiles = 5;
 const defaultMaxCustomCount = 200;
 
 export function useChatInputController(props: ChatInputProps, emit: ChatInputEmit) {
-  const { t } = useI18n();
+  const { t } = useI18n({ useScope: "local", messages: recreationMessages });
   const prompt = ref("");
   const generationTargetId = ref("default");
   const size = ref("auto");
   const n = ref(1);
   const countInput = ref("1");
   const files = ref<File[]>([]);
+  const existingReferences = ref<ImageAttachment[]>([]);
+  const requiredReferenceCount = ref(0);
   const dragging = ref(false);
   const previews = ref<Array<{ file: File; url: string }>>([]);
 
@@ -77,12 +85,22 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   const isImageToImage = computed(() => props.mode === "image2image");
   const isBusy = computed(() => Boolean(props.loading || props.generating));
   const hasPrompt = computed(() => prompt.value.trim().length > 0);
+  // 旧任务的配方按原始引用数校验；接口少返回的图片不能被当成用户主动删图。
+  const missingReferences = computed(() =>
+    isImageToImage.value
+      ? Math.max(
+          0,
+          requiredReferenceCount.value - existingReferences.value.length - files.value.length
+        )
+      : 0
+  );
   const submitDisabled = computed(
     () =>
       isReadOnly.value ||
       isBusy.value ||
       !hasPrompt.value ||
-      (isImageToImage.value && files.value.length === 0)
+      missingReferences.value > 0 ||
+      (isImageToImage.value && files.value.length + existingReferences.value.length === 0)
   );
   const highResolutionCountLocked = computed(
     () => Boolean(props.limitHighResolutionCount) && isHighResolutionSize(size.value)
@@ -132,7 +150,9 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     return [1];
   });
   const displayedReferenceCount = computed(() => props.referenceCount ?? files.value.length);
-  const readonlyReferenceImages = computed(() => props.referenceImages ?? []);
+  const readonlyReferenceImages = computed(() =>
+    isReadOnly.value ? (props.referenceImages ?? []) : existingReferences.value
+  );
   const editablePreviews = computed(() => (isReadOnly.value ? [] : previews.value));
   const uploaderLabel = computed(() => {
     if (isReadOnly.value && isImageToImage.value) {
@@ -141,6 +161,29 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     if (files.value.length) return t("workspace.referenceImages", { count: files.value.length });
     return t("workspace.addReferenceImage");
   });
+
+  watch(
+    () => props.initialReferenceCount,
+    (value) => {
+      requiredReferenceCount.value = Math.max(0, value ?? 0);
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => props.initialPrompt,
+    (value) => {
+      prompt.value = value ?? "";
+    },
+    { immediate: true }
+  );
+  watch(
+    () => props.initialReferenceImages,
+    (value) => {
+      existingReferences.value = [...(value ?? [])];
+    },
+    { immediate: true }
+  );
 
   watch(
     () => props.generationTargetId ?? props.initialGenerationTargetId,
@@ -204,7 +247,10 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   watch(
     () => props.mode,
     (next) => {
-      if (next !== "image2image") clearFiles();
+      if (next !== "image2image") {
+        clearFiles();
+        existingReferences.value = [];
+      }
       if (!props.allowCustomCount) setNormalizedCount(1);
     }
   );
@@ -226,9 +272,8 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   );
 
   watch(effectiveMaxReferenceFiles, (maxFiles) => {
-    if (files.value.length > maxFiles) {
-      files.value = files.value.slice(0, maxFiles);
-    }
+    existingReferences.value = existingReferences.value.slice(0, maxFiles);
+    files.value = files.value.slice(0, Math.max(0, maxFiles - existingReferences.value.length));
   });
 
   onBeforeUnmount(() => {
@@ -245,7 +290,10 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
       mode: props.mode,
       size: size.value,
       n: submittedCount,
-      files: isImageToImage.value ? files.value : []
+      files: isImageToImage.value ? files.value : [],
+      ...(isImageToImage.value && existingReferences.value.length
+        ? { referenceImages: existingReferences.value }
+        : {})
     });
     if (!isImageToImage.value) clearFiles();
   }
@@ -277,12 +325,26 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     if (isReadOnly.value) return;
     if (!isImageToImage.value) return;
     const compressed = await prepareReferenceImageFiles(inputFiles);
-    files.value = [...files.value, ...compressed].slice(0, effectiveMaxReferenceFiles.value);
+    files.value = [...files.value, ...compressed].slice(
+      0,
+      Math.max(0, effectiveMaxReferenceFiles.value - existingReferences.value.length)
+    );
   }
 
   function removeFile(index: number) {
     if (isReadOnly.value) return;
     files.value = files.value.filter((_, currentIndex) => currentIndex !== index);
+  }
+
+  function removeReference(id: string) {
+    if (isReadOnly.value) return;
+    existingReferences.value = existingReferences.value.filter((image) => image.id !== id);
+  }
+
+  function confirmCurrentReferences() {
+    if (isReadOnly.value || isBusy.value) return;
+    // 明确确认仅解除原配方数量要求，仍需满足图生图至少一张参考图的正常校验。
+    requiredReferenceCount.value = 0;
   }
 
   function clearFiles() {
@@ -351,6 +413,9 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     onDrop,
     onPaste,
     removeFile,
+    removeReference,
+    missingReferences,
+    confirmCurrentReferences,
     setCount,
     normalizeCount
   };

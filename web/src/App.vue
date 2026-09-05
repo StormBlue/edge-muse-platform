@@ -10,15 +10,21 @@ import { useI18n } from "vue-i18n";
 import { Toaster } from "vue-sonner";
 import "vue-sonner/style.css";
 import { useUiStore } from "@/stores/ui";
+import { useTaskActivityStore } from "@/stores/taskActivity";
 
 const ui = useUiStore();
+const taskActivity = useTaskActivityStore();
 const { locale } = useI18n();
 
 onMounted(() => {
   ui.applyTheme();
   ui.startThemeSync();
+  taskActivity.start();
 });
-onBeforeUnmount(() => ui.stopThemeSync());
+onBeforeUnmount(() => {
+  ui.stopThemeSync();
+  taskActivity.stop();
+});
 // immediate：首屏与切换语言时同步 i18n 与 <html lang>
 watch(
   () => ui.locale,

@@ -11,6 +11,7 @@ import { computed, nextTick, ref, watch, type HTMLAttributes } from "vue";
 import { FocusScope } from "reka-ui";
 import { LogOut, Menu, Settings, X } from "@lucide/vue";
 import AnnouncementBell from "@/components/announcements/AnnouncementBell.vue";
+import TaskCenter from "@/components/tasks/TaskCenter.vue";
 import BrandMark from "@/components/brand/BrandMark.vue";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -173,6 +174,18 @@ function updateLocale(value: unknown) {
             {{ userInitial }}
           </div>
         </div>
+        <div class="flex gap-2 px-3 pb-3 sm:hidden">
+          <RouterLink
+            class="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-secondary text-sm"
+            to="/settings/profile"
+            @click="closeMobileSidebar"
+          >
+            <Settings class="size-4" />{{ t("common.settings") }}
+          </RouterLink>
+          <Button variant="secondary" class="flex-1" @click="logout">
+            <LogOut class="size-4" />{{ t("common.logout") }}
+          </Button>
+        </div>
       </aside>
     </FocusScope>
 
@@ -196,6 +209,7 @@ function updateLocale(value: unknown) {
           {{ pageTitle }}
         </div>
         <div class="flex items-center gap-1.5 sm:gap-2">
+          <TaskCenter />
           <AnnouncementBell />
           <div class="w-20 shrink-0 sm:w-24">
             <Select :model-value="ui.locale" @update:model-value="updateLocale">
@@ -241,7 +255,7 @@ function updateLocale(value: unknown) {
             </PopoverContent>
           </Popover>
           <RouterLink
-            class="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            class="hidden size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:inline-flex"
             to="/settings/profile"
             :title="t('common.settings')"
             :aria-label="t('common.settings')"
@@ -252,6 +266,7 @@ function updateLocale(value: unknown) {
             variant="secondary"
             size="icon"
             type="button"
+            class="app-header-logout"
             :aria-label="t('common.logout')"
             :title="t('common.logout')"
             @click="logout"
@@ -384,5 +399,10 @@ function updateLocale(value: unknown) {
 .app-mobile-nav-link--active {
   background: color-mix(in oklch, var(--primary), transparent 88%);
   color: var(--primary);
+}
+@media (max-width: 639px) {
+  .app-header-logout {
+    display: none;
+  }
 }
 </style>

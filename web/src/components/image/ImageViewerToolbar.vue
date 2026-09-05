@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { Copy, Download, RotateCcw, Trash2, X, ZoomIn, ZoomOut } from "@lucide/vue";
+import {
+  Copy,
+  Download,
+  RotateCcw,
+  Trash2,
+  X,
+  ZoomIn,
+  ZoomOut,
+  SlidersHorizontal,
+  ImagePlus
+} from "@lucide/vue";
 import { useI18n } from "vue-i18n";
+import { recreationMessages } from "./recreationMessages";
 
 defineProps<{
   canCopyPrompt: boolean;
   canDelete: boolean;
+  canRecreate?: boolean;
   downloadFileName: string;
   downloadUrl: string;
 }>();
@@ -15,15 +27,38 @@ const emit = defineEmits<{
   resetZoom: [];
   zoomIn: [];
   zoomOut: [];
+  recreate: [reuse: "params" | "reference"];
 }>();
 
-const { t } = useI18n();
+const { t } = useI18n({ useScope: "local", messages: recreationMessages });
 </script>
 
 <template>
   <div
     class="image-viewer-toolbar flex shrink-0 flex-wrap items-center justify-end gap-2 px-3 sm:px-4"
   >
+    <button
+      v-if="canRecreate"
+      class="viewer-button"
+      type="button"
+      data-testid="reuse-params"
+      :title="t('recreate.params')"
+      :aria-label="t('recreate.params')"
+      @click="emit('recreate', 'params')"
+    >
+      <SlidersHorizontal class="h-4 w-4" />
+    </button>
+    <button
+      v-if="canRecreate"
+      class="viewer-button"
+      type="button"
+      data-testid="reuse-reference"
+      :title="t('recreate.reference')"
+      :aria-label="t('recreate.reference')"
+      @click="emit('recreate', 'reference')"
+    >
+      <ImagePlus class="h-4 w-4" />
+    </button>
     <button
       class="viewer-button"
       type="button"

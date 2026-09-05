@@ -303,7 +303,7 @@
     "noResults": "No generated results",
     "deleteSession": "Delete session",
     "deleteConfirm": "Delete this history session?",
-    "deleteUnavailable": "Only completed generated sessions with succeeded or failed tasks can be deleted",
+    "deleteUnavailable": "Only sessions whose tasks are completed, failed or cancelled can be deleted",
     "sessionDeleted": "Session deleted",
     "deleteFailed": "Failed to delete session"
   },

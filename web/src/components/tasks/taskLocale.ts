@@ -1,0 +1,76 @@
+import { computed } from "vue";
+import { useUiStore } from "@/stores/ui";
+
+const zh = {
+  title: "生成任务",
+  recent: "最近任务",
+  active: "进行中",
+  empty: "暂无生成任务",
+  emptyActive: "暂无进行中的任务",
+  refresh: "刷新",
+  retry: "重试",
+  open: "查看任务",
+  cancel: "取消排队",
+  cancelling: "取消中",
+  loadError: "任务加载失败，请重试",
+  cancelError: "取消失败，任务可能已开始执行",
+  precharged: "预扣",
+  refunded: "退还",
+  consumed: "消耗",
+  elapsed: "耗时",
+  waiting: "等待",
+  images: "张",
+  close: "关闭",
+  completed: "图像生成完成",
+  failed: "图像生成失败",
+  cancelledNotice: "排队任务已取消",
+  queued: "排队中",
+  starting: "正在启动",
+  generating: "生成中",
+  succeeded: "已完成",
+  cancelled: "已取消",
+  more: "加载更多",
+  minute: "分",
+  second: "秒",
+  connectionError: "暂时无法刷新，显示上次获取的状态",
+  created: "提交时间"
+};
+const en: typeof zh = {
+  title: "Generation tasks",
+  recent: "Recent",
+  active: "Active",
+  empty: "No generation tasks",
+  emptyActive: "No active tasks",
+  refresh: "Refresh",
+  retry: "Retry",
+  open: "View task",
+  cancel: "Cancel queued task",
+  cancelling: "Cancelling",
+  loadError: "Could not load tasks. Try again.",
+  cancelError: "Could not cancel. The task may have started.",
+  precharged: "Reserved",
+  refunded: "Refunded",
+  consumed: "Used",
+  elapsed: "Elapsed",
+  waiting: "Waiting",
+  images: "images",
+  close: "Close",
+  completed: "Image generation complete",
+  failed: "Image generation failed",
+  cancelledNotice: "Queued task cancelled",
+  queued: "Queued",
+  starting: "Starting",
+  generating: "Generating",
+  succeeded: "Completed",
+  cancelled: "Cancelled",
+  more: "Load more",
+  minute: "m",
+  second: "s",
+  connectionError: "Refresh unavailable. Showing the last known state.",
+  created: "Submitted"
+};
+
+export function useTaskLocale() {
+  const ui = useUiStore();
+  return computed(() => (ui.locale === "zh-CN" ? zh : en));
+}

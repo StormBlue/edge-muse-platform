@@ -36,6 +36,104 @@ describe("PromptAssistantPanel", () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
+  function mountAssistant(currentPrompt = "原始提示词") {
+    return mount(PromptAssistantPanel, {
+      props: {
+        mode: "text2image",
+        caseItem: null,
+        provider: null,
+        referenceCount: 0,
+        referenceDescription: "",
+        referenceContextKey: "",
+        currentPrompt,
+        creativeBrief: "必须保留品牌标志"
+      }
+    });
+  }
+
+  it("requires renewed confirmation when the prompt changes in flight or while confirming", async () => {
+    let resolve!: (response: AssistantResponse) => void;
+    mockedApiFetch.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        })
+    );
+    const wrapper = mountAssistant();
+    await wrapper.find("textarea").setValue("优化构图");
+    await wrapper.find("form").trigger("submit.prevent");
+    await wrapper.setProps({ currentPrompt: "用户在等待期间新增的重要要求" });
+    resolve({ ...assistantResponse("完成"), finalPrompt: "建议内容" });
+    await flushPromises();
+    expect(wrapper.emitted("fill")).toBeUndefined();
+    await wrapper.get('[data-testid="apply-assistant"]').trigger("click");
+    expect(wrapper.emitted("fill")).toBeUndefined();
+    expect(wrapper.text()).toContain("用户在等待期间新增的重要要求");
+    await wrapper.setProps({ currentPrompt: "再次修改" });
+    await wrapper.get('[data-testid="apply-assistant"]').trigger("click");
+    expect(wrapper.emitted("fill")).toBeUndefined();
+    await wrapper.get('[data-testid="apply-assistant"]').trigger("click");
+    expect(wrapper.emitted("fill")).toHaveLength(1);
+  });
+
+  it("appends only selected paragraphs to the latest prompt", async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      ...assistantResponse("完成"),
+      finalPrompt: "保留主体\n\n柔和侧光\n背景留白"
+    });
+    const wrapper = mountAssistant();
+    await wrapper.get('[data-testid="finalize-assistant-prompt"]').trigger("click");
+    await flushPromises();
+    await wrapper.findAll('input[type="checkbox"]')[1]!.setValue(true);
+    await wrapper.setProps({ currentPrompt: "最新要求" });
+    await wrapper.get('[data-testid="append-assistant"]').trigger("click");
+    expect(wrapper.emitted("fill")?.[0]?.[0]).toMatchObject({
+      prompt: "最新要求\n\n柔和侧光",
+      recommendedSize: "",
+      auto: false
+    });
+  });
+
+  it("preserves failed input for retry without duplicate conversation entries", async () => {
+    mockedApiFetch.mockRejectedValueOnce({ error: { message: "暂时不可用" } });
+    mockedApiFetch.mockResolvedValueOnce(assistantResponse("继续完善"));
+    const wrapper = mountAssistant();
+    await wrapper.find("textarea").setValue("保留这个输入");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(wrapper.find("textarea").element.value).toBe("保留这个输入");
+    expect(wrapper.text()).toContain("暂时不可用");
+    await wrapper.get('[data-testid="retry-assistant"]').trigger("click");
+    await flushPromises();
+    const request = JSON.parse(String(mockedApiFetch.mock.calls[1]?.[1]?.body));
+    expect(
+      request.messages.filter((message: { content: string }) => message.content === "保留这个输入")
+    ).toHaveLength(1);
+    expect(request.messages[0].content).toContain("原始提示词");
+    expect(request.messages[0].content).toContain("必须保留品牌标志");
+  });
+
+  it.each(["referenceContextKey", "accountContextKey"] as const)(
+    "suppresses pending replies after %s changes even when disabled",
+    async (key) => {
+      let resolve!: (response: AssistantResponse) => void;
+      mockedApiFetch.mockImplementationOnce(
+        () =>
+          new Promise((done) => {
+            resolve = done;
+          })
+      );
+      const wrapper = mountAssistant();
+      await wrapper.get('[data-testid="finalize-assistant-prompt"]').trigger("click");
+      await wrapper.setProps({ [key]: "new-context", disabled: true });
+      resolve({ ...assistantResponse("过时回复"), finalPrompt: "过时内容" });
+      await flushPromises();
+      expect(wrapper.text()).not.toContain("过时回复");
+      expect(wrapper.find('[data-testid="assistant-suggestion"]').exists()).toBe(false);
+      expect(wrapper.emitted("fill")).toBeUndefined();
+    }
+  );
+
   it("resets assistant history when image-to-image reference count changes", async () => {
     mockedApiFetch.mockResolvedValueOnce(assistantResponse("请补充参考图要保留的主体。"));
     const wrapper = mount(PromptAssistantPanel, {
@@ -131,6 +229,7 @@ describe("PromptAssistantPanel", () => {
 
     expect(mockedApiFetch).toHaveBeenCalledWith("/prompt-assistant/turn", {
       method: "POST",
+      signal: expect.any(AbortSignal),
       body: expect.stringContaining("白色耳机，保留 Logo 和正面角度")
     });
   });
@@ -178,8 +277,6 @@ describe("PromptAssistantPanel", () => {
       }
     });
 
-    expect(wrapper.text()).toContain("aiImage.assistantInputShortcutHint");
-
     await wrapper.find("textarea").setValue("普通 Enter 发送");
     await wrapper.find("textarea").trigger("keydown.enter");
     await flushPromises();
@@ -195,7 +292,7 @@ describe("PromptAssistantPanel", () => {
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
-  it("auto-fills the final prompt with the completed assistant turn count", async () => {
+  it("only applies the editable suggestion on explicit acceptance", async () => {
     mockedApiFetch.mockResolvedValueOnce({
       ...assistantResponse("Prompt 已整理好。"),
       finalPrompt: "最终 prompt"
@@ -215,8 +312,11 @@ describe("PromptAssistantPanel", () => {
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
+    expect(wrapper.emitted("fill")).toBeUndefined();
+    await wrapper.get('[data-testid="assistant-suggestion"]').setValue("手动确认的 prompt");
+    await wrapper.get('[data-testid="apply-assistant"]').trigger("click");
     expect(wrapper.emitted("fill")?.[0]).toEqual([
-      { prompt: "最终 prompt", recommendedSize: "1024x1024", turnCount: 1, auto: true }
+      { prompt: "手动确认的 prompt", recommendedSize: "", turnCount: 1, auto: false }
     ]);
   });
 
@@ -243,7 +343,7 @@ describe("PromptAssistantPanel", () => {
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
 
-    expect(wrapper.text()).toContain("aiImage.assistantReadyTitle");
+    expect(wrapper.text()).toContain("review.title");
     expect(wrapper.text()).toContain("请人工确认文字和品牌元素。");
     expect(wrapper.text()).not.toContain("aiImage.assistantDegraded");
   });
@@ -277,12 +377,14 @@ describe("PromptAssistantPanel", () => {
       messages: [],
       caseId: "case-product-poster"
     });
+    expect(wrapper.emitted("fill")).toBeUndefined();
+    await wrapper.get('[data-testid="apply-assistant"]').trigger("click");
     expect(wrapper.emitted("fill")?.[0]).toEqual([
       {
         prompt: "根据当前案例生成的 prompt",
-        recommendedSize: "1024x1536",
+        recommendedSize: "",
         turnCount: 1,
-        auto: true
+        auto: false
       }
     ]);
   });

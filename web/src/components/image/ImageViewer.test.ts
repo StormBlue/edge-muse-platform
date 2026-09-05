@@ -20,6 +20,24 @@ afterEach(() => {
 });
 
 describe("ImageViewer", () => {
+  it("requires explicit recreation opt-in and emits the selected own-result identity", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      }
+    );
+    const source = image({ taskId: "task-1" });
+    const wrapper = mount(ImageViewer, { attachTo: document.body, props: { image: source } });
+    expect(document.querySelector('[data-testid="reuse-params"]')).toBeNull();
+    await wrapper.setProps({ canRecreate: true });
+    document.querySelector<HTMLButtonElement>('[data-testid="reuse-reference"]')!.click();
+    expect(wrapper.emitted("recreate")?.[0]).toEqual([{ image: source, reuse: "reference" }]);
+    await wrapper.setProps({ image: image({ taskId: null }) });
+    expect(document.querySelector('[data-testid="reuse-reference"]')).toBeNull();
+    wrapper.unmount();
+  });
   it("renders the image directly before measurements are available", async () => {
     vi.stubGlobal(
       "ResizeObserver",

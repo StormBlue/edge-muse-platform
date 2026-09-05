@@ -25,6 +25,14 @@ const {
   activeFailedMessage,
   latestPrompt,
   generationProgress,
+  generationElapsed,
+  canRecreate,
+  recreate,
+  reusePrompt,
+  reuseReferences,
+  reuseReferenceCount,
+  reuseNotice,
+  draftVersion,
   generationStatusLabel,
   generationPrompt,
   failedTitle,
@@ -68,6 +76,7 @@ const {
         :websocket-status="status"
         :generation-status-label="generationStatusLabel"
         :generation-progress="generationProgress"
+        :generation-elapsed="generationElapsed"
         :remaining-quota="auth.quota?.remainingQuota"
         @new-session="newSession"
       />
@@ -85,11 +94,16 @@ const {
 
       <div class="workspace-grid workspace-grid--task">
         <ChatInput
+          :key="draftVersion"
           v-model:generation-target-id="generationTargetId"
           class="workspace-task-input-panel"
           :mode="taskInputMode"
           :generation-targets="generationTargets"
           :initial-count="currentGenerationSettings.n"
+          :initial-prompt="reusePrompt"
+          :initial-reference-images="reuseReferences"
+          :initial-reference-count="reuseReferenceCount"
+          :notice="reuseNotice"
           :initial-generation-target-id="currentGenerationSettings.generationTargetId"
           :initial-size="currentGenerationSettings.size"
           :generating="hasRunningTask"
@@ -115,6 +129,9 @@ const {
           :has-running-task="hasRunningTask"
           :generation-status-label="generationStatusLabel"
           :generation-progress="generationProgress"
+          :generation-elapsed="generationElapsed"
+          :retryable="activeFailedMessage?.status !== 'cancelled'"
+          :retry-loading="submitting"
           :generation-prompt="generationPrompt"
           :failed-title="failedTitle"
           :failed-message="failedMessage"
@@ -125,8 +142,10 @@ const {
       </div>
     </div>
     <ImageViewer
+      :can-recreate="canRecreate"
       :image="selectedImage"
       :images="allImages"
+      @recreate="recreate"
       @close="selectedImage = null"
       @delete="deleteImageMessage"
       @select="selectedImage = $event"

@@ -1,8 +1,9 @@
-import type { ComputedRef, Ref } from "vue";
+import { getCurrentScope, onScopeDispose, watch, type ComputedRef, type Ref } from "vue";
 import type { Router } from "vue-router";
 import { toast } from "vue-sonner";
 import { apiFetch } from "@/api/client";
 import { useAuthStore } from "@/stores/auth";
+import { useTaskActivityStore } from "@/stores/taskActivity";
 import {
   useSessionStore,
   type ActiveGeneration,
@@ -31,9 +32,11 @@ type WorkspaceActionOptions = {
   supportsMode: (mode: SessionMode) => boolean;
   supportsSize: (size: string) => boolean;
   openActiveGeneration: (active: ActiveGeneration) => Promise<void>;
+  reuseSource?: Ref<{ sourceTaskId: string; sourceImageId?: string } | null>;
 };
 
 export function useWorkspaceActions(options: WorkspaceActionOptions) {
+  const taskActivity = useTaskActivityStore();
   const {
     t,
     router,
@@ -52,6 +55,46 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     supportsSize,
     openActiveGeneration
   } = options;
+  let actionVersion = 0;
+  let accountVersion = 0;
+  let disposed = false;
+  function invalidate() {
+    actionVersion += 1;
+    submitting.value = false;
+  }
+  // 路由往返也递增版本，不能仅比较最终 URL；旧请求不得污染重新打开的页面。
+  watch(() => router.currentRoute.value.fullPath, invalidate, { flush: "sync" });
+  watch(
+    () => auth.user?.id,
+    () => {
+      accountVersion += 1;
+      invalidate();
+    },
+    { flush: "sync" }
+  );
+  if (getCurrentScope())
+    onScopeDispose(() => {
+      disposed = true;
+      invalidate();
+    });
+
+  function startAction() {
+    const version = ++actionVersion;
+    const account = accountVersion;
+    const userId = auth.user?.id;
+    const path = router.currentRoute.value.fullPath;
+    submitting.value = true;
+    const sameAccount = () => account === accountVersion && userId === auth.user?.id;
+    const isCurrent = () =>
+      !disposed &&
+      version === actionVersion &&
+      sameAccount() &&
+      path === router.currentRoute.value.fullPath;
+    const finish = () => {
+      if (version === actionVersion) submitting.value = false;
+    };
+    return { sameAccount, isCurrent, finish };
+  }
 
   /**
    * 提交生图：图生图先上传参考图，再创建任务、连 WS、落到会话深链。
@@ -64,8 +107,9 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     size: string;
     n: number;
     files: File[];
+    referenceImages?: ImageAttachment[];
   }) {
-    if (submitting.value || hasRunningTask.value) return;
+    if (disposed || submitting.value || hasRunningTask.value) return;
     if (!supportsMode(input.mode)) {
       toast.error(t("workspace.modeUnsupported"));
       return;
@@ -75,18 +119,26 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       return;
     }
     if (oneShotTaskLocked.value) return;
-    if (input.mode === "image2image" && input.files.length === 0) {
+    const existingReferences = input.referenceImages ?? [];
+    if (input.mode === "image2image" && input.files.length + existingReferences.length === 0) {
       toast.error(t("workspace.referenceRequired"));
       return;
     }
-    if (input.mode === "image2image" && input.files.length > maxReferenceFiles.value) {
+    if (
+      input.mode === "image2image" &&
+      input.files.length + existingReferences.length > maxReferenceFiles.value
+    ) {
       toast.error(t("workspace.referenceLimit", { count: maxReferenceFiles.value }));
       return;
     }
-    submitting.value = true;
+    const request = startAction();
+    const title = draftTitle.value.trim() || defaultSessionTitle();
+    const source = { ...options.reuseSource?.value };
     try {
-      let referenceImageIds: string[] = [];
-      let referenceImages: ImageAttachment[] = [];
+      let referenceImageIds: string[] =
+        input.mode === "image2image" ? existingReferences.map((image) => image.id) : [];
+      let referenceImages: ImageAttachment[] =
+        input.mode === "image2image" ? [...existingReferences] : [];
       if (input.mode === "image2image" && input.files.length) {
         const form = new FormData();
         input.files.forEach((file) => form.append("files", file));
@@ -94,24 +146,34 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           method: "POST",
           body: form
         });
-        referenceImageIds = uploaded.images.map((image) => image.id);
-        referenceImages = uploaded.images;
+        if (!request.isCurrent()) return;
+        referenceImageIds = [...referenceImageIds, ...uploaded.images.map((image) => image.id)];
+        referenceImages = [...referenceImages, ...uploaded.images];
       }
-      const task = await sessions.generate({
-        title: draftTitle.value.trim() || defaultSessionTitle(),
-        prompt: input.prompt,
-        generationTargetId: input.generationTargetId,
-        mode: input.mode,
-        size: input.size,
-        n: input.n,
-        referenceImageIds,
-        referenceImages,
-        ...workspaceGenerationEvent(input, referenceImageIds.length)
-      });
+      const task = await sessions.generate(
+        {
+          title,
+          prompt: input.prompt,
+          generationTargetId: input.generationTargetId,
+          mode: input.mode,
+          size: input.size,
+          n: input.n,
+          referenceImageIds,
+          referenceImages,
+          ...source,
+          ...workspaceGenerationEvent(input, referenceImageIds.length)
+        },
+        { canApply: request.isCurrent }
+      );
+      // 同账号已受理任务仍登记全局；跨账号响应完全忽略，页面写入另受路由版本保护。
+      if (!request.sameAccount()) return;
+      void taskActivity.observeTask(task.taskId);
+      if (!request.isCurrent()) return;
       connect(task.wsUrl);
       draftTitle.value = task.title;
       await router.replace(`/workspace/s/${task.sessionId}`);
     } catch (error) {
+      if (!request.isCurrent()) return;
       const activeGeneration = activeGenerationFromError(error);
       if (activeGeneration && !auth.isSysadmin) {
         await openActiveGeneration(activeGeneration);
@@ -123,13 +185,16 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           : t("workspace.submitFailed");
       toast.error(message);
     } finally {
-      submitting.value = false;
+      request.finish();
     }
   }
 
   /** 失败重试：沿用原 user 的 prompt/参考图，本地补一对消息后接入新 task WS。 */
   async function retry(message: Message) {
-    if (!message.taskId) return;
+    if (disposed || !message.taskId || submitting.value || hasRunningTask.value) return;
+    const request = startAction();
+    const referenceImages = findSourceReferenceImages(message);
+    const referenceImageIds = findSourceReferenceImageIds(message);
     try {
       const body = await apiFetch<{ taskId: string; sessionId: string; messageId: string }>(
         `/tasks/${message.taskId}/retry`,
@@ -146,6 +211,9 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           })
         }
       );
+      if (!request.sameAccount()) return;
+      void taskActivity.observeTask(body.taskId);
+      if (!request.isCurrent()) return;
       const createdAt = Date.now();
       sessions.messages.push({
         id: `local-retry-${createdAt}`,
@@ -153,8 +221,8 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
         role: "user",
         prompt: message.prompt,
         attachments: [],
-        referenceImages: findSourceReferenceImages(message),
-        referenceImageIds: findSourceReferenceImageIds(message),
+        referenceImages,
+        referenceImageIds,
         status: "succeeded",
         createdAt
       });
@@ -172,6 +240,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
       });
       connect(`/ws/task/${body.taskId}`);
     } catch (error) {
+      if (!request.isCurrent()) return;
       const activeGeneration = activeGenerationFromError(error);
       if (activeGeneration && !auth.isSysadmin) {
         await openActiveGeneration(activeGeneration);
@@ -182,6 +251,8 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           ? (error as { error: { message: string } }).error.message
           : t("workspace.submitFailed");
       toast.error(errorMessage);
+    } finally {
+      request.finish();
     }
   }
 

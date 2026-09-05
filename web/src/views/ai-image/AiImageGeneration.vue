@@ -1,242 +1,190 @@
 <script setup lang="ts">
-/**
- * 面向普通用户的 AI 图像生成页。
- *
- * 页面把“选案例、改 Prompt、提交生成”串成一个轻量流程；真实生图仍复用现有任务链路。
- */
+/** 常驻创作器：输入与结果共享一次页面状态，案例和助手作为按需工具。 */
+import { LayoutGrid, Plus } from "@lucide/vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
-import AiImageCaseBrowser from "./AiImageCaseBrowser.vue";
-import AiImageCasePickerPanel from "./AiImageCasePickerPanel.vue";
-import AiImageGenerationHeader from "./AiImageGenerationHeader.vue";
-import AiImagePromptPanel from "./AiImagePromptPanel.vue";
-import PromptCaseMobileSheet from "./PromptCaseMobileSheet.vue";
-import { useAiImageGenerationPage } from "./useAiImageGenerationPage";
+import { Button } from "@/components/ui/button";
+import StudioEditor from "./StudioEditor.vue";
+import StudioResults from "./StudioResults.vue";
+import StudioCasePicker from "./StudioCasePicker.vue";
+import { useImageStudio } from "./useImageStudio";
+import { provideImageStudio } from "./studioContext";
 
-const {
-  activeCaseDetail,
-  auth,
-  caseBrowserCollapsed,
-  cases,
-  generation,
-  mobileCaseSheetOpen,
-  pageInteractionLocked,
-  selectedCaseTitle,
-  selectedImage,
-  sizeFallbackNotice,
-  viewerImages,
-  applyCase,
-  copyPrompt,
-  fillAssistantPrompt,
-  openAssistant,
-  openGeneratedImage,
-  openSelectedCasePreview,
-  reopenCaseBrowser,
-  retryFailedGeneration,
-  selectCase,
-  setGenerationSize,
-  startBlankAssistantFlow,
-  submitGeneration
-} = useAiImageGenerationPage();
+const s = useImageStudio();
+provideImageStudio(s);
 </script>
 
 <template>
   <AppShell>
-    <div class="ai-image-page" :class="{ 'ai-image-page--generating': caseBrowserCollapsed }">
-      <AiImageCasePickerPanel
-        v-if="!caseBrowserCollapsed"
-        :categories="cases.categories.value"
-        :category="cases.category.value"
-        :filter-mode="cases.filterMode.value"
-        :search="cases.search.value"
-        :size="cases.size.value"
-        :sizes="cases.sizes.value"
-        :supported-modes="generation.supportedModes.value"
-        @start-blank-assistant-flow="startBlankAssistantFlow"
-        @update:category="cases.category.value = $event"
-        @update:filter-mode="cases.filterMode.value = $event"
-        @update:search="cases.search.value = $event"
-        @update:size="cases.size.value = $event"
-      />
-
-      <AiImageGenerationHeader
-        v-else
-        :disabled="pageInteractionLocked"
-        :title="selectedCaseTitle"
-        @back="reopenCaseBrowser"
-      />
-
-      <div
-        class="ai-image-grid"
-        :class="caseBrowserCollapsed ? 'ai-image-grid--generating' : 'ai-image-grid--selecting'"
-      >
-        <AiImageCaseBrowser
-          v-if="!caseBrowserCollapsed"
-          :applying="cases.applying.value"
-          :detail-error="cases.detailError.value"
-          :detail-item="cases.selectedDetail.value"
-          :detail-loading="cases.detailLoading.value"
-          :filtered-items="cases.filteredItems.value"
-          :has-more="cases.hasMore.value"
-          :load-more-error="cases.loadMoreError.value"
-          :loading-initial="cases.loadingInitial.value"
-          :loading-more="cases.loadingMore.value"
-          :selected-id="cases.selectedId.value"
-          @apply="(item) => void applyCase(item)"
-          @load-more="cases.loadMore"
-          @select="selectCase"
-        />
-        <AiImagePromptPanel
-          v-if="caseBrowserCollapsed"
-          v-model:mode="generation.mode.value"
-          :active-failed="generation.activeFailed.value"
-          :assistant-enabled="auth.promptAssistantEnabled"
-          :can-reset-prompt="cases.canResetPrompt.value"
-          :case-item="activeCaseDetail"
-          :failed-message="generation.failedMessage.value"
-          :failed-title="generation.failedTitle.value"
-          :generation-progress="generation.generationProgress.value"
-          :generation-prompt="generation.generationPrompt.value"
-          :generation-status-label="generation.generationStatusLabel.value"
-          :generation-target-id="generation.generationTargetId.value"
-          :generation-targets="generation.generationTargets.value"
-          :has-running-task="generation.hasRunningTask.value"
-          :prompt="cases.finalPrompt.value"
-          :previews="generation.previews.value"
-          :provider="generation.providerCapabilities.value"
-          :reference-count="generation.files.value.length"
-          :result-images="generation.resultImages.value"
-          :selected-case-title="selectedCaseTitle"
-          :size="generation.size.value"
-          :size-fallback-notice="sizeFallbackNotice"
-          :size-options="generation.sizeOptions.value"
-          :submitting="generation.submitting.value"
-          :supported-modes="generation.supportedModes.value"
-          :workflow-expanded="caseBrowserCollapsed"
-          @add-files="generation.addFiles"
-          @clear-prompt="cases.clearPrompt"
-          @copy-prompt="copyPrompt"
-          @fill-assistant="fillAssistantPrompt"
-          @open-assistant="openAssistant"
-          @reset-prompt="cases.resetPrompt"
-          @update:prompt="(value) => cases.setPrompt(value, 'user')"
-          @update:size="setGenerationSize"
-          @remove-file="generation.removeFile"
-          @retry-failed="retryFailedGeneration"
-          @open-image="openGeneratedImage"
-          @open-case-preview="openSelectedCasePreview"
-          @submit="submitGeneration"
-          @update:generation-target-id="generation.generationTargetId.value = $event"
-        />
-      </div>
-
-      <PromptCaseMobileSheet
-        :item="cases.selected.value"
-        :applying="cases.applying.value"
-        :detail-item="cases.selectedDetail.value"
-        :error="cases.detailError.value"
-        :loading="cases.detailLoading.value"
-        :open="mobileCaseSheetOpen"
-        @apply="(item) => void applyCase(item)"
-        @close="mobileCaseSheetOpen = false"
-      />
-
+    <div class="image-studio" :class="`image-studio--${s.mobileTab.value}`">
+      <header class="image-studio-header">
+        <div class="min-w-0">
+          <h1>{{ s.t("studio.title") }}</h1>
+          <p v-if="s.activeCase.value" class="image-studio-context">
+            {{ s.activeCase.value.title }}
+          </p>
+        </div>
+        <div class="image-studio-tools">
+          <Button
+            type="button"
+            variant="secondary"
+            :disabled="s.submitting.value"
+            @click="s.openCases"
+          >
+            <LayoutGrid class="size-4" /><span>{{ s.t("studio.cases") }}</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            :disabled="s.submitting.value"
+            :title="s.t('studio.new')"
+            :aria-label="s.t('studio.new')"
+            @click="s.newCreation"
+          >
+            <Plus class="size-4" />
+          </Button>
+        </div>
+      </header>
+      <nav class="image-studio-mobile-tabs" :aria-label="s.t('studio.title')">
+        <button
+          type="button"
+          :aria-pressed="s.mobileTab.value === 'create'"
+          @click="s.mobileTab.value = 'create'"
+        >
+          {{ s.t("studio.create") }}
+        </button>
+        <button
+          type="button"
+          :aria-pressed="s.mobileTab.value === 'results'"
+          @click="s.mobileTab.value = 'results'"
+        >
+          {{ s.t("studio.results") }}<span v-if="s.isRunning.value" class="image-studio-running" />
+        </button>
+      </nav>
+      <div class="image-studio-body"><StudioEditor /><StudioResults /></div>
+      <StudioCasePicker />
       <ImageViewer
         :can-delete="false"
-        :image="selectedImage"
-        :images="viewerImages"
-        @close="selectedImage = null"
-        @select="selectedImage = $event"
+        :image="s.viewerImage.value"
+        :images="s.images.value"
+        @close="s.viewerImage.value = null"
+        @select="s.viewerImage.value = $event"
       />
     </div>
   </AppShell>
 </template>
 
 <style scoped>
-.ai-image-page {
-  display: grid;
-  container-type: inline-size;
-  min-height: calc(100dvh - 6rem);
+.image-studio {
+  display: flex;
+  min-width: 0;
+  height: calc(100dvh - 10.5rem - env(safe-area-inset-bottom, 0px));
+  min-height: 20rem;
+  flex-direction: column;
+  container: studio / inline-size;
+}
+.image-studio-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 0.75rem;
+  padding: 0.375rem 0.125rem 1rem;
 }
-
-.ai-image-grid {
+.image-studio-header h1 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.image-studio-context {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.image-studio-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.image-studio-body {
   display: grid;
-  gap: 1rem;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr);
+  border-top: 1px solid var(--border);
 }
-
-.desktop-case-detail {
+.image-studio-mobile-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  padding: 0.25rem;
+  background: var(--muted);
+  border-radius: 6px;
+}
+.image-studio-mobile-tabs button {
+  min-height: 2.25rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+.image-studio-mobile-tabs button[aria-pressed="true"] {
+  background: var(--card);
+  font-weight: 600;
+}
+.image-studio-running {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.image-studio--create :deep(.studio-results) {
   display: none;
 }
-
-@container app-content (min-width: 67rem) {
-  .ai-image-page {
-    height: calc(100dvh - 6rem);
+.image-studio--results :deep(.studio-editor) {
+  display: none;
+}
+@container app-content (min-width: 52rem) {
+  .image-studio {
+    height: calc(100dvh - 6.25rem);
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .image-studio-mobile-tabs {
+    display: none;
+  }
+  .image-studio-body {
+    grid-template-columns: minmax(20rem, 24rem) minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .image-studio :deep(.studio-editor),
+  .image-studio :deep(.studio-results) {
+    display: flex;
+  }
+  .image-studio :deep(.studio-editor) {
+    border-right: 1px solid var(--border);
   }
 }
-
-@container (min-width: 50rem) {
-  .ai-image-page--generating {
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  .ai-image-grid {
-    height: 100%;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .ai-image-grid--generating {
-    align-items: stretch;
-  }
-
-  .ai-image-grid--selecting {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ai-image-grid--generating {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ai-image-page--generating :deep(.ai-prompt-workspace) {
-    height: 100%;
-  }
-
-  :deep(.prompt-case-gallery) {
-    height: 100%;
-    min-height: 0;
-    max-height: none;
+@container app-content (min-width: 90rem) {
+  .image-studio-body {
+    grid-template-columns: 27rem minmax(0, 1fr);
   }
 }
-
-@container (min-width: 64rem) {
-  .ai-image-page {
-    overflow: hidden;
+@media (max-width: 390px) {
+  .image-studio-header h1 {
+    font-size: 1rem;
   }
-
-  .ai-image-grid {
-    overflow: hidden;
+  .image-studio-tools {
+    gap: 0.125rem;
   }
-
-  .ai-image-grid--selecting {
-    grid-template-columns: minmax(22rem, 0.86fr) minmax(24rem, 0.74fr);
-  }
-
-  .desktop-case-detail {
-    display: block;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  .desktop-case-detail :deep(.panel) {
-    height: 100%;
-    min-height: 0;
-  }
-
-  .ai-image-grid--generating {
-    grid-template-columns: minmax(0, 1fr);
+  .image-studio-tools :deep(button) {
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
   }
 }
 </style>

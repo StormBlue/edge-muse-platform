@@ -87,6 +87,7 @@ export const useSessionStore = defineStore("sessions", {
     messages: [] as Message[],
     /** POST /generate 进行中，用于禁用发送按钮等 */
     loading: false,
+    generationVersion: 0,
     /** GET /api/sessions 列表加载中（首屏与分页） */
     sessionsLoading: false,
     /** 向上滚动加载更早消息时的 loading */
@@ -106,6 +107,8 @@ export const useSessionStore = defineStore("sessions", {
     invalidateMessageLoads() {
       this.messageLoadVersion += 1;
       this.olderMessagesLoading = false;
+      this.generationVersion += 1;
+      this.loading = false;
     },
     /** 新建或更新侧栏中的会话卡片（active-generation 返回时也会调用） */
     upsertSession(session: Session) {
@@ -221,22 +224,30 @@ export const useSessionStore = defineStore("sessions", {
      *   并行：useTaskWebSocket(wsUrl) 收 task.update / task.image / task.done|failed
      *     → applyTaskEvent 更新同一条 assistant 消息
      */
-    async generate(input: {
-      title?: string;
-      prompt: string;
-      generationTargetId?: GenerationTargetId;
-      mode: SessionMode;
-      size: string;
-      n: number;
-      referenceImageIds?: string[];
-      referenceImages?: ImageAttachment[];
-      /** AI 图像生成页的用量提交事件。随 /generate 同步写入，避免结果事件先到。 */
-      generationEvent?: {
-        route?: string;
-        caseId?: string;
-        metadata?: Record<string, unknown>;
-      };
-    }) {
+    async generate(
+      input: {
+        title?: string;
+        prompt: string;
+        generationTargetId?: GenerationTargetId;
+        mode: SessionMode;
+        size: string;
+        n: number;
+        referenceImageIds?: string[];
+        referenceImages?: ImageAttachment[];
+        /** 再创作来源仅用于溯源，服务端重新校验权限，不沿用旧任务的额度。 */
+        sourceTaskId?: string;
+        sourceImageId?: string;
+        /** AI 图像生成页的用量提交事件。随 /generate 同步写入，避免结果事件先到。 */
+        generationEvent?: {
+          route?: string;
+          caseId?: string;
+          metadata?: Record<string, unknown>;
+        };
+      },
+      options?: { canApply?: () => boolean }
+    ) {
+      const version = ++this.generationVersion;
+      const sessionId = this.currentSessionId;
       this.loading = true;
       try {
         const body = await apiFetch<{
@@ -247,8 +258,15 @@ export const useSessionStore = defineStore("sessions", {
           title: string;
         }>("/generate", {
           method: "POST",
-          body: JSON.stringify({ ...input, sessionId: this.currentSessionId ?? undefined })
+          body: JSON.stringify({ ...input, sessionId: sessionId ?? undefined })
         });
+        // 任务可能已经被后端接受，但离开页面或切换账号后禁止写入新的会话上下文。
+        if (
+          version !== this.generationVersion ||
+          sessionId !== this.currentSessionId ||
+          options?.canApply?.() === false
+        )
+          return body;
         const createdAt = Date.now();
         const currentSession = this.sessions.find((session) => session.id === body.sessionId);
         if (currentSession) {
@@ -303,7 +321,7 @@ export const useSessionStore = defineStore("sessions", {
         });
         return body;
       } finally {
-        this.loading = false;
+        if (version === this.generationVersion) this.loading = false;
       }
     },
     /**

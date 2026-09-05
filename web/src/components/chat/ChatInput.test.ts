@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
 import ChatInput from "./ChatInput.vue";
 
@@ -9,8 +9,110 @@ vi.mock("vue-i18n", () => ({
       params ? `${key}:${Object.values(params).join("|")}` : key
   })
 }));
+vi.mock("@/utils/referenceImageFiles", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/utils/referenceImageFiles")>()),
+  prepareReferenceImageFiles: async (files: File[]) => files
+}));
 
 describe("ChatInput", () => {
+  it("blocks incomplete source recipes until explicit confirmation", async () => {
+    const reference = {
+      id: "available",
+      url: "/images/available",
+      mime: "image/png",
+      byteSize: 100
+    };
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "image2image",
+        initialPrompt: "保留两张参考图的主体",
+        initialReferenceImages: [reference],
+        initialReferenceCount: 2
+      }
+    });
+    expect(wrapper.get('[role="alert"]').text()).toContain("recreate.missingReferences:1");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    await wrapper.get('[data-testid="confirm-current-references"]').trigger("click");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ referenceImages: [reference] });
+    wrapper.unmount();
+  });
+
+  it("allows replacement uploads to complete the source recipe without a waiver", async () => {
+    vi.stubGlobal("URL", { createObjectURL: () => "blob:replacement", revokeObjectURL: vi.fn() });
+    const reference = {
+      id: "available",
+      url: "/images/available",
+      mime: "image/png",
+      byteSize: 100
+    };
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "image2image",
+        initialPrompt: "双参考图",
+        initialReferenceImages: [reference],
+        initialReferenceCount: 2
+      }
+    });
+    const replacement = new File(["image"], "replacement.png", { type: "image/png" });
+    const upload = wrapper.get('input[type="file"]');
+    Object.defineProperty(upload.element, "files", { value: [replacement], configurable: true });
+    await upload.trigger("change");
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      files: [replacement],
+      referenceImages: [reference]
+    });
+    wrapper.unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("still requires an image after accepting a recipe with no surviving references", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "image2image",
+        initialPrompt: "主体",
+        initialReferenceImages: [],
+        initialReferenceCount: 1
+      }
+    });
+    await wrapper.get('[data-testid="confirm-current-references"]').trigger("click");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    wrapper.unmount();
+  });
+  it("loads reusable references and requires explicit submission, with removable references", async () => {
+    const reference = {
+      id: "generated-image",
+      url: "/images/generated-image",
+      mime: "image/png",
+      byteSize: 100
+    };
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "image2image",
+        initialPrompt: "沿用原图主体",
+        initialReferenceImages: [reference]
+      }
+    });
+    expect(wrapper.emitted("submit")).toBeUndefined();
+    expect(wrapper.get("textarea").element.value).toBe("沿用原图主体");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({
+      prompt: "沿用原图主体",
+      files: [],
+      referenceImages: [reference]
+    });
+    await wrapper.get('button[aria-label="common.delete"]').trigger("click");
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")).toHaveLength(1);
+    wrapper.unmount();
+  });
   it("defaults new generation size to Auto and exposes all canvas sizes", async () => {
     const wrapper = mount(ChatInput, {
       props: {

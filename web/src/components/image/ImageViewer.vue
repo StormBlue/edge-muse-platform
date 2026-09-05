@@ -14,10 +14,16 @@ import ImageViewerNavButton from "./ImageViewerNavButton.vue";
 import ImageViewerToolbar from "./ImageViewerToolbar.vue";
 import { useImageViewerZoom } from "./useImageViewerZoom";
 import type { ImageAttachment } from "@/stores/session";
+import type { ImageRecreation } from "./useImageRecreation";
 
 const props = withDefaults(
-  defineProps<{ image: ImageAttachment | null; images?: ImageAttachment[]; canDelete?: boolean }>(),
-  { images: () => [], canDelete: true }
+  defineProps<{
+    image: ImageAttachment | null;
+    images?: ImageAttachment[];
+    canDelete?: boolean;
+    canRecreate?: boolean;
+  }>(),
+  { images: () => [], canDelete: true, canRecreate: false }
 );
 const emit = defineEmits<{
   close: [];
@@ -25,6 +31,7 @@ const emit = defineEmits<{
   select: [image: ImageAttachment];
   /** 删整条消息，由父级调 API */
   delete: [image: ImageAttachment];
+  recreate: [value: ImageRecreation];
 }>();
 
 const { t } = useI18n();
@@ -146,6 +153,7 @@ function formatBytes(bytes: number) {
         <ImageViewerToolbar
           :can-copy-prompt="Boolean(image.prompt)"
           :can-delete="canDelete && Boolean(image.messageId)"
+          :can-recreate="canRecreate && Boolean(image.taskId)"
           :download-file-name="fileName"
           :download-url="image.url"
           @close="emit('close')"
@@ -154,6 +162,7 @@ function formatBytes(bytes: number) {
           @reset-zoom="resetView"
           @zoom-in="setScale(scale + zoomStep)"
           @zoom-out="setScale(scale - zoomStep)"
+          @recreate="emit('recreate', { image, reuse: $event })"
         />
       </header>
 

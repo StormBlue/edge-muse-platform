@@ -9,7 +9,8 @@ defineProps<{
   submitting: boolean;
   websocketStatus: string;
   generationStatusLabel: string;
-  generationProgress: number;
+  generationProgress: number | null;
+  generationElapsed?: string;
   remainingQuota?: number | null;
 }>();
 
@@ -42,7 +43,11 @@ const { t } = useI18n();
         <Loader2 class="h-3.5 w-3.5 animate-spin text-primary" />
         {{ generationStatusLabel }}
         <span class="tabular-nums text-muted-foreground">
-          {{ t("workspace.generationProgress", { percent: generationProgress }) }}
+          {{
+            generationProgress !== null
+              ? t("workspace.generationProgress", { percent: generationProgress })
+              : generationElapsed
+          }}
         </span>
       </div>
       <div

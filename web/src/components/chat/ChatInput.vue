@@ -59,6 +59,9 @@ const {
   onDrop,
   onPaste,
   removeFile,
+  removeReference,
+  missingReferences,
+  confirmCurrentReferences,
   setCount,
   normalizeCount
 } = useChatInputController(props, emit);
@@ -89,6 +92,23 @@ function onPromptKeydown(event: KeyboardEvent) {
     >
       <section v-if="isImageToImage" class="task-reference-section">
         <p class="task-setting-inline-label">{{ t("workspace.referenceImage") }}</p>
+        <div
+          v-if="missingReferences && !isReadOnly"
+          class="space-y-2 border-l-2 border-amber-500 pl-3 text-xs leading-5"
+          role="alert"
+        >
+          <p>{{ t("recreate.missingReferences", { count: missingReferences }) }}</p>
+          <Button
+            type="button"
+            variant="secondary"
+            class="h-auto min-h-9 whitespace-normal text-xs"
+            data-testid="confirm-current-references"
+            :disabled="isBusy"
+            @click="confirmCurrentReferences"
+          >
+            {{ t("recreate.confirmReferences") }}
+          </Button>
+        </div>
         <label
           class="task-reference-dropzone"
           :class="[
@@ -135,21 +155,38 @@ function onPromptKeydown(event: KeyboardEvent) {
               <X class="h-4 w-4" />
             </button>
           </div>
-          <button
+          <div
             v-for="image in readonlyReferenceImages"
             :key="image.id"
-            class="aspect-square overflow-hidden rounded-lg border border-border bg-muted"
-            type="button"
-            :title="t('workspace.openPreview')"
-            @click="emit('open-reference', image)"
+            class="relative aspect-square overflow-hidden rounded-lg border border-border bg-muted"
           >
-            <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
-          </button>
+            <button
+              class="h-full w-full"
+              type="button"
+              :title="t('workspace.openPreview')"
+              @click="emit('open-reference', image)"
+            >
+              <img class="h-full w-full object-contain" :src="image.url" alt="" loading="lazy" />
+            </button>
+            <button
+              v-if="!isReadOnly"
+              type="button"
+              class="absolute right-1 top-1 inline-flex h-7 w-7 items-center justify-center rounded-md bg-black/60 text-white"
+              :title="t('common.delete')"
+              :aria-label="t('common.delete')"
+              @click="removeReference(image.id)"
+            >
+              <X class="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </section>
 
       <section v-if="!isReadOnly" class="task-prompt-column">
         <label class="flex min-h-0 flex-1 flex-col">
+          <span v-if="notice" role="status" class="mb-2 text-xs leading-5 text-muted-foreground">{{
+            notice
+          }}</span>
           <span class="mb-2 block text-xs font-medium text-muted-foreground">
             {{ t("workspace.prompt") }}
           </span>

@@ -118,6 +118,28 @@ describe("history navigation", () => {
     expect(router.currentRoute.value.query.session).toBeUndefined();
     expect(controller.selectedSession.value).toBeNull();
   });
+
+  it("allows deleting a cancelled session but still blocks a running task", async () => {
+    const { controller } = await setup();
+    mocks.apiFetch.mockResolvedValueOnce({
+      ...detail("cancelled"),
+      messages: [
+        { ...detail("cancelled").messages[0], status: "cancelled", task: { status: "cancelled" } }
+      ]
+    });
+    await controller.openDetail(session("cancelled"));
+    await flushPromises();
+    expect(controller.canDeleteSelectedSession.value).toBe(true);
+    mocks.apiFetch.mockResolvedValueOnce({
+      ...detail("running"),
+      messages: [
+        { ...detail("running").messages[0], status: "running", task: { status: "running" } }
+      ]
+    });
+    await controller.openDetail(session("running"));
+    await flushPromises();
+    expect(controller.canDeleteSelectedSession.value).toBe(false);
+  });
 });
 
 describe("history request ordering", () => {

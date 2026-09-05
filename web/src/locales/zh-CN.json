@@ -303,7 +303,7 @@
     "noResults": "暂无生成结果",
     "deleteSession": "删除会话",
     "deleteConfirm": "确认删除此历史会话？",
-    "deleteUnavailable": "仅支持删除已生成结束且状态为成功或失败的会话",
+    "deleteUnavailable": "仅支持删除任务均已完成、失败或取消的会话",
     "sessionDeleted": "会话已删除",
     "deleteFailed": "删除会话失败"
   },

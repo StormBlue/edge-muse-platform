@@ -2,9 +2,10 @@
 /**
  * 历史会话列表与详情：按 API 分页拉会话，点进展开消息与任务信息；封面图来自接口 `coverImage`。
  */
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import AppShell from "@/components/layout/AppShell.vue";
 import ImageViewer from "@/components/image/ImageViewer.vue";
+import { useImageRecreation } from "@/components/image/useImageRecreation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -61,6 +62,14 @@ const {
 } = useHistoryController();
 
 const deleteDialogOpen = ref(false);
+const { canRecreate: recreationEnabled, recreate } = useImageRecreation();
+const canRecreate = computed(
+  () =>
+    recreationEnabled.value &&
+    resultMessages.value.some((message) =>
+      message.attachments.some((image) => image.id === selectedImage.value?.id)
+    )
+);
 
 async function confirmDeleteSession() {
   await deleteSelectedSession();
@@ -119,8 +128,10 @@ async function confirmDeleteSession() {
     />
 
     <ImageViewer
+      :can-recreate="canRecreate"
       :image="selectedImage"
       :images="detailImages"
+      @recreate="recreate"
       @close="selectedImage = null"
       @select="selectedImage = $event"
     />
