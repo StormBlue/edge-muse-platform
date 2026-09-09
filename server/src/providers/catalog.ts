@@ -7,7 +7,7 @@
 import { now } from "../lib/id";
 import { stringifyJson } from "../lib/json";
 import type { AppBindings } from "../types";
-import { MICU_IMAGE_SIZE_PRESETS } from "./micuPolicy";
+import { MICU_IMAGE_SIZE_PRESETS, MICU_STANDARD_MODEL } from "./micuPolicy";
 
 export const MICU_PROVIDER_ID = "prv_micu";
 export const CUBENCE_PROVIDER_ID = "prv_cubence";
@@ -19,7 +19,7 @@ export const BUILT_IN_PROVIDERS = [
     id: MICU_PROVIDER_ID,
     name: "米醋API",
     baseUrl: MICU_BASE_URL,
-    defaultModel: "gpt-image-2",
+    defaultModel: MICU_STANDARD_MODEL,
     requestFormat: "micu_images",
     supportedSizes: MICU_IMAGE_SIZE_PRESETS
   },

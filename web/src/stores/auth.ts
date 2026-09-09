@@ -23,6 +23,7 @@ export type ProviderCapabilities = {
   providerKeyGroupName: string | null;
   requestFormat: string;
   model: string;
+  supportedModels?: string[];
   supportedModes: Array<"text2image" | "image2image">;
   supportedSizes: string[];
   maxReferenceImages: number | null;
