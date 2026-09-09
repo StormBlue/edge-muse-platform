@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sizeOptionsForProvider, sortSizeValues } from "./workspaceOptions";
+import { sizeOptionsForModel, sizeOptionsForProvider, sortSizeValues } from "./workspaceOptions";
 
 describe("workspace size options", () => {
   it("sorts common canvas sizes by usage first and keeps Auto first", () => {
@@ -67,4 +67,36 @@ describe("workspace size options", () => {
       "1088x1920"
     ]);
   });
+});
+
+describe("size options by selected Micu model", () => {
+  const options = sizeOptionsForProvider({
+    providerId: "prv_micu",
+    providerName: "Micu",
+    providerKeyId: null,
+    providerKeyGroupId: null,
+    providerKeyGroupName: null,
+    requestFormat: "micu_images",
+    model: "gpt-image-2.5-flare",
+    supportedModes: ["text2image"],
+    supportedSizes: ["auto", "1024x1024", "2048x2048", "3840x2160"],
+    maxReferenceImages: 5
+  });
+  it("keeps all sizes in automatic mode", () =>
+    expect(sizeOptionsForModel(options, "auto", "micu_images").map((x) => x.value)).toEqual([
+      "auto",
+      "1024x1024",
+      "2048x2048",
+      "3840x2160"
+    ]));
+  it("only keeps 1K sizes for a model without the openai suffix", () =>
+    expect(
+      sizeOptionsForModel(options, "gpt-image-2.5-flare", "micu_images").map((x) => x.value)
+    ).toEqual(["auto", "1024x1024"]));
+  it("only keeps high resolution sizes for an openai model", () =>
+    expect(
+      sizeOptionsForModel(options, "gpt-image-2.5-flare-openai", "micu_images").map((x) => x.value)
+    ).toEqual(["2048x2048", "3840x2160"]));
+  it("does not filter other providers", () =>
+    expect(sizeOptionsForModel(options, "gpt-image-2.5-flare", "openai_images")).toBe(options));
 });
