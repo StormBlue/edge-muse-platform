@@ -45,6 +45,7 @@ const {
   highResolutionCountLocked,
   submitDisabled,
   countSelectionDisabled,
+  model,
   submitLabel,
   effectiveMaxReferenceFiles,
   effectiveGenerationTargets,
@@ -237,6 +238,18 @@ function onPromptKeydown(event: KeyboardEvent) {
         </div>
 
         <div class="task-setting-block">
+          <label v-if="props.modelOptions?.length" class="task-setting-block">
+            <span class="task-setting-inline-label">{{ t("workspace.model") }}</span>
+            <Select v-model="model" :disabled="isBusy">
+              <SelectTrigger class="h-9 px-3 text-sm"><SelectValue placeholder="自动" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">自动（按尺寸路由）</SelectItem>
+                <SelectItem v-for="option in props.modelOptions" :key="option" :value="option">{{
+                  option
+                }}</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
           <div class="task-setting-title-row">
             <p>{{ t("workspace.canvasSize") }}</p>
           </div>

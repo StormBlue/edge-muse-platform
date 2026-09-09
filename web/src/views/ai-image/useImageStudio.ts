@@ -52,6 +52,7 @@ export function useImageStudio() {
   const brief = ref(emptyCreativeBrief());
   const mode = ref<PromptCaseMode>("text2image");
   const targetId = ref("default");
+  const model = ref("auto");
   const size = ref("auto");
   const count = ref(1);
   const references = ref<StudioReference[]>([]);
@@ -473,7 +474,8 @@ export function useImageStudio() {
         mode: mode.value,
         size: size.value,
         n: count.value,
-        generationTargetId: targetId.value
+        generationTargetId: targetId.value,
+        model: model.value === "auto" ? undefined : model.value
       };
       const selectedReferences = snapshot.mode === "image2image" ? [...references.value] : [];
       const files = selectedReferences.filter((item) => item.file);
@@ -668,6 +670,7 @@ export function useImageStudio() {
     briefText,
     mode,
     targetId,
+    model,
     size,
     count,
     references,

@@ -232,6 +232,7 @@ export const useSessionStore = defineStore("sessions", {
         mode: SessionMode;
         size: string;
         n: number;
+        model?: string;
         referenceImageIds?: string[];
         referenceImages?: ImageAttachment[];
         /** 再创作来源仅用于溯源，服务端重新校验权限，不沿用旧任务的额度。 */
@@ -276,6 +277,7 @@ export const useSessionStore = defineStore("sessions", {
             ...currentSession.settings,
             size: input.size,
             n: input.n,
+            model: input.model,
             generationTargetId: input.generationTargetId
           };
           currentSession.lastMessageAt = createdAt;
