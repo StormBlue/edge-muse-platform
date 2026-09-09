@@ -1,6 +1,19 @@
 export const MICU_REQUEST_FORMAT = "micu_images";
 export const MICU_STANDARD_MODEL = "gpt-image-2";
-export const MICU_PRO_MODEL = "gpt-image-2-pro";
+/** 米醋 Image2 模型目录：openai 后缀代表高分辨率计费通道。 */
+export const MICU_PRO_MODEL = "gpt-image-2-openai";
+export const MICU_FLARE_MODEL = "gpt-image-2.5-flare";
+export const MICU_FLARE_PRO_MODEL = "gpt-image-2.5-flare-openai";
+export const MICU_SUNBURST_MODEL = "gpt-image-2.5-sunburst";
+export const MICU_SUNBURST_PRO_MODEL = "gpt-image-2.5-sunburst-openai";
+export const MICU_SUPPORTED_MODELS = [
+  MICU_STANDARD_MODEL,
+  MICU_PRO_MODEL,
+  MICU_FLARE_MODEL,
+  MICU_FLARE_PRO_MODEL,
+  MICU_SUNBURST_MODEL,
+  MICU_SUNBURST_PRO_MODEL
+] as const;
 export const MICU_HIGH_RESOLUTION_EDGE = 1600;
 export const MICU_4K_EDGE = 3000;
 export const MICU_MIN_SIZE_EDGE = 256;
@@ -111,13 +124,21 @@ export function isMicuExactSizePreset(size: string): boolean {
 }
 
 export function effectiveMicuModel(model: string, size: string): string {
-  if (model === MICU_STANDARD_MODEL && isMicuHighResolutionSize(size)) return MICU_PRO_MODEL;
-  return model;
+  const requested = MICU_SUPPORTED_MODELS.includes(model as (typeof MICU_SUPPORTED_MODELS)[number])
+    ? model
+    : MICU_STANDARD_MODEL;
+  if (!isMicuHighResolutionSize(size)) return requested.replace(/-openai$/, "");
+  return requested.endsWith("-openai") ? requested : `${requested}-openai`;
+}
+
+/** 2K/4K openai 通道按 1K 图片的两倍计费；调用方按生成张数乘此系数。 */
+export function micuQuotaMultiplier(model: string, size: string): number {
+  return isMicuHighResolutionSize(size) || model.endsWith("-openai") ? 2 : 1;
 }
 
 export function resolveMicuParallelGenerations(model: string, size: string): number {
   const effectiveModel = effectiveMicuModel(model, size);
-  if (/pro/i.test(effectiveModel) || isMicuHighResolutionSize(size)) {
+  if (effectiveModel.endsWith("-openai") || isMicuHighResolutionSize(size)) {
     return MICU_PRO_PARALLEL_GENERATIONS;
   }
   return MICU_STANDARD_PARALLEL_GENERATIONS;

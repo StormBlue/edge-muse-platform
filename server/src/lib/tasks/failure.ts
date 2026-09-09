@@ -6,6 +6,7 @@ import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn } from "../log";
 import { recordTaskResultGenerationEvent } from "../generationEntry";
 import { refundQuota } from "../quota";
+import { micuQuotaMultiplier } from "../../providers/micuPolicy";
 import { notifyTaskEvent } from "./events";
 import { releaseGenerateTaskSlotNow } from "./queue";
 import { markGenerateTaskFailed } from "./state";
@@ -81,11 +82,15 @@ export async function failGenerateTask(
     preservedImageIds: preservedImages.map((image) => image.id)
   });
   if (code !== "PROVIDER_ERROR") {
-    await refundQuota(env, task.userId, params.n, taskId);
+    const refundAmount =
+      task.providerKeyGroupId && params.model?.includes("gpt-image")
+        ? params.n * micuQuotaMultiplier(params.model, params.size)
+        : params.n;
+    await refundQuota(env, task.userId, refundAmount, taskId);
     logInfo("task.fail.quota_refunded", {
       taskId,
       userId: task.userId,
-      imageCount: params.n,
+      imageCount: refundAmount,
       code
     });
   }

@@ -19,6 +19,7 @@ import {
 } from "../db/schema";
 import { isBuiltInProviderId, isProviderKeyAssignable } from "../providers/catalog";
 import { getProvider } from "../providers/registry";
+import { MICU_REQUEST_FORMAT, MICU_SUPPORTED_MODELS } from "../providers/micuPolicy";
 import type { ImageProvider } from "../providers/types";
 import { appError, isAppError } from "./errors";
 import { now } from "./id";
@@ -46,6 +47,8 @@ export type ProviderCapabilities = {
   providerKeyGroupName: string | null;
   requestFormat: string;
   model: string;
+  /** 前端手动选择模型时使用；模型是否可用仍由服务端任务校验。 */
+  supportedModels?: string[];
   supportedModes: SessionMode[];
   supportedSizes: string[];
   maxReferenceImages: number | null;
@@ -165,6 +168,10 @@ export function providerCapabilitiesFromResolvedGroup(
     providerKeyGroupName: resolved.group.name,
     requestFormat: resolved.provider.requestFormat,
     model: firstKey?.model ?? resolved.provider.defaultModel,
+    supportedModels:
+      resolved.provider.requestFormat === MICU_REQUEST_FORMAT
+        ? [...MICU_SUPPORTED_MODELS]
+        : undefined,
     supportedModes: providerImpl.supportedModes ?? [...ALL_SESSION_MODES],
     supportedSizes: parseProviderSupportedSizes(resolved.provider, providerImpl),
     maxReferenceImages: providerImpl.maxReferenceImages ?? PLATFORM_REFERENCE_IMAGE_LIMIT

@@ -8,6 +8,7 @@ import { newId, now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logInfo, logWarn, promptSummary } from "../log";
 import { refundQuota, tryConsumeQuota } from "../quota";
+import { micuQuotaMultiplier } from "../../providers/micuPolicy";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
@@ -179,11 +180,15 @@ export async function createGenerateTask(
   const userMessageId = newId("msg");
   const assistantMessageId = newId("msg");
   const taskId = newId("tsk");
-  await tryConsumeQuota(env, input.userId, params.n, taskId);
+  const quotaAmount =
+    provider.requestFormat === "micu_images"
+      ? params.n * micuQuotaMultiplier(params.model ?? provider.defaultModel, params.size)
+      : params.n;
+  await tryConsumeQuota(env, input.userId, quotaAmount, taskId);
   logInfo("task.create.quota_consumed", {
     userId: input.userId,
     taskId,
-    imageCount: params.n
+    imageCount: quotaAmount
   });
   const shouldRefundQuotaOnCreateFailure = user.role !== "sysadmin";
   let messagesInserted = false;
@@ -311,7 +316,7 @@ export async function createGenerateTask(
       await markAssistantMessageFailedAfterCreateError(env, assistantMessageId);
     }
     if (shouldRefundQuotaOnCreateFailure) {
-      await refundQuotaAfterCreateError(env, input.userId, params.n, taskId);
+      await refundQuotaAfterCreateError(env, input.userId, quotaAmount, taskId);
     }
     logWarn("task.create.failed_after_quota", {
       userId: input.userId,
