@@ -212,7 +212,8 @@
     "modeUnsupported": "The current provider does not support this generation mode",
     "sizeUnsupported": "The current provider does not support this canvas size",
     "deleteConfirm": "Delete this message and its image records?",
-    "messageDeleted": "Message deleted"
+    "messageDeleted": "Message deleted",
+    "model": "Model"
   },
   "aiImage": {
     "allCategories": "All scenes",

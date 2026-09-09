@@ -20,6 +20,7 @@ import {
 import { prepareReferenceImageFiles, imageFilesFromFileList } from "@/utils/referenceImageFiles";
 import { useAiImageCases } from "./useAiImageCases";
 import { useAiImageGenerationTracking } from "./useAiImageGenerationTracking";
+import { sizeOptionsForModel } from "@/views/workspace/workspaceOptions";
 import { resolveAiImageRecommendedSize } from "./aiImageSizeFallback";
 import { studioMessages } from "./studioMessages";
 import {
@@ -95,7 +96,11 @@ export function useImageStudio() {
       auth.providerCapabilities
   );
   const supportedModes = computed<PromptCaseMode[]>(() => provider.value?.supportedModes ?? []);
-  const sizeOptions = computed(() => studioSizeOptions(provider.value, mode.value));
+  const sizeOptions = computed(() => {
+    const base = studioSizeOptions(provider.value, mode.value);
+    const selected = model.value === "auto" ? "auto" : model.value;
+    return sizeOptionsForModel(base, selected, provider.value?.requestFormat);
+  });
   const referenceLimit = computed(() =>
     Math.min(5, Math.max(0, provider.value?.maxReferenceImages ?? 5))
   );

@@ -119,6 +119,22 @@ export function sizeOptionsForProvider(capabilities: ProviderCapabilities | null
   return sortSizeValues(values).map(sizeToOption);
 }
 
+/** 按 Micu 手动模型过滤尺寸；自动模式保留全部尺寸。 */
+export function sizeOptionsForModel(
+  options: SizeOption[],
+  model: string,
+  requestFormat?: string
+): SizeOption[] {
+  if (!model || model === "auto" || requestFormat !== "micu_images") return options;
+  const high = model.endsWith("-openai");
+  const filtered = options.filter((option) => {
+    if (option.value === "auto") return !high;
+    const edge = maxEdgeForSize(option.value);
+    return edge !== null && (high ? edge >= 1600 : edge < 1600);
+  });
+  return filtered.length ? filtered : options;
+}
+
 export function defaultSizeOptions(): SizeOption[] {
   return sortSizeValues(DEFAULT_SIZE_VALUES).map(sizeToOption);
 }

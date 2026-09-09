@@ -108,6 +108,7 @@ const {
           :initial-generation-target-id="currentGenerationSettings.generationTargetId"
           :initial-size="currentGenerationSettings.size"
           :model-options="modelOptions"
+          :request-format="auth.providerCapabilities?.requestFormat"
           :generating="hasRunningTask"
           :loading="inputLoading"
           :allow-custom-count="allowCustomImageCount"
