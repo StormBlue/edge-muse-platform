@@ -52,7 +52,10 @@ const taskSummarySchema = {
         mode: ref("GenerationMode"),
         size: { type: "string" },
         n: { type: "integer" },
-        model: { type: "string" },
+        model: {
+          type: "string",
+          description: "兼容字段；当前任务创建会以密钥配置覆盖，不支持通过此字段手选模型。"
+        },
         generationTargetId: { type: "string" },
         referenceImageIds: { type: "array", items: { type: "string" } },
         sourceTaskId: { type: "string" },

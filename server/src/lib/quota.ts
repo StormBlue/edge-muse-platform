@@ -31,7 +31,7 @@ export async function getQuota(env: AppBindings, userId: string): Promise<QuotaS
 }
 
 /**
- * 预扣配额（生图任务创建时按「张数」扣）。成功则写一条 `task_charge` 流水（delta 为负）。
+ * 预扣配额（生图任务创建时按渠道计费单位扣）。成功则写一条 `task_charge` 流水（delta 为负）。
  */
 export async function tryConsumeQuota(
   env: AppBindings,
@@ -118,6 +118,35 @@ export async function refundQuota(
       taskId,
       createdAt: now()
     });
+}
+
+/**
+ * 原子退还任务尚未退回的实扣配额。D1 batch 串行事务保证并发调用不会重复退款；
+ * 无扣款（例如 sysadmin）不产生退款，价格调整也不会改变历史任务的退款金额。
+ */
+export async function refundTaskOutstandingQuota(
+  env: AppBindings,
+  userId: string,
+  taskId: string
+): Promise<number> {
+  const refundId = newId("qt");
+  const timestamp = now();
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO quota_transactions (id, user_id, delta, reason, operator_id, task_id, created_at)
+       SELECT ?1, user_id, -SUM(delta), 'task_refund', user_id, task_id, ?2
+       FROM quota_transactions WHERE user_id = ?3 AND task_id = ?4
+         AND reason IN ('task_charge', 'task_refund')
+       GROUP BY user_id, task_id HAVING SUM(delta) < 0
+       RETURNING delta`
+    ).bind(refundId, timestamp, userId, taskId),
+    env.DB.prepare(
+      `UPDATE quotas SET used_quota = MAX(used_quota - (
+         SELECT delta FROM quota_transactions WHERE id = ?1), 0), updated_at = ?2
+       WHERE user_id = (SELECT user_id FROM quota_transactions WHERE id = ?1)`
+    ).bind(refundId, timestamp)
+  ]);
+  return Number((results[0].results[0] as { delta: number } | undefined)?.delta ?? 0);
 }
 
 /**

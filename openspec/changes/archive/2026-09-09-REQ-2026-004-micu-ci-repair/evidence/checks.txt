@@ -1,0 +1,12 @@
+2026-09-09 local verification (develop working tree based on 8376c1a)
+pnpm -F server types: exit 0
+pnpm typecheck: exit 0
+pnpm lint: exit 0
+pnpm test: exit 0; server 23 files / 227 tests, web 34 files / 214 tests passed
+pnpm build: exit 0; Vite build and Wrangler dry-run completed
+Changed current Markdown links: 0 missing targets
+Integrated review: corrected outdated model mock assertions and 1K overcharge; ledger-based refund covers historical/other-provider/sysadmin/concurrent/partial/rollback paths.
+Default test retries disabled; automatic discovery included new micuPolicy.test.ts.
+No real upstream calls or production D1 writes performed in local tests.
+docs_guard check: unavailable without repository .docs-architect.json (missing_config); repository configuration not initialized for this scoped sync.
+Existing Vite native-config deprecation and build chunk-size warnings are non-blocking.

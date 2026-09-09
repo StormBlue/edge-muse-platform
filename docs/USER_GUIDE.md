@@ -69,3 +69,9 @@
 - [EXPERIMENTS.md](./EXPERIMENTS.md) — generation entry flags and funnel events
 - [PRODUCT_SENSE.md](./PRODUCT_SENSE.md) — roles and journeys
 - [OPERATIONS.md](./OPERATIONS.md) — sysadmin configuration (operators)
+
+## 米醋图片配额说明
+
+米醋渠道 1K 图片每张消耗 1 个配额单位，2K/4K 每张消耗 2 个单位。`auto` 按 1K 档计费；选用 2K/4K 尺寸时平台自动切换同一模型家族的高分辨率通道。以平台尺寸分档为准，当前高分辨率每次限 1 张，图生图暂不开放 4K。
+
+模型家族目前由管理员配置的密钥决定，用户端尚无 Flare/Sunburst 手选控件，也不会根据提示词自动选择家族。服务端模型目录是能力数据，并不表示该选择界面已上线；模型更新公告的实际发布状态以公告中心为准。

@@ -5,8 +5,7 @@ import { now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logError, logInfo, logWarn } from "../log";
 import { recordTaskResultGenerationEvent } from "../generationEntry";
-import { refundQuota } from "../quota";
-import { micuQuotaMultiplier } from "../../providers/micuPolicy";
+import { refundTaskOutstandingQuota } from "../quota";
 import { notifyTaskEvent } from "./events";
 import { releaseGenerateTaskSlotNow } from "./queue";
 import { markGenerateTaskFailed } from "./state";
@@ -82,11 +81,8 @@ export async function failGenerateTask(
     preservedImageIds: preservedImages.map((image) => image.id)
   });
   if (code !== "PROVIDER_ERROR") {
-    const refundAmount =
-      task.providerKeyGroupId && params.model?.includes("gpt-image")
-        ? params.n * micuQuotaMultiplier(params.model, params.size)
-        : params.n;
-    await refundQuota(env, task.userId, refundAmount, taskId);
+    // 历史任务、其他渠道和 sysadmin 都以实扣账本为准，禁止按当前模型或价格猜退款。
+    const refundAmount = await refundTaskOutstandingQuota(env, task.userId, taskId);
     logInfo("task.fail.quota_refunded", {
       taskId,
       userId: task.userId,

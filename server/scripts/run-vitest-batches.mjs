@@ -1,42 +1,26 @@
+import { readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
-const batches = [
-  [
-    "test/authRefresh.test.ts",
-    "test/cookies.test.ts",
-    "test/crypto.test.ts",
-    "test/cubenceRegression.test.ts",
-    "test/generationPolicy.test.ts",
-    "test/historyImages.test.ts",
-    "test/jwt.test.ts",
-    "test/password.test.ts",
-    "test/promptAssistant.test.ts",
-    "test/provider.test.ts",
-    "test/providerCapabilities.test.ts",
-    "test/referenceImages.test.ts",
-    "test/turnstile.test.ts"
-  ],
-  ["test/apiPermissions.test.ts"],
-  [
-    "test/aiModelSettings.test.ts",
-    "test/captcha.test.ts",
-    "test/generationEntry.test.ts",
-    "test/promptCases.integration.test.ts"
-  ],
-  ["test/announcements.test.ts", "test/sessionDeletion.test.ts", "test/tasksCreate.test.ts"],
-  ["test/queueScheduler.test.ts"]
-];
+// 自动发现所有测试，避免新增回归文件后因手工清单漏登记而被 CI 静默跳过。
+// D1 测试单文件隔离批次，继续限制 Windows 下 workerd 的进程峰值。
+const batches = readdirSync(new URL("../test/", import.meta.url))
+  .filter((name) => name.endsWith(".test.ts"))
+  .sort()
+  .map((name) => [`test/${name}`]);
+if (!batches.length) throw new Error("No server test files discovered");
 
 const cwd = fileURLToPath(new URL("..", import.meta.url));
 const command = process.execPath;
 const vitestCli = fileURLToPath(new URL("../node_modules/vitest/vitest.mjs", import.meta.url));
 // Miniflare/workerd can keep native worker processes alive briefly after Vitest exits.
 // A short gap keeps Windows/Node 24 runs from tripping Vitest's worker-pool crash handling.
-const batchDelayMs = Number(process.env.VITEST_BATCH_DELAY_MS ?? 10_000);
+const batchDelayMs = Number(
+  process.env.VITEST_BATCH_DELAY_MS ?? (process.platform === "win32" ? 1_000 : 0)
+);
 const retryDelayMs = Number(process.env.VITEST_BATCH_RETRY_DELAY_MS ?? 30_000);
-const maxRetries = Number(process.env.VITEST_BATCH_RETRIES ?? 1);
+const maxRetries = Number(process.env.VITEST_BATCH_RETRIES ?? 0);
 
 for (const [index, files] of batches.entries()) {
   console.log(`\nRunning Vitest batch ${index + 1}/${batches.length}`);

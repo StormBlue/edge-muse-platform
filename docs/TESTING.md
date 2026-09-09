@@ -11,14 +11,28 @@ pnpm lint
 pnpm build
 ```
 
-发布前建议组合（与 [`ACCEPTANCE.md`](./ACCEPTANCE.md) 一致）：
+发布前执行与 CI 同范围的检查，任一步失败都应停止发布；类型检查通过不能替代测试：
 
 ```bash
-pnpm -F server typecheck && pnpm -F web typecheck
-pnpm -F server test
+pnpm install --frozen-lockfile
+pnpm -F server types
 pnpm lint
-pnpm -F web build && pnpm -F server build
+pnpm typecheck
+pnpm test
+pnpm build
 ```
+
+请逐条确认退出码为 0，或在支持的 shell 使用 `&&` 连接。PowerShell 的 `;` 不会在前一步失败后停止，不能用于串联发布命令。
+
+服务端入口 `server/scripts/run-vitest-batches.mjs` 自动发现 `server/test/` 顶层所有 `*.test.ts`，按文件名排序、单文件批次执行；新测试放入该目录即纳入 CI。Windows 批次间默认间隔 1 秒，其他平台为 0；可用 `VITEST_BATCH_DELAY_MS` 调整。默认 `VITEST_BATCH_RETRIES=0`，断言失败立即以非零状态退出；定位原生 worker 启动故障时才显式开启重试（间隔由 `VITEST_BATCH_RETRY_DELAY_MS` 控制）。空测试目录也必须报错。
+
+米醋专项排查：
+
+```bash
+pnpm -F server exec vitest run test/provider.test.ts test/micuPolicy.test.ts test/tasksCreate.test.ts
+```
+
+专项检查不能取代发布前全量检查。覆盖三类模型及后缀的尺寸路由、计费边界、历史账本、重复退款、退款事务回滚、其他渠道与 sysadmin 隔离。mock 断言异常可能被请求层包装成 `PROVIDER_FETCH_ERROR`，并触发图生图 chat 回退；这不代表已调用真实上游或上游不可用。
 
 ## 范围
 

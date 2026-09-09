@@ -54,3 +54,9 @@ Deploy 是 CI 通过 `needs: ci` 调用的可复用工作流，检出同次运�
 - [`OPERATIONS.md`](./OPERATIONS.md) — 密钥轮换、回滚、演练
 - [`TESTING.md`](./TESTING.md) — 发布前验证命令
 - [`ACCEPTANCE.md`](./ACCEPTANCE.md) — 验收项
+
+## CI 失败排查与分支发布顺序
+
+先区分 `ci` 失败和 `deploy` 失败。`develop` 仅验证，不部署；`main` 的 `ci` 失败会跳过构建后的部署链路，不应据此排查 Wrangler 登录或 Cloudflare secrets。2026-09-09 的米醋模型更新曾因测试仍断言旧 `gpt-image-2-pro` 而在 `pnpm test` 失败。
+
+修正后先通过本地完整检查，再提交并推送 `develop`，确认该提交的远程 CI 成功。之后同步远程 `main`、合并已验证的 `develop`、推送 `main`，检查该次 CI 与 deploy 的最终状态。保留未提交的用户改动；分支切换、合并或推送失败后必须停止，不能继续执行后续发布命令。

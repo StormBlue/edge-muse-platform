@@ -65,7 +65,7 @@ pnpm dev
 1. **类型与领域类型**：共享类型在 [`server/src/types.ts`](server/src/types.ts)；路由用 Hono `AppEnv`。
 2. **密钥与分组**：上游 API Key 仅密文存 D1；admin/user 生成分配以 `users.provider_key_group_id` → `provider_key_groups` 为准，解析与能力快照见 `lib/providerKeyGroups.ts`；禁止把明文密钥打进日志或响应。
 3. **队列并发**：queued 任务在 `assigned_at` 为空时尚未占用 key slot；`provider_key_id` 可能只是兼容旧约束的占位值，调度器会在占用 slot 时覆盖为最终 key。key 并发统计看 `queued/running + assigned_at`，用户任务上限看 `queued + running`。
-4. **配额**：[`createGenerateTask`](server/src/lib/tasks/create.ts) 内按张数预扣（自 `lib/tasks.ts` 再导出）；非服务商错误的失败路径需按业务退还（见 `server/src/lib/tasks/` 与 facade [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts)）。
+4. **配额**：[`createGenerateTask`](server/src/lib/tasks/create.ts) 内按渠道计费单位预扣（米醋 1K 每张 1 单位，2K/4K 每张 2 单位）（自 `lib/tasks.ts` 再导出）；非服务商错误的失败路径需按业务退还（见 `server/src/lib/tasks/` 与 facade [`server/src/lib/tasks.ts`](server/src/lib/tasks.ts)）。
 5. **Provider 能力**：`openai_images`（Cubence）限制 chat、多参考图等，前后端须一致（`/api/me` 带 `providerCapabilities`）。
 6. **错误响应**：统一 `{ error: { code, message, details } }`（见 `docs/API.md`）。
 7. **迁移**：schema 变更走 `pnpm -F server db:gen`，提交 SQL 后再 `db:migrate:local` / remote。
