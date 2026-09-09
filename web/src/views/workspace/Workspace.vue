@@ -107,6 +107,7 @@ const {
           :notice="reuseNotice"
           :initial-generation-target-id="currentGenerationSettings.generationTargetId"
           :initial-size="currentGenerationSettings.size"
+          :initial-model="currentGenerationSettings.model"
           :model-options="modelOptions"
           :request-format="auth.providerCapabilities?.requestFormat"
           :generating="hasRunningTask"

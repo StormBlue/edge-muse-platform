@@ -42,6 +42,7 @@ export type ChatInputProps = {
   generationTargets?: ChatInputGenerationTargetOption[];
   initialGenerationTargetId?: string;
   initialSize?: string;
+  initialModel?: string;
   initialCount?: number;
   initialPrompt?: string;
   initialReferenceImages?: ImageAttachment[];
@@ -223,6 +224,14 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
         return;
       }
       generationTargetId.value = effectiveGenerationTargets.value[0]?.id ?? "default";
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => props.initialModel,
+    (next) => {
+      model.value = next || "auto";
     },
     { immediate: true }
   );

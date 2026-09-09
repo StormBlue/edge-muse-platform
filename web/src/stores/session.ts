@@ -290,6 +290,7 @@ export const useSessionStore = defineStore("sessions", {
             settings: {
               size: input.size,
               n: input.n,
+              model: input.model,
               generationTargetId: input.generationTargetId
             },
             lastMessageAt: createdAt
