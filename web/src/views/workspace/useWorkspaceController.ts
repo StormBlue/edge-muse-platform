@@ -165,6 +165,7 @@ export function useWorkspaceController() {
       reuseSettings.value ?? {
         size: sessions.currentSession?.settings?.size ?? "auto",
         n: sessions.currentSession?.settings?.n ?? 1,
+        model: sessions.currentSession?.settings?.model,
         generationTargetId:
           sessions.currentSession?.settings?.generationTargetId ?? generationTargetId.value
       }
@@ -463,7 +464,12 @@ export function useWorkspaceController() {
               ? 1
               : Infinity
           );
-          reuseSettings.value = { size, n: count, generationTargetId: generationTargetId.value };
+          reuseSettings.value = {
+            size,
+            n: count,
+            model: task.params.model,
+            generationTargetId: generationTargetId.value
+          };
           reusePrompt.value = task.prompt;
           reuseSource.value = {
             sourceTaskId: task.id,

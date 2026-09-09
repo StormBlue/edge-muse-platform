@@ -8,6 +8,7 @@ import { apiFetch } from "@/api/client";
 import { useSessionStore } from "@/stores/session";
 import { useTaskActivityStore } from "@/stores/taskActivity";
 import type { GenerationTask } from "@/api/tasks";
+import ChatInput from "@/components/chat/ChatInput.vue";
 import { useWorkspaceController } from "./useWorkspaceController";
 
 const mocks = vi.hoisted(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
@@ -48,12 +49,22 @@ const page = (sessionId: string, running = false) => ({
   nextCursor: null
 });
 
-async function render(path: string) {
+async function render(path: string, showInput = false) {
   let controller!: ReturnType<typeof useWorkspaceController>;
   const component = defineComponent({
     setup() {
       controller = useWorkspaceController();
-      return () => h("div");
+      return () =>
+        showInput
+          ? h(ChatInput, {
+              mode: "text2image",
+              readOnly: true,
+              generating: true,
+              initialModel: controller.currentGenerationSettings.value.model,
+              initialSize: controller.currentGenerationSettings.value.size,
+              modelOptions: ["gpt-image-2.5-sunburst", "gpt-image-2.5-flare"]
+            })
+          : h("div");
     }
   });
   const router = createRouter({
@@ -86,6 +97,32 @@ beforeEach(() => {
 });
 
 describe("workspace route ownership", () => {
+  it("renders the persisted model after navigating to a running session and remounting", async () => {
+    const model = "gpt-image-2.5-sunburst";
+    const implementation = api.getMockImplementation()!;
+    api.mockImplementation((path, ...args) =>
+      path === "/sessions"
+        ? Promise.resolve({
+            items: [
+              {
+                id: "active",
+                title: "Running task",
+                mode: "text2image",
+                settings: { size: "auto", n: 1, model },
+                lastMessageAt: 1
+              }
+            ],
+            nextCursor: null
+          })
+        : implementation(path, ...args)
+    );
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const { wrapper, controller } = await render("/workspace/s/active", true);
+      expect(controller.currentGenerationSettings.value.model).toBe(model);
+      expect(wrapper.get('[role="combobox"]').text()).toContain(model);
+      wrapper.unmount();
+    }
+  });
   it("keeps the original reference requirement when only some image IDs are recoverable", async () => {
     const implementation = api.getMockImplementation()!;
     const available = { id: "available", url: "/images/available", mime: "image/png", byteSize: 1 };
