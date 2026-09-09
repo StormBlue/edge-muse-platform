@@ -7,6 +7,7 @@ import {
 } from "@/utils/referenceImageFiles";
 import type { ImageAttachment, SessionMode } from "@/stores/session";
 import { recreationMessages } from "@/components/image/recreationMessages";
+import { sizeOptionsForModel } from "@/views/workspace/workspaceOptions";
 
 export type ChatInputSizeOption = {
   value: string;
@@ -41,6 +42,7 @@ export type ChatInputProps = {
   generationTargets?: ChatInputGenerationTargetOption[];
   initialGenerationTargetId?: string;
   initialSize?: string;
+  initialModel?: string;
   initialCount?: number;
   initialPrompt?: string;
   initialReferenceImages?: ImageAttachment[];
@@ -53,6 +55,7 @@ export type ChatInputProps = {
   maxReferenceFiles?: number | null;
   limitHighResolutionCount?: boolean;
   modelOptions?: string[];
+  requestFormat?: string;
 };
 
 type ChatInputEmit = {
@@ -122,7 +125,11 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     return t("workspace.generate");
   });
   const effectiveSizeOptions = computed(() =>
-    props.sizeOptions?.length ? props.sizeOptions : DEFAULT_SIZE_OPTIONS
+    sizeOptionsForModel(
+      props.sizeOptions?.length ? props.sizeOptions : DEFAULT_SIZE_OPTIONS,
+      model.value,
+      props.requestFormat
+    )
   );
   const effectiveGenerationTargets = computed<ChatInputGenerationTargetOption[]>(() =>
     props.generationTargets?.length
@@ -217,6 +224,14 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
         return;
       }
       generationTargetId.value = effectiveGenerationTargets.value[0]?.id ?? "default";
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => props.initialModel,
+    (next) => {
+      model.value = next || "auto";
     },
     { immediate: true }
   );

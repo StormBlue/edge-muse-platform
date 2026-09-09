@@ -44,7 +44,12 @@ export function useWorkspaceController() {
   const reusePrompt = ref("");
   const reuseReferences = ref<ImageAttachment[]>([]);
   const reuseReferenceCount = ref(0);
-  const reuseSettings = ref<{ size: string; n: number; generationTargetId: string } | null>(null);
+  const reuseSettings = ref<{
+    size: string;
+    n: number;
+    model?: string;
+    generationTargetId: string;
+  } | null>(null);
   const reuseSource = ref<{ sourceTaskId: string; sourceImageId?: string } | null>(null);
   const reuseNotice = ref("");
   const reuseLoading = ref(false);

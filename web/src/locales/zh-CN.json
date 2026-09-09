@@ -212,7 +212,8 @@
     "modeUnsupported": "当前服务商不支持该生成模式",
     "sizeUnsupported": "当前服务商不支持该画布尺寸",
     "deleteConfirm": "删除这条消息及其图片记录?",
-    "messageDeleted": "消息已删除"
+    "messageDeleted": "消息已删除",
+    "model": "模型"
   },
   "aiImage": {
     "allCategories": "全部场景",
