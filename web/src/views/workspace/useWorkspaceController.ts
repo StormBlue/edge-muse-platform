@@ -191,6 +191,7 @@ export function useWorkspaceController() {
   const providerCapabilities = computed(
     () => activeTarget.value?.providerCapabilities ?? auth.providerCapabilities
   );
+  const modelOptions = computed(() => providerCapabilities.value?.supportedModels ?? []);
   const supportedModes = computed<SessionMode[]>(
     () => providerCapabilities.value?.supportedModes ?? ["image2image", "text2image"]
   );
@@ -602,6 +603,7 @@ export function useWorkspaceController() {
     generationTargetId,
     generationTargets,
     providerSizeOptions,
+    modelOptions,
     limitHighResolutionCount,
     maxReferenceFiles,
     maxImagesPerGeneration,

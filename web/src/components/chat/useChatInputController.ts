@@ -26,6 +26,7 @@ export type ChatInputSubmitValue = {
   mode: SessionMode;
   size: string;
   n: number;
+  model?: string;
   files: File[];
   referenceImages?: ImageAttachment[];
 };
@@ -51,6 +52,7 @@ export type ChatInputProps = {
   sizeOptions?: ChatInputSizeOption[];
   maxReferenceFiles?: number | null;
   limitHighResolutionCount?: boolean;
+  modelOptions?: string[];
 };
 
 type ChatInputEmit = {
@@ -74,6 +76,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   const generationTargetId = ref("default");
   const size = ref("auto");
   const n = ref(1);
+  const model = ref("auto");
   const countInput = ref("1");
   const files = ref<File[]>([]);
   const existingReferences = ref<ImageAttachment[]>([]);
@@ -166,6 +169,14 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     () => props.initialReferenceCount,
     (value) => {
       requiredReferenceCount.value = Math.max(0, value ?? 0);
+    },
+    { immediate: true }
+  );
+
+  watch(
+    () => props.modelOptions,
+    (options) => {
+      if (model.value !== "auto" && !options?.includes(model.value)) model.value = "auto";
     },
     { immediate: true }
   );
@@ -290,6 +301,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
       mode: props.mode,
       size: size.value,
       n: submittedCount,
+      model: model.value === "auto" ? undefined : model.value,
       files: isImageToImage.value ? files.value : [],
       ...(isImageToImage.value && existingReferences.value.length
         ? { referenceImages: existingReferences.value }
@@ -389,6 +401,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
     generationTargetId,
     size,
     n,
+    model,
     countInput,
     dragging,
     isReadOnly,

@@ -8,7 +8,11 @@ import { newId, now } from "../id";
 import { parseJson, stringifyJson } from "../json";
 import { logInfo, logWarn, promptSummary } from "../log";
 import { refundQuota, tryConsumeQuota } from "../quota";
-import { micuQuotaMultiplier } from "../../providers/micuPolicy";
+import {
+  MICU_REQUEST_FORMAT,
+  MICU_SUPPORTED_MODELS,
+  micuQuotaMultiplier
+} from "../../providers/micuPolicy";
 import { defaultSessionTitle } from "../sessionTitle";
 import { getProvider } from "../../providers/registry";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
@@ -155,7 +159,16 @@ export async function createGenerateTask(
   const provider = keyGroup.provider;
   const initialProviderKeyId = keyGroup.members[0]?.providerKeyId;
   if (!initialProviderKeyId) throw appError("PROVIDER_ERROR", "No provider key configured");
-  params.model = keyGroup.members[0]?.key.model ?? provider.defaultModel;
+  const configuredModel = keyGroup.members[0]?.key.model ?? provider.defaultModel;
+  // model 为空表示自动；仅允许渠道能力快照中的模型，避免客户端把任意模型名传给上游。
+  const requestedModel = input.params.model?.trim();
+  if (provider.requestFormat === MICU_REQUEST_FORMAT && requestedModel) {
+    if (!MICU_SUPPORTED_MODELS.includes(requestedModel as (typeof MICU_SUPPORTED_MODELS)[number]))
+      throw appError("VALIDATION_ERROR", "Unsupported Micu model");
+    params.model = requestedModel;
+  } else {
+    params.model = configuredModel;
+  }
   const providerImpl = getProvider(provider.requestFormat);
   assertProviderSupportsGenerateParams(provider, providerImpl, params);
   const settings = stringifyJson({

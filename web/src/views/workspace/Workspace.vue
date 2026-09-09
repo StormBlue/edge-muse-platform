@@ -50,6 +50,7 @@ const {
   modeOptions,
   generationTargets,
   providerSizeOptions,
+  modelOptions,
   limitHighResolutionCount,
   maxReferenceFiles,
   maxImagesPerGeneration,
@@ -106,6 +107,7 @@ const {
           :notice="reuseNotice"
           :initial-generation-target-id="currentGenerationSettings.generationTargetId"
           :initial-size="currentGenerationSettings.size"
+          :model-options="modelOptions"
           :generating="hasRunningTask"
           :loading="inputLoading"
           :allow-custom-count="allowCustomImageCount"

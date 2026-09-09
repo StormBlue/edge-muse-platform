@@ -106,6 +106,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
     mode: SessionMode;
     size: string;
     n: number;
+    model?: string;
     files: File[];
     referenceImages?: ImageAttachment[];
   }) {
@@ -158,6 +159,7 @@ export function useWorkspaceActions(options: WorkspaceActionOptions) {
           mode: input.mode,
           size: input.size,
           n: input.n,
+          model: input.model,
           referenceImageIds,
           referenceImages,
           ...source,
