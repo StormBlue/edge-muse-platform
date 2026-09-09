@@ -106,7 +106,11 @@ export const components = {
       required: ["allocatedQuota", "usedQuota", "remainingQuota"],
       properties: {
         allocatedQuota: { type: "integer", nullable: true, description: "`null` 表示无限配额。" },
-        usedQuota: { type: "integer", minimum: 0, description: "已消耗张数。" },
+        usedQuota: {
+          type: "integer",
+          minimum: 0,
+          description: "已消耗配额单位；米醋 1K 每张 1 单位，2K/4K 每张 2 单位。"
+        },
         remainingQuota: {
           type: "integer",
           nullable: true,
@@ -139,6 +143,11 @@ export const components = {
         providerKeyGroupName: { type: "string", nullable: true },
         requestFormat: { type: "string" },
         model: { type: "string" },
+        supportedModels: {
+          type: "array",
+          items: { type: "string" },
+          description: "米醋模型目录；当前不代表已支持用户手选，实际模型仍来自密钥配置。"
+        },
         supportedModes: arrayOf(ref("GenerationMode")),
         supportedSizes: arrayOf({ type: "string" }),
         maxReferenceImages: { type: "integer", nullable: true }

@@ -133,7 +133,8 @@ export function effectiveMicuModel(model: string, size: string): string {
 
 /** 2K/4K openai 通道按 1K 图片的两倍计费；调用方按生成张数乘此系数。 */
 export function micuQuotaMultiplier(model: string, size: string): number {
-  return isMicuHighResolutionSize(size) || model.endsWith("-openai") ? 2 : 1;
+  // 与实际路由保持一致：1K 会去除 openai 后缀，不能按密钥中的原始模型多扣。
+  return effectiveMicuModel(model, size).endsWith("-openai") ? 2 : 1;
 }
 
 export function resolveMicuParallelGenerations(model: string, size: string): number {

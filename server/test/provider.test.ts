@@ -297,7 +297,7 @@ describe("provider response parsing", () => {
     expect(response.images).toHaveLength(1);
   });
 
-  it("upgrades Micu high-resolution requests to the pro model", async () => {
+  it("routes Micu high-resolution requests to the openai model", async () => {
     const provider = new MicuImagesProvider();
     vi.stubGlobal(
       "fetch",
@@ -307,7 +307,7 @@ describe("provider response parsing", () => {
           size: string;
           response_format: string;
         };
-        expect(body.model).toBe("gpt-image-2-pro");
+        expect(body.model).toBe("gpt-image-2-openai");
         expect(body.size).toBe("2048x2048");
         expect(body.response_format).toBe("b64_json");
         return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
@@ -448,7 +448,7 @@ describe("provider response parsing", () => {
           reference_image?: string;
           response_format: string;
         };
-        expect(body.model).toBe("gpt-image-2-pro");
+        expect(body.model).toBe("gpt-image-2-openai");
         expect(body.size).toBe("2048x2048");
         expect(body.reference_image).toMatch(/^data:image\/png;base64,/);
         expect(body.response_format).toBe("b64_json");
@@ -485,7 +485,7 @@ describe("provider response parsing", () => {
             content: Array<{ type: string; image_url?: { url: string } }>;
           }>;
         };
-        expect(body.model).toBe("gpt-image-2-pro");
+        expect(body.model).toBe("gpt-image-2-openai");
         const content = body.messages[0]?.content ?? [];
         expect(content.filter((part) => part.type === "image_url")).toHaveLength(2);
         expect(content[1]?.image_url?.url).toMatch(/^data:image\/png;base64,/);

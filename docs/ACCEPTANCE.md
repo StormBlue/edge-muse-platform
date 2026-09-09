@@ -1,6 +1,6 @@
 # Acceptance Checklist
 
-Date: 2026-04-27
+历史基线日期：2026-04-27；当前米醋修正边界见下文。
 
 ## Core Requirements
 
@@ -19,7 +19,7 @@ Date: 2026-04-27
 - ✅ Sysadmin key/admin management, dashboard, user session audit, and preference selection. Provider selection now happens from key creation.
 - ✅ AI 图像生成案例库使用轻量分页列表、服务端 facets、详情按需加载和缩略图懒加载；应用 prompt 前会先获取完整 `promptTemplate`。
 - ✅ i18n base zh-CN/en-US, light/dark/system theme, responsive layout.
-- ⏸ Online deployment, DNS cutover, and real Cloudflare resource smoke tests are blocked until account resource IDs and secrets are available.
+- 历史基线未包含线上验收；当前部署工作流与资源验证方法见 [DEPLOYMENT.md](./DEPLOYMENT.md)，不能用此历史清单认定当前部署成功或失败。
 
 ## Verification
 
@@ -61,3 +61,11 @@ Prompt cases pagination verification checklist:
 - [TESTING.md](./TESTING.md)
 - [DEPLOYMENT.md](./DEPLOYMENT.md)
 - [archive/CUBENCE_INTEGRATION_TASKS.md](./archive/CUBENCE_INTEGRATION_TASKS.md) — historical integration checklist
+
+## 米醋更新的验收边界
+
+- 本轮修正：更新协议测试的 `-openai` 模型预期，自动发现回归测试，修正 1K 后缀计费及按实际账本退款。
+- 现有自动路由按尺寸选择同一模型家族的基础/openai 版本；尚未按任务语义自动选择 Flare 或 Sunburst。
+- 当前 `model` 由 provider key 配置决定，前端用户手选未接通，API 模型目录不等于手选已交付。
+- 全用户公告尚未实际发布，不能标记完成；真实米醋联网 smoke 不属于 mock 测试证据。
+- 本轮测试、构建与发布证据归入 `REQ-2026-004`，不以 2026-04-27 历史测试数作为当前验收结果。

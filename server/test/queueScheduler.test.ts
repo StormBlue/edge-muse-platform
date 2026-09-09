@@ -102,7 +102,7 @@ describe("provider key queue scheduler", () => {
         "UPDATE provider_keys SET encrypted_key = ?1 WHERE id = 'key_queue_1'"
       ).bind(await encryptString("api-key-1", secret)),
       context.env.DB.prepare(
-        "UPDATE provider_keys SET model = 'gpt-image-2-pro', encrypted_key = ?1 WHERE id = 'key_queue_2'"
+        "UPDATE provider_keys SET model = 'gpt-image-2-openai', encrypted_key = ?1 WHERE id = 'key_queue_2'"
       ).bind(await encryptString("api-key-2", secret))
     ]);
     await seedTask(context.env, {
@@ -136,7 +136,7 @@ describe("provider key queue scheduler", () => {
       baseLogFields: { taskId: "tsk_second_key_model" }
     });
 
-    expect(runContext.model).toBe("gpt-image-2-pro");
+    expect(runContext.model).toBe("gpt-image-2-openai");
     expect(runContext.apiKey).toBe("api-key-2");
   });
 

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { refundTaskOutstandingQuota, refundQuota } from "../src/lib/quota";
 import { createGenerateTask } from "../src/lib/tasks";
 import { GENERATE_WORKFLOW_STEP_CONFIG } from "../src/lib/tasks/workflowConfig";
 import { MICU_PROVIDER_ID } from "../src/providers/catalog";
@@ -57,6 +58,97 @@ describe("generation task creation quota safety", () => {
       .bind(result.taskId)
       .first<{ status: string }>();
     expect(task?.status).toBe("queued");
+  });
+
+  it.each([
+    ["1024x1024", "gpt-image-2-openai", 1],
+    ["2048x2048", "gpt-image-2.5-flare", 2],
+    ["3840x2160", "gpt-image-2.5-sunburst", 2]
+  ])("charges and refunds actual units for %s / %s", async (size, model, units) => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    await context.env.DB.prepare("UPDATE provider_keys SET model = ?1").bind(model).run();
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, size }
+    });
+    await expectQuota(context.env, { usedQuota: units });
+    // 并发退款只能发生一次，最终净扣款必须回到零。
+    const refunded = await Promise.all([
+      refundTaskOutstandingQuota(context.env, "usr_task", result.taskId),
+      refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)
+    ]);
+    expect(refunded.reduce((a, b) => a + b, 0)).toBe(units);
+    await expectQuota(context.env, { usedQuota: 0 });
+  });
+
+  it("rejects 2K before creating work when only one unit remains", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 1, usedQuota: 0 });
+    await expect(
+      createGenerateTask(context.env, {
+        userId: "usr_task",
+        params: { ...baseParams, size: "2048x2048" }
+      })
+    ).rejects.toMatchObject({ code: "QUOTA_EXCEEDED" });
+    expect(await countRows(context.env, "tasks")).toBe(0);
+    await expectQuota(context.env, { usedQuota: 0 });
+  });
+
+  it("refunds historical charges from the ledger instead of today's resolution tariff", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: baseParams
+    });
+    await context.env.DB.prepare("UPDATE tasks SET params = ?1 WHERE id = ?2")
+      .bind(JSON.stringify({ ...baseParams, size: "2048x2048" }), result.taskId)
+      .run();
+    expect(await refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)).toBe(1);
+    expect(await refundTaskOutstandingQuota(context.env, "usr_task", "missing")).toBe(0);
+  });
+
+  it("only refunds the outstanding part and atomically rolls back a failed refund", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, size: "2048x2048" }
+    });
+    await refundQuota(context.env, "usr_task", 1, result.taskId);
+    await context.env.DB.exec(
+      "CREATE TRIGGER reject_refund BEFORE UPDATE ON quotas BEGIN SELECT RAISE(ABORT, 'refund test'); END;"
+    );
+    await expect(
+      refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)
+    ).rejects.toThrow();
+    await context.env.DB.exec("DROP TRIGGER reject_refund;");
+    await expectQuota(context.env, { usedQuota: 1 });
+    expect(await refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)).toBe(1);
+    await expectQuota(context.env, { usedQuota: 0 });
+  });
+
+  it("keeps Cubence high resolution at one unit", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    await context.env.DB.prepare(
+      "UPDATE providers SET request_format = 'openai_images', supported_sizes = ?1"
+    )
+      .bind(JSON.stringify(["2048x2048"]))
+      .run();
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, size: "2048x2048" }
+    });
+    await expectQuota(context.env, { usedQuota: 1 });
+    expect(await refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)).toBe(1);
+  });
+
+  it("does not manufacture a refund for an uncharged sysadmin", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    await context.env.DB.prepare("UPDATE users SET role = 'sysadmin' WHERE id = 'usr_task'").run();
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, size: "2048x2048" }
+    });
+    expect(await refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)).toBe(0);
+    expect(await countRows(context.env, "quota_transactions")).toBe(0);
   });
 
   it("disables Cloudflare Workflow step retries for generation", () => {
