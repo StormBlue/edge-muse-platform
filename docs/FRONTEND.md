@@ -103,3 +103,7 @@ SPA 位于 [`web/`](../web/)，构建产物由 Worker 以静态资源形式提�
 - [`API.md`](./API.md) — 后端契约
 - [`EXPERIMENTS.md`](./EXPERIMENTS.md) — `generationEntry`、导航与 `POST /api/generation/events`
 - [`USER_GUIDE.md`](./USER_GUIDE.md) — 功能层说明
+
+### 工作台生成中的模型回填
+
+生成中会话的模型值通过 `sessions.currentSession.settings.model` → `currentGenerationSettings.model` → `ChatInput.initialModel` 回填；再创作使用源任务的 `params.model`。这些投影必须显式携带模型，不能只给中间类型加可选字段。回归见 `web/src/views/workspace/useWorkspaceController.test.ts`，使用实际 ChatInput 验证打开运行中会话与重新挂载后的模型文字。2026-09-09：该用例修复前失败（model 为 undefined），补齐投影后通过，连同 ChatInput/session 相关 26 项测试通过。
