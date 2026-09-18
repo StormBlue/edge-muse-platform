@@ -49,12 +49,21 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 
 ## 查询与 Rows read
 
-D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。当前已知缺口与改写计划见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)（索引尚未落地前，下列路径会随历史表膨胀）：
+D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。热路径索引由迁移 `0015_d1_rows_read_indexes.sql` 增加（只 `CREATE INDEX`，不删旧索引/列）；列表查询改写见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 
-- `sessions` 除主键外无索引，按 `user_id` 列会话/历史会扫全表。
-- `tasks` 无 `session_id` / `message_id` 索引；历史、巡查、管理用户列表存在「先 JOIN 全量任务再 `GROUP BY` + `OFFSET`」。
-- `image_objects` 无 `task_id` / `session_id` / `deleted_at` 索引；生图完成、恢复与 Cron 清理会扫图片元数据表。
-- 每日 Cron 对主表 `COUNT(*)` 是有意体检，成本约等于被计数表的行数之和，与在线列表爆炸分开衡量。
+| 索引                                    | 列                                       | 用途                           |
+| --------------------------------------- | ---------------------------------------- | ------------------------------ |
+| `idx_sessions_user_last`                | `(user_id, deleted_at, last_message_at)` | 侧栏会话、历史、按用户巡查     |
+| `idx_tasks_session`                     | `(session_id)`                           | 按会话聚合任务                 |
+| `idx_tasks_message`                     | `(message_id)`                           | 消息列表联任务                 |
+| `idx_tasks_status_assigned`             | `(status, assigned_at)`                  | 调度 slot、重置 stale assigned |
+| `idx_tasks_status_finished`             | `(status, finished_at)`                  | 失败摘要近 24h                 |
+| `idx_image_objects_task`                | `(task_id, deleted_at)`                  | 任务完成/恢复加载生成图        |
+| `idx_image_objects_session`             | `(session_id, deleted_at, is_reference)` | 历史/巡查按会话拉非参考图      |
+| `idx_image_objects_deleted`             | `(deleted_at)`                           | Cron 物理清理软删图            |
+| `idx_generation_events_created_preview` | `(created_at, is_sysadmin_preview)`      | 30 天用量与事件 TTL            |
+
+每日 Cron 对主表 `COUNT(*)` 是有意体检，成本约等于被计数表的行数之和，与在线列表爆炸分开衡量。
 
 ## 相关文档
 
