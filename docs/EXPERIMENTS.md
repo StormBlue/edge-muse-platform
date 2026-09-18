@@ -30,7 +30,7 @@
 ## D1
 
 - **`generation_entry_settings`**：单行，`key='default'`。
-- **`generation_events`**：`route`、`eventName`、`caseId`、`taskId`、`metadata`（JSON 字符串，经 sanitize）、`isSysadminPreview`。
+- **`generation_events`**：`route`、`eventName`、`caseId`、`taskId`、`metadata`（JSON 字符串，经 sanitize）、`isSysadminPreview`。用量摘要窗口为 30 天；当前实现会把窗口内事件行读入 Worker 再计数，且无 TTL 删除。改为 SQL 聚合与过期清理见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 - **`generation_feature_grants`**：实验生成能力授权，当前 `feature='micu_grok_image'`，按 admin 用户维度启停；sysadmin 不依赖该表。
 
 再创作的 `sourceTaskId` / `sourceImageId` 保存在 `tasks.params` JSON；失败重试仍使用 `tasks.retry_of`。这些标识表达作品来源，不增加分流实验或新的归因统计表，也不能代替图片权限校验。

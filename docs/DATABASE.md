@@ -47,9 +47,19 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 - 运维快照与表大小日志见 [`server/src/lib/operations.ts`](../server/src/lib/operations.ts) 及 cron 说明（[`RELIABILITY.md`](./RELIABILITY.md)）。
 - 软删与 R2 清理见 [`server/src/lib/cleanup.ts`](../server/src/lib/cleanup.ts)。
 
+## 查询与 Rows read
+
+D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。当前已知缺口与改写计划见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)（索引尚未落地前，下列路径会随历史表膨胀）：
+
+- `sessions` 除主键外无索引，按 `user_id` 列会话/历史会扫全表。
+- `tasks` 无 `session_id` / `message_id` 索引；历史、巡查、管理用户列表存在「先 JOIN 全量任务再 `GROUP BY` + `OFFSET`」。
+- `image_objects` 无 `task_id` / `session_id` / `deleted_at` 索引；生图完成、恢复与 Cron 清理会扫图片元数据表。
+- 每日 Cron 对主表 `COUNT(*)` 是有意体检，成本约等于被计数表的行数之和，与在线列表爆炸分开衡量。
+
 ## 相关文档
 
 - [`EXPERIMENTS.md`](./EXPERIMENTS.md) — 生成实验与事件的代码入口
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) — 数据流概览
 - [`SECURITY.md`](./SECURITY.md) — 密钥加密与访问控制
 - [`API.md`](./API.md) — 对外暴露的数据形状
+- [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md) — D1 Rows read 索引与列表查询改写

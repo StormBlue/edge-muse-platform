@@ -36,6 +36,8 @@
 - 失败摘要邮件（[`server/src/lib/operations.ts`](../server/src/lib/operations.ts)）
 - D1 运维快照到 R2、表大小日志
 
+`logD1TableSizes` 与 operational snapshot 会对主表做 `COUNT(*)` / `GROUP BY`，每次 Cron 的 D1 Rows read 约等于这些表的行数之和，属于有意体检。在线列表（历史、管理用户、会话巡查）的 Rows read 爆炸是另一类问题，计划见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
+
 详见 [`OPERATIONS.md`](./OPERATIONS.md) 中的路径与告警配置。
 
 ## 备份与恢复

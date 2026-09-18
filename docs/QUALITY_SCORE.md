@@ -16,6 +16,7 @@
 1. E2E 与 CI 浏览器稳定性未标准化。
 2. Provider health 对 Cubence 仅保证鉴权级检查；share group 需人工 smoke（见 [`OPERATIONS.md`](./OPERATIONS.md)）。
 3. 历史 PRD 已归档，长期以代码与 `docs/` 为准（[`archive/README.md`](./archive/README.md)）。
+4. D1 Rows read：`sessions` 缺 `user_id` 索引，`tasks.session_id` / `message_id`、`image_objects.task_id` 缺索引；历史/管理用户/巡查列表先 JOIN 全量 `tasks` 再分页。优化计划见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 
 ## 相关文档
 
