@@ -49,7 +49,7 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 
 ## 查询与 Rows read
 
-D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。热路径索引由迁移 `0015_d1_rows_read_indexes.sql` 增加（只 `CREATE INDEX`，不删旧索引/列）；列表查询改写见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
+D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。热路径索引由迁移 `0015_d1_rows_read_indexes.sql` 增加（只 `CREATE INDEX`，不删旧索引/列）。历史/管理用户/巡查列表先对驱动表分页再对本页聚合；生成入口用量 SQL `GROUP BY`；事件超 30 天由 Cron 分批删除。详见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 
 | 索引                                    | 列                                       | 用途                           |
 | --------------------------------------- | ---------------------------------------- | ------------------------------ |

@@ -2,8 +2,8 @@
 
 **关联需求**: [`requirements.md`](./requirements.md)  
 **估算量级**: 中大型，15 个本期任务 + 1 项后续 DEFERRED，以后端 schema、查询改写与测试为主  
-**总体进度**: 0 / 15  
-**状态**: TODO
+**总体进度**: 15 / 15  
+**状态**: DONE
 
 ---
 
@@ -40,9 +40,9 @@ graph TD
 
 **目标**: 热路径列可被 SQLite 使用，且迁移可审阅、可重复应用。  
 **依赖**: 无  
-**状态**: TODO
+**状态**: DONE
 
-### D1R-001 TODO 在 Drizzle schema 声明热路径索引
+### D1R-001 DONE 在 Drizzle schema 声明热路径索引
 
 **描述**: 按需求 F1 在 `schema.ts` 增加 sessions / tasks / image_objects / generation_events 索引；不删现有索引。
 
@@ -69,7 +69,7 @@ graph TD
 
 ---
 
-### D1R-002 TODO 生成并审阅 D1 migration
+### D1R-002 DONE 生成并审阅 D1 migration
 
 **描述**: `pnpm -F server db:gen`，人工审阅 SQL（只 `CREATE INDEX`，无删表/删列），本地 `db:migrate:local`。
 
@@ -96,7 +96,7 @@ graph TD
 
 ---
 
-### D1R-003 TODO 更新数据库文档中的索引清单
+### D1R-003 DONE 更新数据库文档中的索引清单
 
 **描述**: 在 DATABASE 写明新索引、服务的查询，以及「列表类优化 vs 每日 Cron 全表 COUNT」的区别。
 
@@ -125,9 +125,9 @@ graph TD
 
 **目标**: 历史、管理用户、sysadmin 巡查不再「全量 JOIN tasks 再 GROUP BY + OFFSET」。  
 **依赖**: M1  
-**状态**: TODO
+**状态**: DONE
 
-### D1R-004 TODO 改写 GET /api/history 列表
+### D1R-004 DONE 改写 GET /api/history 列表
 
 **描述**: 先取当前用户本页 `session_id`，再对本页聚合任务数、请求张数、附件张数、状态和封面。保留 `page/pageSize/total/q/order`。
 
@@ -153,7 +153,7 @@ graph TD
 
 ---
 
-### D1R-005 TODO 改写 GET /api/admin/users 列表
+### D1R-005 DONE 改写 GET /api/admin/users 列表
 
 **描述**: 用户分页与配额/key group JOIN 保持在 users 侧；`generationCount` / `lastGenerationAt` 只聚合本页用户。
 
@@ -180,7 +180,7 @@ graph TD
 
 ---
 
-### D1R-006 TODO 改写 sysadmin 会话巡查列表
+### D1R-006 DONE 改写 sysadmin 会话巡查列表
 
 **描述**: `GET /api/sysadmin/users/:id/sessions` 改为先分页会话再聚合；`userId=_` 同样不得先 JOIN 全量 tasks。
 
@@ -211,9 +211,9 @@ graph TD
 
 **目标**: 生图完成、恢复、消息联任务、软删清理使用 F1 索引。  
 **依赖**: M1  
-**状态**: TODO
+**状态**: DONE
 
-### D1R-007 TODO 确认并修正 image_objects 按 task/session/deleted_at 访问
+### D1R-007 DONE 确认并修正 image_objects 按 task/session/deleted_at 访问
 
 **描述**: 核对 `loadTaskGeneratedImages`、历史/巡查按会话拉图、Cron 清理的 SQL；必要时微调 WHERE 顺序以便优化器选中新索引。
 
@@ -241,7 +241,7 @@ graph TD
 
 ---
 
-### D1R-008 TODO 消息列表与按 session 查任务走 message_id / session_id 索引
+### D1R-008 DONE 消息列表与按 session 查任务走 message_id / session_id 索引
 
 **描述**: 工作台消息、历史详情、巡查详情的 `LEFT JOIN tasks ON tasks.message_id`，以及删会话时按 `session_id` 读任务状态，确认走新索引。
 
@@ -273,9 +273,9 @@ graph TD
 
 **目标**: 计数类接口不再下载大窗口明细；事件有 TTL；Cron 成本可文档化。  
 **依赖**: M1  
-**状态**: TODO
+**状态**: DONE
 
-### D1R-009 TODO 生成入口用量改为 SQL 聚合
+### D1R-009 DONE 生成入口用量改为 SQL 聚合
 
 **描述**: `getGenerationPageUsageMetrics` 改为 `GROUP BY route, event_name`，过滤 `is_sysadmin_preview = 0` 与 30 天窗口。
 
@@ -302,7 +302,7 @@ graph TD
 
 ---
 
-### D1R-010 TODO generation_events TTL 清理
+### D1R-010 DONE generation_events TTL 清理
 
 **描述**: 增加按 `created_at < 用量窗口 since` 删除的函数，单次上限（建议 500–1000），挂到 `scheduled` 与现有 Cron 并行任务。
 
@@ -331,7 +331,7 @@ graph TD
 
 ---
 
-### D1R-011 TODO 改写看板 Top 用户与趋势扫描
+### D1R-011 DONE 改写看板 Top 用户与趋势扫描
 
 **描述**: `GET /api/sysadmin/dashboard/stats` 的 Top 用户改为先按 `tasks.user_id` 聚合再 JOIN users；保留 60s KV 缓存。评估 30 日趋势是否可避免无索引的 `queued_at` 全表扫（F1 未单列索引 queued_at 时，可依赖缓存，或在备注中记录接受每日/每分钟一次全表趋势）。
 
@@ -357,7 +357,7 @@ graph TD
 
 ---
 
-### D1R-012 TODO 密钥 activeSlots 与调度器只统计活跃任务
+### D1R-012 DONE 密钥 activeSlots 与调度器只统计活跃任务
 
 **描述**: provider-keys 列表不要 JOIN 历史 tasks；`getNextAvailableProviderKeySlot` / `assignQueuedTaskToProviderKey` 的 COUNT 走 `(status, assigned_at)`。
 
@@ -385,7 +385,7 @@ graph TD
 
 ---
 
-### D1R-013 TODO 文档化 Cron 全表 COUNT，并让失败摘要/清理走新索引
+### D1R-013 DONE 文档化 Cron 全表 COUNT，并让失败摘要/清理走新索引
 
 **描述**: 不取消每日 `logD1TableSizes` 与 operational snapshot（有意体检）；在 RELIABILITY/OPERATIONS 标明 Rows read ≈ 被 COUNT 的表行数之和。确认 `sendFailureDigest`、`cleanupDeletedImages` 能用新索引。
 
@@ -418,9 +418,9 @@ graph TD
 
 **目标**: 用测试锁住语义与查询计划；文档与代码一致。  
 **依赖**: M2, M3, M4  
-**状态**: TODO
+**状态**: DONE
 
-### D1R-014 TODO 增加 Rows read 回归测试
+### D1R-014 DONE 增加 Rows read 回归测试
 
 **描述**: Miniflare D1 插入足够多的会话/任务/事件/图片行，断言：列表聚合结果正确；`EXPLAIN QUERY PLAN` 含新索引且不含对 `tasks`/`image_objects` 的全表扫描（在改写后的列表 SQL 上）。覆盖用量聚合与 slot 计数。
 
@@ -451,7 +451,7 @@ graph TD
 
 ---
 
-### D1R-015 TODO 同步系统文档与本计划状态
+### D1R-015 DONE 同步系统文档与本计划状态
 
 **描述**: 查询改写落地后，更新 DATABASE/RELIABILITY/OPERATIONS/EXPERIMENTS/QUALITY_SCORE 与本 `tasks.md` 进度；不把未做的后续项写成已完成。
 

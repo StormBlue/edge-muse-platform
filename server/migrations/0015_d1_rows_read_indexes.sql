@@ -1,6 +1,3 @@
--- D1 Rows read 热路径索引：只新增 CREATE INDEX，不改列、不删旧索引。
--- 用途见 docs/exec-plans/d1-rows-read/requirements.md F1。
-
 CREATE INDEX IF NOT EXISTS idx_sessions_user_last
   ON sessions(user_id, deleted_at, last_message_at);
 

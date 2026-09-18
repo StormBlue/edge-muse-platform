@@ -3,7 +3,7 @@
 **版本**: v0.1  
 **日期**: 2026-09-18  
 **作者**: 用户 + AI  
-**状态**: 已确认  
+**状态**: 已完成  
 **关联任务列表**: [`tasks.md`](./tasks.md)
 
 ---
@@ -160,10 +160,10 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] Schema 与 migration 一致，命名符合现有 `idx_*` 约定。
-- [ ] 不删除现有索引与列。
-- [ ] [`docs/DATABASE.md`](../../DATABASE.md) 记录新增索引及用途。
-- [ ] 本地迁移可重复应用。
+- [x] Schema 与 migration 一致，命名符合现有 `idx_*` 约定。
+- [x] 不删除现有索引与列。
+- [x] [`docs/DATABASE.md`](../../DATABASE.md) 记录新增索引及用途。
+- [x] 本地迁移可重复应用。
 
 ### F2: 历史列表先分页再聚合
 
@@ -178,9 +178,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 响应 JSON 字段与现网一致（含封面与 `requestedImageCount` 取 max 规则）。
-- [ ] 查询不再 `LEFT JOIN tasks ON tasks.session_id = sessions.id` 后再对全用户会话 `GROUP BY`。
-- [ ] 有测试锁定聚合语义（任务数、封面 id、进行中状态优先于 queued）。
+- [x] 响应 JSON 字段与现网一致（含封面与 `requestedImageCount` 取 max 规则）。
+- [x] 查询不再 `LEFT JOIN tasks ON tasks.session_id = sessions.id` 后再对全用户会话 `GROUP BY`。
+- [x] 有测试锁定聚合语义（任务数、封面 id、进行中状态优先于 queued）。
 
 ### F3: 管理用户列表与用量
 
@@ -195,9 +195,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 列表 20 条时不会扫描所有用户的全部任务行才能 `GROUP BY`。
-- [ ] admin 只能看到名下用户的既有权限不变。
-- [ ] 搜索结果的计数列与点进用量页的总数可对上（允许进行中任务造成的短暂差，与现网一致）。
+- [x] 列表 20 条时不会扫描所有用户的全部任务行才能 `GROUP BY`。
+- [x] admin 只能看到名下用户的既有权限不变。
+- [x] 搜索结果的计数列与点进用量页的总数可对上（允许进行中任务造成的短暂差，与现网一致）。
 
 ### F4: Sysadmin 会话巡查列表
 
@@ -212,9 +212,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] `userId=_` 第一页的 Rows read 不随全站 `tasks` 行数线性乘会话数。
-- [ ] 封面与 `imageCount` 语义与现网一致。
-- [ ] [`historyImages.test.ts`](../../../server/test/historyImages.test.ts) 的可见性约定不被破坏。
+- [x] `userId=_` 第一页的 Rows read 不随全站 `tasks` 行数线性乘会话数。
+- [x] 封面与 `imageCount` 语义与现网一致。
+- [x] [`historyImages.test.ts`](../../../server/test/historyImages.test.ts) 的可见性约定不被破坏。
 
 ### F5: 图片与消息热路径走索引
 
@@ -231,8 +231,8 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 上述 SQL 的 `EXPLAIN QUERY PLAN` 使用 F1 索引，而不是对 `image_objects` / `tasks` 全表扫描。
-- [ ] 清理仍单次最多 100 条；行为不变。
+- [x] 上述 SQL 的 `EXPLAIN QUERY PLAN` 使用 F1 索引，而不是对 `image_objects` / `tasks` 全表扫描。
+- [x] 清理仍单次最多 100 条；行为不变。
 
 ### F6: 用量、看板、密钥 slot、调度统计
 
@@ -249,9 +249,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 生成入口 30 天 submitted/succeeded/failed 与现网事件名过滤一致（仍排除 `isSysadminPreview`）。
-- [ ] 密钥列表 `activeSlots` 与调度器占用定义一致：queued/running 且已 `assigned_at`。
-- [ ] Top 用户仍按任务数降序最多 10 条。
+- [x] 生成入口 30 天 submitted/succeeded/failed 与现网事件名过滤一致（仍排除 `isSysadminPreview`）。
+- [x] 密钥列表 `activeSlots` 与调度器占用定义一致：queued/running 且已 `assigned_at`。
+- [x] Top 用户仍按任务数降序最多 10 条。
 
 ### F7: 事件 TTL 与 Cron 读放大
 
@@ -264,9 +264,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 超过窗口的事件不再出现在用量查询中，也尽快从 D1 删除。
-- [ ] 文档写清 Cron 全表计数是已知、有界的每日成本。
-- [ ] 失败摘要仍只统计近 24h `status='failed'`。
+- [x] 超过窗口的事件不再出现在用量查询中，也尽快从 D1 删除。
+- [x] 文档写清 Cron 全表计数是已知、有界的每日成本。
+- [x] 失败摘要仍只统计近 24h `status='failed'`。
 
 ### F8: 测试与文档
 
@@ -274,9 +274,9 @@ P0 查询形状（数据变大后 Rows read 近似「表行数 × 子查询/JOIN
 
 **验收标准**:
 
-- [ ] 新测试覆盖 F2–F6 的响应语义或查询计划（至少覆盖历史列表聚合、管理用户计数不 JOIN 全表、用量 SQL 聚合、slot 只计活跃任务）。
-- [ ] 现有 `historyImages`、`queueScheduler`、`generationEntry`、`apiPermissions` 回归通过。
-- [ ] `DATABASE` / `RELIABILITY` / `OPERATIONS` / `EXPERIMENTS` / 本执行计划状态同步。
+- [x] 新测试覆盖 F2–F6 的响应语义或查询计划（至少覆盖历史列表聚合、管理用户计数不 JOIN 全表、用量 SQL 聚合、slot 只计活跃任务）。
+- [x] 现有 `historyImages`、`queueScheduler`、`generationEntry`、`apiPermissions` 回归通过。
+- [x] `DATABASE` / `RELIABILITY` / `OPERATIONS` / `EXPERIMENTS` / 本执行计划状态同步。
 
 ---
 
