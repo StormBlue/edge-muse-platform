@@ -130,21 +130,36 @@ const emit = defineEmits<{
                   <DropdownMenuContent
                     align="end"
                     :side-offset="4"
-                    class="z-50 min-w-40 rounded-md border bg-popover p-1 text-popover-foreground shadow-md"
+                    class="z-50 min-w-40 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-md"
                   >
-                    <DropdownMenuItem class="user-action" @select="emit('openDetails', user)">
+                    <DropdownMenuItem
+                      class="user-action data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                      @select="emit('openDetails', user)"
+                    >
                       {{ t("history.detail") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="user-action" @select="emit('openEdit', user)">
+                    <DropdownMenuItem
+                      class="user-action data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                      @select="emit('openEdit', user)"
+                    >
                       {{ t("sysadmin.edit") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="user-action" @select="emit('openQuota', user)">
+                    <DropdownMenuItem
+                      class="user-action data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                      @select="emit('openQuota', user)"
+                    >
                       {{ t("adminUsers.addQuota") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="user-action" @select="emit('openPassword', user)">
+                    <DropdownMenuItem
+                      class="user-action data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                      @select="emit('openPassword', user)"
+                    >
                       {{ t("adminUsers.resetPassword") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem class="user-action" @select="emit('toggleStatus', user)">
+                    <DropdownMenuItem
+                      class="user-action data-[highlighted]:bg-muted data-[highlighted]:text-foreground"
+                      @select="emit('toggleStatus', user)"
+                    >
                       {{ user.status === "active" ? t("common.disabled") : t("common.enabled") }}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -169,12 +184,8 @@ const emit = defineEmits<{
   padding: 0.5rem 0.75rem;
   border-radius: 0.25rem;
   font-size: 0.875rem;
-  cursor: pointer;
+  cursor: default;
   outline: none;
-}
-.user-action[data-highlighted] {
-  background: var(--accent);
-  color: var(--accent-foreground);
 }
 .admin-user-table th:last-child,
 .admin-user-table td:last-child {
