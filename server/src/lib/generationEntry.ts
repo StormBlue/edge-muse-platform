@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client";
 import { generationEntrySettings, generationEvents } from "../db/schema";
@@ -11,6 +11,26 @@ import type { AppBindings, AuthUser } from "../types";
 const SETTINGS_KEY = "default";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const USAGE_WINDOW_DAYS = 30;
+/** 单次 TTL 删除上限，避免长事务；未删完由下一轮 Cron 继续。 */
+export const GENERATION_EVENT_PURGE_LIMIT = 1000;
+
+/** 30 天用量：SQL 侧 GROUP BY，不把窗口内每一行拉进 Worker。 */
+export const GENERATION_PAGE_USAGE_SQL = `SELECT route, event_name AS eventName, COUNT(*) AS count
+     FROM generation_events
+     WHERE is_sysadmin_preview = 0
+       AND created_at >= ?1
+       AND created_at <= ?2
+       AND event_name IN ('generate_submitted', 'generate_succeeded', 'generate_failed')
+     GROUP BY route, event_name`;
+
+/** 删除用量窗口之前的事件，走 idx_generation_events_created_preview。 */
+export const PURGE_EXPIRED_GENERATION_EVENTS_SQL = `DELETE FROM generation_events
+     WHERE id IN (
+       SELECT id
+       FROM generation_events
+       WHERE created_at < ?1
+       LIMIT ?2
+     )`;
 
 export const generationRouteSchema = z.enum(["/workspace", "/ai-image"]);
 export const generationClientEventNameSchema = z.enum([
@@ -290,31 +310,33 @@ export async function getGenerationPageUsageMetrics(
   options: { window?: GenerationUsageWindow } = {}
 ): Promise<GenerationPageUsageMetric[]> {
   const window = options.window ?? getGenerationUsageWindow();
-  const rows = await getDb(env)
-    .select({
-      route: generationEvents.route,
-      eventName: generationEvents.eventName
-    })
-    .from(generationEvents)
-    .where(
-      and(
-        eq(generationEvents.isSysadminPreview, false),
-        gte(generationEvents.createdAt, window.since),
-        lte(generationEvents.createdAt, window.until)
-      )
-    );
+  const rows = await env.DB.prepare(GENERATION_PAGE_USAGE_SQL)
+    .bind(window.since, window.until)
+    .all<{ route: GenerationRoute; eventName: string; count: number }>();
   const usage = new Map<GenerationRoute, GenerationPageUsageMetric>([
     ["/workspace", { route: "/workspace", submitted: 0, succeeded: 0, failed: 0 }],
     ["/ai-image", { route: "/ai-image", submitted: 0, succeeded: 0, failed: 0 }]
   ]);
-  for (const row of rows) {
+  for (const row of rows.results) {
     const target = usage.get(row.route);
     if (!target) continue;
-    if (row.eventName === "generate_submitted") target.submitted += 1;
-    if (row.eventName === "generate_succeeded") target.succeeded += 1;
-    if (row.eventName === "generate_failed") target.failed += 1;
+    if (row.eventName === "generate_submitted") target.submitted += row.count;
+    if (row.eventName === "generate_succeeded") target.succeeded += row.count;
+    if (row.eventName === "generate_failed") target.failed += row.count;
   }
   return [...usage.values()];
+}
+
+export async function purgeExpiredGenerationEvents(
+  env: AppBindings,
+  options: { window?: GenerationUsageWindow; limit?: number } = {}
+): Promise<number> {
+  const window = options.window ?? getGenerationUsageWindow();
+  const limit = options.limit ?? GENERATION_EVENT_PURGE_LIMIT;
+  const result = await env.DB.prepare(PURGE_EXPIRED_GENERATION_EVENTS_SQL)
+    .bind(window.since, limit)
+    .run();
+  return result.meta.changes ?? 0;
 }
 
 async function findSubmittedEvent(env: AppBindings, userId: string, taskId: string) {

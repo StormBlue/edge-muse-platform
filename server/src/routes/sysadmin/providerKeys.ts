@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../../db/client";
@@ -7,7 +7,6 @@ import {
   providerKeyGroups,
   providerKeys,
   providers,
-  tasks,
   userProviderKeys
 } from "../../db/schema";
 import { audit } from "../../lib/audit";
@@ -21,6 +20,7 @@ import {
   PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS
 } from "../../providers/catalog";
 import { getProvider } from "../../providers/registry";
+import { loadProviderKeyActiveSlotCounts } from "../../lib/providerKeySlots";
 import type { SysadminRouter } from "./common";
 
 const keySchema = z.object({
@@ -38,17 +38,6 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
   // Provider 密钥 CRUD / 连通性：加密存 `encrypted_key`，列表绝不返回密文。
   sysadminRoutes.get("/provider-keys", async (c) => {
     const includeUnsupported = c.req.query("includeUnsupported") === "1";
-    const activeSlots = sql<number>`COALESCE(
-      SUM(
-        CASE
-          WHEN tasks.status IN ('queued', 'running')
-            AND tasks.assigned_at IS NOT NULL
-          THEN 1
-          ELSE 0
-        END
-      ),
-      0
-    )`;
     const rows = await getDb(c.env)
       .select({
         id: providerKeys.id,
@@ -59,7 +48,6 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
         allocatedQuota: providerKeys.allocatedQuota,
         usedQuota: providerKeys.usedQuota,
         maxConcurrency: providerKeys.maxConcurrency,
-        activeSlots,
         ownerAdminId: providerKeys.ownerAdminId,
         enabled: providerKeys.enabled,
         createdAt: providerKeys.createdAt,
@@ -67,7 +55,6 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
         deletedAt: providerKeys.deletedAt
       })
       .from(providerKeys)
-      .leftJoin(tasks, eq(tasks.providerKeyId, providerKeys.id))
       .where(
         and(
           isNull(providerKeys.deletedAt),
@@ -76,9 +63,14 @@ export function registerSysadminProviderKeyRoutes(sysadminRoutes: SysadminRouter
             : inArray(providerKeys.providerId, PROVIDER_KEY_ASSIGNABLE_PROVIDER_IDS)
         )
       )
-      .groupBy(providerKeys.id)
       .orderBy(desc(providerKeys.createdAt));
-    return c.json({ items: rows });
+    const activeSlots = await loadProviderKeyActiveSlotCounts(c.env);
+    return c.json({
+      items: rows.map((row) => ({
+        ...row,
+        activeSlots: activeSlots.get(row.id) ?? 0
+      }))
+    });
   });
 
   sysadminRoutes.post("/provider-keys", zValidator("json", keySchema), async (c) => {

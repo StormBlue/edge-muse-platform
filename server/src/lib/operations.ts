@@ -13,6 +13,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 /** 失败任务统计窗口：近 24 小时 */
 export async function sendFailureDigest(env: AppBindings): Promise<void> {
   const since = Date.now() - dayMs;
+  // 近 24h 失败聚合走 idx_tasks_status_finished，不扫全部终态任务。
   const failed = await env.DB.prepare(
     `SELECT error_code, COUNT(*) count
      FROM tasks

@@ -1,5 +1,17 @@
 import type { SysadminRouter } from "./common";
 
+/** 先按 tasks.user_id 聚合再 JOIN users，避免 users ⋈ 全量 tasks。 */
+export const DASHBOARD_TOP_USERS_SQL = `SELECT users.id, users.email, users.nickname, aggregated.task_count
+       FROM (
+         SELECT user_id, COUNT(*) AS task_count
+         FROM tasks
+         GROUP BY user_id
+         ORDER BY task_count DESC
+         LIMIT 10
+       ) aggregated
+       INNER JOIN users ON users.id = aggregated.user_id
+       ORDER BY aggregated.task_count DESC`;
+
 export function registerSysadminDashboardRoutes(sysadminRoutes: SysadminRouter) {
   // 运营看板：KV 缓存 60s，聚合用户角色数、任务状态数、30 日趋势、Top 用户、按 provider 任务量。
   sysadminRoutes.get("/dashboard/stats", async (c) => {
@@ -20,14 +32,7 @@ export function registerSysadminDashboardRoutes(sysadminRoutes: SysadminRouter) 
     )
       .bind(Date.now() - 30 * 24 * 60 * 60 * 1000)
       .all();
-    const topUsers = await c.env.DB.prepare(
-      `SELECT users.id, users.email, users.nickname, COUNT(tasks.id) task_count
-       FROM users
-       LEFT JOIN tasks ON tasks.user_id = users.id
-       GROUP BY users.id
-       ORDER BY task_count DESC
-       LIMIT 10`
-    ).all();
+    const topUsers = await c.env.DB.prepare(DASHBOARD_TOP_USERS_SQL).all();
     const providerCounts = await c.env.DB.prepare(
       `SELECT providers.name, COUNT(tasks.id) count
        FROM tasks
