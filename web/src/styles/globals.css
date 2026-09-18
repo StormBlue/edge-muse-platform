@@ -13,6 +13,8 @@
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
   --card: oklch(0.995 0.004 250);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
   --border: oklch(0.885 0.032 250);
   --input: var(--border);
   --ring: var(--primary);
@@ -36,6 +38,8 @@
   --secondary: var(--muted);
   --secondary-foreground: var(--foreground);
   --card: oklch(0.205 0.015 254);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
   --border: oklch(0.31 0.025 254);
   --input: var(--border);
   --ring: var(--primary);
@@ -58,6 +62,8 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
