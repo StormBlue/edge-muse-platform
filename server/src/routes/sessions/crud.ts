@@ -149,6 +149,7 @@ export function registerSessionCrudRoutes(sessionRoutes: SessionRouter) {
   sessionRoutes.delete("/:id", async (c) => {
     const session = await assertSessionAccess(c.env, c.req.param("id"), c.get("user"));
     const db = getDb(c.env);
+    // 按 session_id 读任务状态，走 idx_tasks_session。
     const taskRows = await db
       .select({ status: tasks.status })
       .from(tasks)

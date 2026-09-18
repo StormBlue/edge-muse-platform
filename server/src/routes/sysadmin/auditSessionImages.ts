@@ -86,16 +86,8 @@ export function auditReferenceImagesForIds(
     }));
 }
 
-/**
- * 按会话扫 `image_objects`（非参考图），按 message_id 分组。
- * `durationCheckpointByTask`：同 task 多图时，后续图的「生成耗时」相对上一张完成时间戳。
- */
-export async function loadAuditGeneratedImagesByMessageId(
-  env: AppEnv["Bindings"],
-  sessionId: string
-): Promise<Map<string, AuditImageAttachment[]>> {
-  const rows = await env.DB.prepare(
-    `SELECT image_objects.id,
+/** 巡查按会话拉图：过滤列与历史详情相同，走 idx_image_objects_session。 */
+export const LOAD_AUDIT_SESSION_GENERATED_IMAGES_SQL = `SELECT image_objects.id,
        image_objects.mime,
        image_objects.width,
        image_objects.height,
@@ -111,22 +103,29 @@ export async function loadAuditGeneratedImagesByMessageId(
      WHERE image_objects.session_id = ?1
        AND image_objects.deleted_at IS NULL
        AND image_objects.is_reference = 0
-     ORDER BY image_objects.created_at ASC`
-  )
-    .bind(sessionId)
-    .all<{
-      id: string;
-      mime: string;
-      width: number | null;
-      height: number | null;
-      byte_size: number;
-      task_id: string | null;
-      session_id: string | null;
-      created_at: number;
-      message_id: string | null;
-      task_started_at: number | null;
-      task_queued_at: number | null;
-    }>();
+     ORDER BY image_objects.created_at ASC`;
+
+/**
+ * 按会话扫 `image_objects`（非参考图），按 message_id 分组。
+ * `durationCheckpointByTask`：同 task 多图时，后续图的「生成耗时」相对上一张完成时间戳。
+ */
+export async function loadAuditGeneratedImagesByMessageId(
+  env: AppEnv["Bindings"],
+  sessionId: string
+): Promise<Map<string, AuditImageAttachment[]>> {
+  const rows = await env.DB.prepare(LOAD_AUDIT_SESSION_GENERATED_IMAGES_SQL).bind(sessionId).all<{
+    id: string;
+    mime: string;
+    width: number | null;
+    height: number | null;
+    byte_size: number;
+    task_id: string | null;
+    session_id: string | null;
+    created_at: number;
+    message_id: string | null;
+    task_started_at: number | null;
+    task_queued_at: number | null;
+  }>();
   const imagesByMessageId = new Map<string, AuditImageAttachment[]>();
   const durationCheckpointByTask = new Map<string, number>();
   for (const row of rows.results) {

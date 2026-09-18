@@ -34,6 +34,7 @@ export function registerSessionMessageRoutes(sessionRoutes: SessionRouter) {
         taskErrorMsg: tasks.errorMsg
       })
       .from(messages)
+      // 联任务走 idx_tasks_message，避免按 message_id 嵌套扫描整张 tasks。
       .leftJoin(tasks, eq(tasks.messageId, messages.id))
       .where(
         and(
