@@ -1,12 +1,13 @@
-import { and, desc, eq, inArray, like, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { getDb } from "../../db/client";
-import { providerKeyGroups, quotaTransactions, quotas, tasks, users } from "../../db/schema";
+import { quotaTransactions, quotas, tasks, users } from "../../db/schema";
 import { assertManagedUserAccess } from "../../lib/access";
 import { generatedEmailForUserId, normalizeOptionalEmail } from "../../lib/account";
 import { audit } from "../../lib/audit";
 import { appError } from "../../lib/errors";
+import { listManagedUsers } from "../../lib/managedUsers";
 import {
   assertMaxConcurrentTasksConfigAllowed,
   assertMaxImagesPerGenerationConfigAllowed,
@@ -22,66 +23,16 @@ import { optionalEmailSchema, parsePositiveInt, usernameSchema, type AdminRouter
 export function registerAdminUserRoutes(adminRoutes: AdminRouter) {
   adminRoutes.get("/users", async (c) => {
     const actor = c.get("user");
-    const q = c.req.query("q")?.trim();
-    const status = c.req.query("status");
-    const requestedRole = c.req.query("role");
-    const page = parsePositiveInt(c.req.query("page"), 1);
-    const pageSize = parsePositiveInt(c.req.query("pageSize"), 20, 100);
-    const role =
-      actor.role === "sysadmin" && (requestedRole === "admin" || requestedRole === "user")
-        ? requestedRole
-        : actor.role === "sysadmin"
-          ? null
-          : "user";
-    const userFilters = and(
-      actor.role === "sysadmin" ? undefined : eq(users.createdBy, actor.id),
-      actor.role === "sysadmin" && !role ? inArray(users.role, ["admin", "user"]) : undefined,
-      role ? eq(users.role, role as "admin" | "user") : undefined,
-      status ? eq(users.status, status as "active" | "disabled") : undefined,
-      q
-        ? or(
-            like(users.email, `%${q}%`),
-            like(users.username, `%${q}%`),
-            like(users.nickname, `%${q}%`)
-          )
-        : undefined
-    );
-    const totalRows = await getDb(c.env)
-      .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(userFilters);
-    const rows = await getDb(c.env)
-      .select({
-        id: users.id,
-        email: users.email,
-        username: users.username,
-        nickname: users.nickname,
-        role: users.role,
-        status: users.status,
-        preferredProviderKeyId: users.preferredProviderKeyId,
-        createdAt: users.createdAt,
-        updatedAt: users.updatedAt,
-        lastLoginAt: users.lastLoginAt,
-        allocatedQuota: quotas.allocatedQuota,
-        usedQuota: quotas.usedQuota,
-        providerKeyGroupId: users.providerKeyGroupId,
-        providerKeyGroupName: providerKeyGroups.name,
-        providerKeyGroupProviderId: providerKeyGroups.providerId,
-        maxConcurrentTasks: users.maxConcurrentTasks,
-        maxImagesPerGeneration: users.maxImagesPerGeneration,
-        generationCount: sql<number>`count(${tasks.id})`,
-        lastGenerationAt: sql<number | null>`max(${tasks.queuedAt})`
+    return c.json(
+      await listManagedUsers(c.env, {
+        actor,
+        q: c.req.query("q")?.trim(),
+        status: c.req.query("status"),
+        requestedRole: c.req.query("role"),
+        page: parsePositiveInt(c.req.query("page"), 1),
+        pageSize: parsePositiveInt(c.req.query("pageSize"), 20, 100)
       })
-      .from(users)
-      .leftJoin(quotas, eq(quotas.userId, users.id))
-      .leftJoin(providerKeyGroups, eq(providerKeyGroups.id, users.providerKeyGroupId))
-      .leftJoin(tasks, eq(tasks.userId, users.id))
-      .where(userFilters)
-      .groupBy(users.id)
-      .orderBy(desc(users.createdAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-    return c.json({ items: rows, page, pageSize, total: totalRows[0]?.count ?? 0 });
+    );
   });
 
   adminRoutes.post(

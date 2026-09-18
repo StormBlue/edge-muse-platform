@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { messages } from "../../db/schema";
+import { listAuditSessions } from "../../lib/auditSessionList";
 import { appError } from "../../lib/errors";
 import { parseJson } from "../../lib/json";
 import {
-  hasColumn,
   normalizeSysadminSessionMode,
   type AuditImageAttachment,
   type SysadminRouter,
@@ -24,192 +24,14 @@ export function registerSysadminAuditSessionRoutes(sysadminRoutes: SysadminRoute
   sysadminRoutes.get("/users/:id/sessions", async (c) => {
     const requestedUserId = c.req.param("id");
     const userId = requestedUserId === "me" ? c.get("user").id : requestedUserId;
-    const q = c.req.query("q")?.trim();
-    const requestedPage = Number(c.req.query("page") ?? "1");
-    const requestedPageSize = Number(c.req.query("pageSize") ?? "12");
-    const page = Number.isFinite(requestedPage) ? Math.max(Math.floor(requestedPage), 1) : 1;
-    const pageSize = Number.isFinite(requestedPageSize)
-      ? Math.min(Math.max(Math.floor(requestedPageSize), 1), 50)
-      : 12;
-    const offset = (page - 1) * pageSize;
-    const hasUsername = await hasColumn(c.env, "users", "username");
-    const conditions = ["1 = 1"];
-    const binds: unknown[] = [];
-    if (userId !== "_") {
-      binds.push(userId);
-      conditions.push(`sessions.user_id = ?${binds.length}`);
-    }
-    if (q) {
-      binds.push(`%${q}%`);
-      const searchIndex = binds.length;
-      conditions.push(
-        `(sessions.title LIKE ?${searchIndex} OR EXISTS (
-          SELECT 1 FROM messages m
-          WHERE m.session_id = sessions.id AND m.deleted_at IS NULL AND m.prompt LIKE ?${searchIndex}
-        ))`
-      );
-    }
-    const totalStatement = c.env.DB.prepare(
-      `SELECT COUNT(*) AS total
-       FROM sessions
-       WHERE ${conditions.join(" AND ")}`
+    return c.json(
+      await listAuditSessions(c.env, {
+        userId,
+        q: c.req.query("q")?.trim(),
+        page: Number(c.req.query("page") ?? "1"),
+        pageSize: Number(c.req.query("pageSize") ?? "12")
+      })
     );
-    const totalRows = binds.length
-      ? await totalStatement.bind(...binds).all<{ total: number }>()
-      : await totalStatement.all<{ total: number }>();
-    const rows = await c.env.DB.prepare(
-      `SELECT sessions.id,
-         sessions.user_id,
-         users.email AS user_email,
-         ${hasUsername ? "users.username" : "NULL"} AS user_username,
-         users.nickname AS user_nickname,
-         users.role AS user_role,
-         sessions.title,
-         sessions.mode,
-         sessions.provider_key_id,
-         sessions.settings,
-         sessions.created_at,
-         sessions.updated_at,
-         sessions.last_message_at,
-         sessions.archived,
-         sessions.deleted_at,
-         COUNT(tasks.id) AS task_count,
-         (
-           SELECT COUNT(*)
-           FROM (
-             SELECT json_extract(accepted_images.value, '$.id') AS image_id
-             FROM messages accepted_image_messages,
-               json_each(
-                 CASE
-                   WHEN json_valid(accepted_image_messages.attachments)
-                     THEN accepted_image_messages.attachments
-                   ELSE '[]'
-                 END
-               ) accepted_images
-             WHERE accepted_image_messages.session_id = sessions.id
-               AND accepted_image_messages.deleted_at IS NULL
-               AND json_extract(accepted_images.value, '$.id') IS NOT NULL
-             UNION
-             SELECT persisted_images.id AS image_id
-             FROM image_objects persisted_images
-             INNER JOIN tasks persisted_image_tasks ON persisted_image_tasks.id = persisted_images.task_id
-             WHERE persisted_images.session_id = sessions.id
-               AND persisted_images.deleted_at IS NULL
-               AND persisted_images.is_reference = 0
-               AND persisted_image_tasks.message_id IS NOT NULL
-           ) merged_success_images
-         ) AS image_count,
-         cover.id AS cover_image_id,
-         cover.mime AS cover_mime,
-         cover.width AS cover_width,
-         cover.height AS cover_height,
-         cover.byte_size AS cover_byte_size,
-         cover.task_id AS cover_task_id
-       FROM sessions
-       LEFT JOIN users ON users.id = sessions.user_id
-       LEFT JOIN tasks ON tasks.session_id = sessions.id
-       LEFT JOIN image_objects cover ON cover.id = COALESCE(
-           (
-             SELECT latest_persisted_images.id
-             FROM image_objects latest_persisted_images
-             INNER JOIN tasks latest_image_tasks ON latest_image_tasks.id = latest_persisted_images.task_id
-             WHERE latest_persisted_images.session_id = sessions.id
-               AND latest_persisted_images.deleted_at IS NULL
-               AND latest_persisted_images.is_reference = 0
-               AND latest_image_tasks.message_id IS NOT NULL
-             ORDER BY latest_persisted_images.created_at DESC
-             LIMIT 1
-           ),
-           (
-             SELECT json_extract(cover_images.value, '$.id')
-             FROM messages cover_messages,
-               json_each(
-                 CASE
-                   WHEN json_valid(cover_messages.attachments)
-                     THEN cover_messages.attachments
-                   ELSE '[]'
-                 END
-               ) cover_images
-             WHERE cover_messages.session_id = sessions.id
-               AND cover_messages.deleted_at IS NULL
-               AND json_extract(cover_images.value, '$.id') IS NOT NULL
-             ORDER BY cover_messages.created_at DESC, CAST(cover_images.key AS INTEGER) DESC
-             LIMIT 1
-           )
-         )
-         AND cover.deleted_at IS NULL
-         AND cover.is_reference = 0
-       WHERE ${conditions.join(" AND ")}
-       GROUP BY sessions.id
-       ORDER BY sessions.last_message_at DESC
-       LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`
-    )
-      .bind(...binds, pageSize, offset)
-      .all<{
-        id: string;
-        user_id: string;
-        user_email: string | null;
-        user_username: string | null;
-        user_nickname: string | null;
-        user_role: "sysadmin" | "admin" | "user" | null;
-        title: string;
-        mode: string;
-        provider_key_id: string | null;
-        settings: string;
-        created_at: number;
-        updated_at: number;
-        last_message_at: number;
-        archived: number;
-        deleted_at: number | null;
-        task_count: number;
-        image_count: number;
-        cover_image_id: string | null;
-        cover_mime: string | null;
-        cover_width: number | null;
-        cover_height: number | null;
-        cover_byte_size: number | null;
-        cover_task_id: string | null;
-      }>();
-    const total = totalRows.results[0]?.total ?? 0;
-    return c.json({
-      items: rows.results.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        user: {
-          id: row.user_id,
-          email: row.user_email,
-          username: row.user_username,
-          nickname: row.user_nickname,
-          role: row.user_role
-        },
-        title: row.title,
-        mode: normalizeSysadminSessionMode(row.mode),
-        providerKeyId: row.provider_key_id,
-        settings: parseJson(row.settings, {}),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        lastMessageAt: row.last_message_at,
-        archived: Boolean(row.archived),
-        deletedAt: row.deleted_at,
-        taskCount: row.task_count,
-        imageCount: row.image_count,
-        coverImage: row.cover_image_id
-          ? {
-              id: row.cover_image_id,
-              url: `/api/i/${row.cover_image_id}`,
-              mime: row.cover_mime ?? "image/png",
-              width: row.cover_width,
-              height: row.cover_height,
-              byteSize: row.cover_byte_size ?? 0,
-              taskId: row.cover_task_id,
-              sessionId: row.id
-            }
-          : null
-      })),
-      page,
-      pageSize,
-      total
-    });
   });
 
   // 单会话深度巡查：消息 + 关联 task + 附件与参考图合并、从 image_objects 补生成耗时。

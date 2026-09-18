@@ -47,9 +47,28 @@ pnpm -F server db:migrate:remote   # 线上，需 Wrangler 凭证
 - 运维快照与表大小日志见 [`server/src/lib/operations.ts`](../server/src/lib/operations.ts) 及 cron 说明（[`RELIABILITY.md`](./RELIABILITY.md)）。
 - 软删与 R2 清理见 [`server/src/lib/cleanup.ts`](../server/src/lib/cleanup.ts)。
 
+## 查询与 Rows read
+
+D1 **Rows read** 计的是查询计划扫过的行（含 JOIN 中间结果与 `COUNT(*)`），不是接口返回条数。热路径索引由迁移 `0015_d1_rows_read_indexes.sql` 增加（只 `CREATE INDEX`，不删旧索引/列）。历史/管理用户/巡查列表先对驱动表分页再对本页聚合；生成入口用量 SQL `GROUP BY`；事件超 30 天由 Cron 分批删除。详见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
+
+| 索引                                    | 列                                       | 用途                           |
+| --------------------------------------- | ---------------------------------------- | ------------------------------ |
+| `idx_sessions_user_last`                | `(user_id, deleted_at, last_message_at)` | 侧栏会话、历史、按用户巡查     |
+| `idx_tasks_session`                     | `(session_id)`                           | 按会话聚合任务                 |
+| `idx_tasks_message`                     | `(message_id)`                           | 消息列表联任务                 |
+| `idx_tasks_status_assigned`             | `(status, assigned_at)`                  | 调度 slot、重置 stale assigned |
+| `idx_tasks_status_finished`             | `(status, finished_at)`                  | 失败摘要近 24h                 |
+| `idx_image_objects_task`                | `(task_id, deleted_at)`                  | 任务完成/恢复加载生成图        |
+| `idx_image_objects_session`             | `(session_id, deleted_at, is_reference)` | 历史/巡查按会话拉非参考图      |
+| `idx_image_objects_deleted`             | `(deleted_at)`                           | Cron 物理清理软删图            |
+| `idx_generation_events_created_preview` | `(created_at, is_sysadmin_preview)`      | 30 天用量与事件 TTL            |
+
+每日 Cron 对主表 `COUNT(*)` 是有意体检，成本约等于被计数表的行数之和，与在线列表爆炸分开衡量。
+
 ## 相关文档
 
 - [`EXPERIMENTS.md`](./EXPERIMENTS.md) — 生成实验与事件的代码入口
 - [`ARCHITECTURE.md`](../ARCHITECTURE.md) — 数据流概览
 - [`SECURITY.md`](./SECURITY.md) — 密钥加密与访问控制
 - [`API.md`](./API.md) — 对外暴露的数据形状
+- [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md) — D1 Rows read 索引与列表查询改写

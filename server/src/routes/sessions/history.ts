@@ -1,4 +1,5 @@
 import { assertSessionAccess } from "../../lib/access";
+import { listUserHistorySessions } from "../../lib/historySessions";
 import { parseJson } from "../../lib/json";
 import {
   normalizeSessionMode,
@@ -17,175 +18,18 @@ import {
 } from "./referenceImages";
 
 export function registerHistoryRoutes(historyRoutes: SessionRouter) {
-  // 历史列表：分页、标题/prompt 搜索、多子查询聚合（任务数、请求张数、实落库图、封面、进行状态）。
+  // 历史列表：先分页 sessions，再对本页聚合任务数/封面（见 lib/historySessions）。
   historyRoutes.get("/", async (c) => {
     const user = c.get("user");
-    const q = c.req.query("q");
-    const order = c.req.query("order") ?? "recent";
-    const requestedPage = Number(c.req.query("page") ?? "1");
-    const requestedPageSize = Number(c.req.query("pageSize") ?? "12");
-    const page = Number.isFinite(requestedPage) ? Math.max(Math.floor(requestedPage), 1) : 1;
-    const pageSize = Number.isFinite(requestedPageSize)
-      ? Math.min(Math.max(Math.floor(requestedPageSize), 1), 50)
-      : 12;
-    const offset = (page - 1) * pageSize;
-    const conditions = ["sessions.deleted_at IS NULL"];
-    const binds: unknown[] = [user.id];
-    conditions.push(`sessions.user_id = ?${binds.length}`);
-    if (q) {
-      binds.push(`%${q}%`);
-      const searchIndex = binds.length;
-      conditions.push(
-        `(sessions.title LIKE ?${searchIndex} OR EXISTS (
-          SELECT 1 FROM messages m
-          WHERE m.session_id = sessions.id AND m.deleted_at IS NULL AND m.prompt LIKE ?${searchIndex}
-        ))`
-      );
-    }
-    const orderSql =
-      order === "oldest"
-        ? "sessions.created_at ASC"
-        : order === "task_count"
-          ? "task_count DESC, sessions.last_message_at DESC"
-          : "sessions.last_message_at DESC";
-    const totalRows = await c.env.DB.prepare(
-      `SELECT COUNT(*) AS total
-       FROM sessions
-       WHERE ${conditions.join(" AND ")}`
-    )
-      .bind(...binds)
-      .all<{ total: number }>();
-    const rows = await c.env.DB.prepare(
-      `SELECT sessions.*,
-         (
-           SELECT COUNT(*)
-           FROM tasks task_totals
-           WHERE task_totals.session_id = sessions.id
-         ) AS task_count,
-         (
-           SELECT COALESCE(
-             SUM(
-               CASE
-                 WHEN json_valid(requested_tasks.params)
-                   THEN COALESCE(CAST(json_extract(requested_tasks.params, '$.n') AS INTEGER), 1)
-                 ELSE 1
-               END
-             ),
-             0
-           )
-           FROM tasks requested_tasks
-           WHERE requested_tasks.session_id = sessions.id
-         ) AS requested_image_count,
-         (
-           SELECT COUNT(*)
-           FROM messages accepted_image_messages,
-             json_each(accepted_image_messages.attachments) accepted_images
-           WHERE accepted_image_messages.session_id = sessions.id
-             AND accepted_image_messages.deleted_at IS NULL
-             AND json_valid(accepted_image_messages.attachments)
-         ) AS image_count,
-         COALESCE(
-           (
-             SELECT active_tasks.status
-             FROM tasks active_tasks
-             WHERE active_tasks.session_id = sessions.id
-               AND active_tasks.status IN ('running', 'queued')
-             ORDER BY CASE active_tasks.status WHEN 'running' THEN 0 ELSE 1 END,
-               active_tasks.queued_at DESC
-             LIMIT 1
-           ),
-           (
-             SELECT latest_tasks.status
-             FROM tasks latest_tasks
-             WHERE latest_tasks.session_id = sessions.id
-             ORDER BY latest_tasks.queued_at DESC
-             LIMIT 1
-           )
-         ) AS session_status,
-         cover.id AS cover_image_id,
-         cover.mime AS cover_mime,
-         cover.width AS cover_width,
-         cover.height AS cover_height,
-         cover.byte_size AS cover_byte_size,
-         cover.task_id AS cover_task_id
-       FROM sessions
-       LEFT JOIN image_objects cover ON cover.id = (
-           SELECT json_extract(cover_images.value, '$.id')
-           FROM messages cover_messages,
-             json_each(cover_messages.attachments) cover_images
-           WHERE cover_messages.session_id = sessions.id
-             AND cover_messages.deleted_at IS NULL
-             AND json_valid(cover_messages.attachments)
-             AND json_extract(cover_images.value, '$.id') IS NOT NULL
-           ORDER BY cover_messages.created_at DESC, CAST(cover_images.key AS INTEGER) DESC
-           LIMIT 1
-         )
-         AND cover.deleted_at IS NULL
-         AND cover.is_reference = 0
-       WHERE ${conditions.join(" AND ")}
-       GROUP BY sessions.id
-       ORDER BY ${orderSql}
-       LIMIT ?${binds.length + 1} OFFSET ?${binds.length + 2}`
-    )
-      .bind(...binds, pageSize, offset)
-      .all<{
-        id: string;
-        user_id: string;
-        title: string;
-        mode: string;
-        provider_key_id: string | null;
-        settings: string;
-        created_at: number;
-        updated_at: number;
-        last_message_at: number;
-        archived: number;
-        deleted_at: number | null;
-        task_count: number;
-        requested_image_count: number;
-        image_count: number;
-        session_status: string | null;
-        cover_image_id: string | null;
-        cover_mime: string | null;
-        cover_width: number | null;
-        cover_height: number | null;
-        cover_byte_size: number | null;
-        cover_task_id: string | null;
-      }>();
-    const total = totalRows.results[0]?.total ?? 0;
-    return c.json({
-      items: rows.results.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        title: row.title,
-        mode: normalizeSessionMode(row.mode),
-        providerKeyId: row.provider_key_id,
-        settings: parseJson(row.settings, {}),
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        lastMessageAt: row.last_message_at,
-        archived: Boolean(row.archived),
-        deletedAt: row.deleted_at,
-        taskCount: row.task_count,
-        requestedImageCount: Math.max(row.requested_image_count, row.image_count),
-        imageCount: row.image_count,
-        status: row.session_status,
-        coverImage: row.cover_image_id
-          ? {
-              id: row.cover_image_id,
-              url: `/api/i/${row.cover_image_id}`,
-              mime: row.cover_mime,
-              width: row.cover_width,
-              height: row.cover_height,
-              byteSize: row.cover_byte_size ?? 0,
-              taskId: row.cover_task_id,
-              sessionId: row.id
-            }
-          : null
-      })),
-      page,
-      pageSize,
-      total
-    });
+    return c.json(
+      await listUserHistorySessions(c.env, {
+        userId: user.id,
+        q: c.req.query("q"),
+        order: c.req.query("order") ?? "recent",
+        page: Number(c.req.query("page") ?? "1"),
+        pageSize: Number(c.req.query("pageSize") ?? "12")
+      })
+    );
   });
 
   // 历史详情：全量正序 200 条，合并 D1 持久化图与 reference。

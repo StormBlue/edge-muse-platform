@@ -1,13 +1,8 @@
 import type { AppEnv } from "../../types";
 import type { HistoryImageAttachment } from "./common";
 
-/** 历史详情：本会话下所有非参考图按 `tasks.message_id` 归到各消息，JSON 可能滞后于 D1。 */
-export async function loadPersistedGeneratedImagesByMessageId(
-  env: AppEnv["Bindings"],
-  sessionId: string
-): Promise<Map<string, HistoryImageAttachment[]>> {
-  const rows = await env.DB.prepare(
-    `SELECT image_objects.id,
+/** 按 session_id 拉未删非参考图，走 idx_image_objects_session；tasks 用主键联 message_id。 */
+export const LOAD_SESSION_GENERATED_IMAGES_SQL = `SELECT image_objects.id,
        image_objects.mime,
        image_objects.width,
        image_objects.height,
@@ -20,19 +15,23 @@ export async function loadPersistedGeneratedImagesByMessageId(
      WHERE image_objects.session_id = ?1
        AND image_objects.deleted_at IS NULL
        AND image_objects.is_reference = 0
-     ORDER BY image_objects.created_at ASC`
-  )
-    .bind(sessionId)
-    .all<{
-      id: string;
-      mime: string;
-      width: number | null;
-      height: number | null;
-      byte_size: number;
-      task_id: string | null;
-      session_id: string | null;
-      message_id: string | null;
-    }>();
+     ORDER BY image_objects.created_at ASC`;
+
+/** 历史详情：本会话下所有非参考图按 `tasks.message_id` 归到各消息，JSON 可能滞后于 D1。 */
+export async function loadPersistedGeneratedImagesByMessageId(
+  env: AppEnv["Bindings"],
+  sessionId: string
+): Promise<Map<string, HistoryImageAttachment[]>> {
+  const rows = await env.DB.prepare(LOAD_SESSION_GENERATED_IMAGES_SQL).bind(sessionId).all<{
+    id: string;
+    mime: string;
+    width: number | null;
+    height: number | null;
+    byte_size: number;
+    task_id: string | null;
+    session_id: string | null;
+    message_id: string | null;
+  }>();
   const imagesByMessageId = new Map<string, HistoryImageAttachment[]>();
   for (const row of rows.results) {
     if (!row.message_id) continue;

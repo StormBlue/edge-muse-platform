@@ -12,6 +12,8 @@
 
 Provider key group 队列依赖 `0011_provider_key_groups_queue.sql`：该迁移创建 group/member、key 并发字段、用户任务上限字段，以及 `tasks.provider_key_group_id` / `tasks.assigned_at` 调度字段。部署前必须确认迁移已在目标 D1 应用。
 
+D1 Rows read 热路径索引见 `0015_d1_rows_read_indexes.sql` 与 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。生产必须**先应用该迁移**再部署依赖这些索引的 Worker 查询改写；索引可保留而回滚 Worker。
+
 ## 密钥与 Secrets
 
 - Worker Secrets：`pnpm -F server wrangler secret put <NAME>`（如 `JWT_SECRET`、`KEY_ENCRYPTION_KEY`、`TURNSTILE_SECRET_KEY`）

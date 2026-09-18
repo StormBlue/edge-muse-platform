@@ -30,12 +30,13 @@
 
 ## 质量与历史
 
-| 文件                                           | 用途                                                          |
-| ---------------------------------------------- | ------------------------------------------------------------- |
-| [QUALITY_SCORE.md](./QUALITY_SCORE.md)         | 模块质量与已知债                                              |
-| [design-docs/index.md](./design-docs/index.md) | 设计决策索引                                                  |
-| [exec-plans/README.md](./exec-plans/README.md) | 执行计划入口；进行中里程碑在此登记，已封板计划迁入 `archive/` |
-| [archive/README.md](./archive/README.md)       | 已归档 PRD、Cubence 与拆分任务全书                            |
+| 文件                                                                  | 用途                                                          |
+| --------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [QUALITY_SCORE.md](./QUALITY_SCORE.md)                                | 模块质量与已知债                                              |
+| [design-docs/index.md](./design-docs/index.md)                        | 设计决策索引                                                  |
+| [exec-plans/README.md](./exec-plans/README.md)                        | 执行计划入口；进行中里程碑在此登记，已封板计划迁入 `archive/` |
+| [exec-plans/d1-rows-read/](./exec-plans/d1-rows-read/requirements.md) | 当前活跃：D1 Rows read 索引与列表查询改写                     |
+| [archive/README.md](./archive/README.md)                              | 已归档 PRD、Cubence 与拆分任务全书                            |
 
 ## 已合并 / 迁移说明
 

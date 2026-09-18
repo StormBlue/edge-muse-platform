@@ -3,14 +3,8 @@ import { logInfo } from "../log";
 import type { AppBindings } from "../../types";
 import type { TaskImageAttachment } from "./types";
 
-/** 列出本任务已落库的非参考图（按 created_at） */
-export async function loadTaskGeneratedImages(
-  env: AppBindings,
-  taskId: string,
-  prompt: string
-): Promise<TaskImageAttachment[]> {
-  const rows = await env.DB.prepare(
-    `SELECT id,
+/** 按 task_id 点查生成图，走 idx_image_objects_task，避免扫整张 image_objects。 */
+export const LOAD_TASK_GENERATED_IMAGES_SQL = `SELECT id,
        mime,
        width,
        height,
@@ -22,19 +16,24 @@ export async function loadTaskGeneratedImages(
      WHERE task_id = ?1
        AND deleted_at IS NULL
        AND is_reference = 0
-     ORDER BY created_at ASC`
-  )
-    .bind(taskId)
-    .all<{
-      id: string;
-      mime: string;
-      width: number | null;
-      height: number | null;
-      byte_size: number;
-      task_id: string | null;
-      session_id: string | null;
-      created_at: number;
-    }>();
+     ORDER BY created_at ASC`;
+
+/** 列出本任务已落库的非参考图（按 created_at） */
+export async function loadTaskGeneratedImages(
+  env: AppBindings,
+  taskId: string,
+  prompt: string
+): Promise<TaskImageAttachment[]> {
+  const rows = await env.DB.prepare(LOAD_TASK_GENERATED_IMAGES_SQL).bind(taskId).all<{
+    id: string;
+    mime: string;
+    width: number | null;
+    height: number | null;
+    byte_size: number;
+    task_id: string | null;
+    session_id: string | null;
+    created_at: number;
+  }>();
 
   return rows.results.map((row, index) => ({
     id: row.id,
@@ -80,6 +79,7 @@ export async function cleanupTaskGeneratedImagesExcept(
 
 /** 恢复成功后清理本任务下不应展示的多余生成图（非参考图） */
 async function cleanupTaskGeneratedImages(env: AppBindings, taskId: string): Promise<number> {
+  // 软删同样按 task_id 更新，走 idx_image_objects_task。
   const result = await env.DB.prepare(
     `UPDATE image_objects
      SET deleted_at = COALESCE(deleted_at, ?1)

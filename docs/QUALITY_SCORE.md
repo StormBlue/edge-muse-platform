@@ -16,6 +16,7 @@
 1. E2E 与 CI 浏览器稳定性未标准化。
 2. Provider health 对 Cubence 仅保证鉴权级检查；share group 需人工 smoke（见 [`OPERATIONS.md`](./OPERATIONS.md)）。
 3. 历史 PRD 已归档，长期以代码与 `docs/` 为准（[`archive/README.md`](./archive/README.md)）。
+4. D1 Rows read：热路径索引见 `0015_d1_rows_read_indexes.sql`；历史/管理用户/巡查改为先分页再聚合，用量 SQL `GROUP BY`，事件 30 天 TTL。计划与验收见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 
 ## 相关文档
 

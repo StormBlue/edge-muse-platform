@@ -26,6 +26,7 @@ import { csrf } from "./middleware/csrf";
 import { installErrorHandling } from "./middleware/error";
 import { consumeRateLimit } from "./middleware/rateLimit";
 import { cleanupDeletedImages } from "./lib/cleanup";
+import { purgeExpiredGenerationEvents } from "./lib/generationEntry";
 import { backupOperationalSnapshot, logD1TableSizes, sendFailureDigest } from "./lib/operations";
 import { recoverInterruptedGenerateTasks, scheduleInterruptedTaskRecovery } from "./lib/tasks";
 import { createAltchaChallenge, getPublicCaptchaConfig } from "./lib/captcha";
@@ -121,6 +122,7 @@ export default {
       Promise.all([
         recoverInterruptedGenerateTasks(env, ctx, { throttle: false }),
         cleanupDeletedImages(env),
+        purgeExpiredGenerationEvents(env),
         sendFailureDigest(env),
         logD1TableSizes(env),
         backupOperationalSnapshot(env)

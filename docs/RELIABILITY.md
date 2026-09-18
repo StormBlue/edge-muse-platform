@@ -33,8 +33,11 @@
 [`server/src/index.ts`](../server/src/index.ts) 的 `scheduled` 钩子调用：
 
 - 删除图片清理（[`server/src/lib/cleanup.ts`](../server/src/lib/cleanup.ts)）
+- 过期 `generation_events` TTL（[`purgeExpiredGenerationEvents`](../server/src/lib/generationEntry.ts)，与 30 天用量窗口一致）
 - 失败摘要邮件（[`server/src/lib/operations.ts`](../server/src/lib/operations.ts)）
 - D1 运维快照到 R2、表大小日志
+
+`logD1TableSizes` 与 operational snapshot 会对主表做 `COUNT(*)` / `GROUP BY`，每次 Cron 的 D1 Rows read 约等于这些表的行数之和，属于有意体检。在线列表改为先分页再聚合，见 [`exec-plans/d1-rows-read/`](./exec-plans/d1-rows-read/requirements.md)。
 
 详见 [`OPERATIONS.md`](./OPERATIONS.md) 中的路径与告警配置。
 

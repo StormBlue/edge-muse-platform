@@ -217,23 +217,34 @@ export const quotaTransactions = sqliteTable(
 /**
  * 生图会话：`mode` 与 `tasks.mode` 对齐；`settings` 存 `size`/`n`/`model` JSON；
  * `lastMessageAt` 供列表排序；`archived` 为布尔；`deleted_at` 为软删。
+ * `idx_sessions_user_last` 覆盖侧栏/历史/巡查按用户过滤未删会话并按最近消息排序。
  */
-export const sessions = sqliteTable("sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id")
-    .notNull()
-    .references(() => users.id),
-  title: text("title").notNull(),
-  mode: text("mode", { enum: ["image2image", "text2image"] }).notNull(),
-  providerKeyId: text("provider_key_id").references(() => providerKeys.id),
-  providerKeyGroupId: text("provider_key_group_id").references(() => providerKeyGroups.id),
-  settings: text("settings").notNull(),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
-  lastMessageAt: integer("last_message_at").notNull(),
-  archived: integer("archived", { mode: "boolean" }).notNull().default(false),
-  deletedAt: integer("deleted_at")
-});
+export const sessions = sqliteTable(
+  "sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    mode: text("mode", { enum: ["image2image", "text2image"] }).notNull(),
+    providerKeyId: text("provider_key_id").references(() => providerKeys.id),
+    providerKeyGroupId: text("provider_key_group_id").references(() => providerKeyGroups.id),
+    settings: text("settings").notNull(),
+    createdAt: integer("created_at").notNull(),
+    updatedAt: integer("updated_at").notNull(),
+    lastMessageAt: integer("last_message_at").notNull(),
+    archived: integer("archived", { mode: "boolean" }).notNull().default(false),
+    deletedAt: integer("deleted_at")
+  },
+  (table) => ({
+    userLastIdx: index("idx_sessions_user_last").on(
+      table.userId,
+      table.deletedAt,
+      table.lastMessageAt
+    )
+  })
+);
 
 /**
  * 单条消息：`referenceImageIds` / `attachments` 为 JSON 字符串数组；
@@ -313,7 +324,15 @@ export const tasks = sqliteTable(
     providerKeyStatusIdx: index("idx_tasks_provider_key_status").on(
       table.providerKeyId,
       table.status
-    )
+    ),
+    /** 历史/巡查/删会话按会话聚合任务，避免扫整张 tasks。 */
+    sessionIdx: index("idx_tasks_session").on(table.sessionId),
+    /** 消息列表 LEFT JOIN tasks 用 message_id 点查。 */
+    messageIdx: index("idx_tasks_message").on(table.messageId),
+    /** 调度器统计 queued/running 且已 assigned 的 slot，以及重置 stale assigned。 */
+    statusAssignedIdx: index("idx_tasks_status_assigned").on(table.status, table.assignedAt),
+    /** 失败摘要按终态时间窗过滤。 */
+    statusFinishedIdx: index("idx_tasks_status_finished").on(table.status, table.finishedAt)
   })
 );
 
@@ -343,7 +362,17 @@ export const imageObjects = sqliteTable(
   (table) => ({
     r2KeyIdx: index("idx_image_objects_r2_key").on(table.r2Key),
     ownerCreatedIdx: index("idx_image_objects_owner").on(table.ownerUserId, table.createdAt),
-    shaDeletedIdx: index("idx_image_objects_sha256_deleted").on(table.sha256, table.deletedAt)
+    shaDeletedIdx: index("idx_image_objects_sha256_deleted").on(table.sha256, table.deletedAt),
+    /** 任务完成/恢复按 task_id 加载与软删生成图。 */
+    taskDeletedIdx: index("idx_image_objects_task").on(table.taskId, table.deletedAt),
+    /** 历史/巡查按会话拉未删非参考图。 */
+    sessionDeletedRefIdx: index("idx_image_objects_session").on(
+      table.sessionId,
+      table.deletedAt,
+      table.isReference
+    ),
+    /** Cron 物理清理：按 deleted_at 找超过保留期的软删行。 */
+    deletedAtIdx: index("idx_image_objects_deleted").on(table.deletedAt)
   })
 );
 
@@ -529,7 +558,12 @@ export const generationEvents = sqliteTable(
   (table) => ({
     routeCreatedIdx: index("idx_generation_events_route_created").on(table.route, table.createdAt),
     eventNameIdx: index("idx_generation_events_name").on(table.eventName),
-    taskEventIdx: index("idx_generation_events_task_name").on(table.taskId, table.eventName)
+    taskEventIdx: index("idx_generation_events_task_name").on(table.taskId, table.eventName),
+    /** 30 天用量窗口与 TTL 删除：按 created_at 范围过滤，再排除 sysadmin 预览。 */
+    createdPreviewIdx: index("idx_generation_events_created_preview").on(
+      table.createdAt,
+      table.isSysadminPreview
+    )
   })
 );
 

@@ -47,12 +47,8 @@ export async function getNextQueuedTaskForGroup(
   };
 }
 
-export async function getNextAvailableProviderKeySlot(
-  env: AppBindings,
-  groupId: string
-): Promise<ProviderKeySlot | null> {
-  const rows = await env.DB.prepare(
-    `SELECT
+/** 调度选 key：slot 子查询只统计 queued/running 且已 assigned，走 idx_tasks_status_assigned。 */
+export const NEXT_AVAILABLE_PROVIDER_KEY_SLOT_SQL = `SELECT
        provider_keys.id AS provider_key_id,
        provider_keys.max_concurrency AS max_concurrency,
        COALESCE(active.active_count, 0) AS active_count
@@ -76,8 +72,13 @@ export async function getNextAvailableProviderKeySlot(
        AND provider_keys.enabled = 1
        AND provider_keys.deleted_at IS NULL
        AND provider_keys.provider_id = provider_key_groups.provider_id
-     ORDER BY provider_key_group_members.sort_order ASC, provider_keys.created_at ASC`
-  )
+     ORDER BY provider_key_group_members.sort_order ASC, provider_keys.created_at ASC`;
+
+export async function getNextAvailableProviderKeySlot(
+  env: AppBindings,
+  groupId: string
+): Promise<ProviderKeySlot | null> {
+  const rows = await env.DB.prepare(NEXT_AVAILABLE_PROVIDER_KEY_SLOT_SQL)
     .bind(groupId)
     .all<ProviderKeySlotRow>();
 
