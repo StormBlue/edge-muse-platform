@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "kind": "dev-spec-flow-revision-capture",
+  "base_commit": "13ff6a25100162fec8cde3b0f2e3bf7faa67fa4e",
+  "scope": [
+    "docs/RELIABILITY.md",
+    "server/src/lib/bindingRetry.ts",
+    "server/src/lib/r2.ts",
+    "server/src/lib/tasks/runGenerations.ts",
+    "server/test/r2PutRetry.test.ts"
+  ],
+  "changed_paths": [
+    "docs/RELIABILITY.md",
+    "server/src/lib/bindingRetry.ts",
+    "server/src/lib/r2.ts",
+    "server/src/lib/tasks/runGenerations.ts",
+    "server/test/r2PutRetry.test.ts"
+  ],
+  "worktree_state": "scoped-dirty",
+  "entries": [
+    {
+      "path": "docs/RELIABILITY.md",
+      "status": "modified",
+      "sha256": "58799844be1796ef7f817cd5ac15c5aecde5d0818366b56a20f7b39c0522750b"
+    },
+    {
+      "path": "server/src/lib/bindingRetry.ts",
+      "status": "added",
+      "sha256": "1be10d6970a858f8cdd9cb08ab883cc1535a8ec4f4c65310d03f48141f68a1a1"
+    },
+    {
+      "path": "server/src/lib/r2.ts",
+      "status": "modified",
+      "sha256": "277d994fbc9ed72717dbd84d914988216d2aed6f9e4bb400d446677b355d1472"
+    },
+    {
+      "path": "server/src/lib/tasks/runGenerations.ts",
+      "status": "modified",
+      "sha256": "c4076ca95824348cc2eb8cee2e95ba3916bdb22259a08e932fc736e6ee04014c"
+    },
+    {
+      "path": "server/test/r2PutRetry.test.ts",
+      "status": "added",
+      "sha256": "7444fd6b21dca4f9a62417ecb74264cccbff8ea7cca07a595698a2cb0c1085f1"
+    }
+  ]
+}

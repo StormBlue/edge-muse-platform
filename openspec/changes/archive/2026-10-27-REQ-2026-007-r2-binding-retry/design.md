@@ -1,0 +1,9 @@
+<!-- docs-architect-meta {"schema_version":1,"id":"DESIGN-REQ-2026-007","type":"decision","title":"Retry the R2 binding call rather than the provider","status":"accepted","owners":[],"sources":["https://developers.cloudflare.com/workers/observability/errors/","https://developers.cloudflare.com/d1/best-practices/retry-queries/","https://developers.cloudflare.com/r2/reference/consistency/","https://github.com/cloudflare/workerd/issues/1741","https://github.com/cloudflare/workerd/issues/4253","https://github.com/cloudflare/workerd/issues/5290"],"update_when":["The binding retry decision or the disconnect diagnosis changes"],"relations":[{"type":"documents","target":"REQ-2026-007"}],"evidence":[],"affected_docs":["docs/RELIABILITY.md"],"verified_at":null,"verified_against":null} -->
+
+# Retry the R2 binding call rather than the provider
+
+`Network connection lost.` is the Workers runtime's JavaScript translation of a KJ `DISCONNECTED` exception. workerd issue 5290 quotes the runtime mapping, and issue 4253 shows the resulting Error carrying `retryable: true` for `disconnected: connect(): Connection refused`. The Workers errors page therefore says to catch the binding call and retry it.
+
+The same string is also what the runtime reports when an internal HTTP response finishes before a body larger than 64KiB is consumed. Kenton Varda described that path in workerd issue 1741: the server discards at most 64KiB and then closes the connection, so the client never surfaces the status the server tried to return. Today's production puts were about 2.5MB and failed 15–220ms after `image.r2.put_started`, which fits an early close of that internal pipe. The logs do not contain the hidden status.
+
+The fix retries only `R2.put` and the following D1 insert. A conditional `If-None-Match: *` keeps a disconnected-but-committed put from creating a second object. The Micu request stays outside the retry because Workflow step retries remain disabled.

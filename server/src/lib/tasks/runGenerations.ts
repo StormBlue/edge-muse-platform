@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { messages, type Provider, type Task } from "../../db/schema";
 import { ProviderError, type ImageProvider } from "../../providers/types";
+import { bindingErrorLog } from "../bindingRetry";
 import { stringifyJson } from "../json";
 import { logInfo, logWarn } from "../log";
 import { mapWithConcurrency } from "./concurrency";
@@ -234,7 +235,8 @@ export async function runTaskGenerations(
           providerImageIndex,
           code: failure.code,
           message: failure.message,
-          phase: failure.phase
+          phase: failure.phase,
+          error: bindingErrorLog(error)
         });
         persistenceFailures.push(failure);
       }
