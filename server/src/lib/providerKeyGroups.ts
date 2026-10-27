@@ -19,7 +19,11 @@ import {
 } from "../db/schema";
 import { isBuiltInProviderId, isProviderKeyAssignable } from "../providers/catalog";
 import { getProvider } from "../providers/registry";
-import { MICU_REQUEST_FORMAT, MICU_SUPPORTED_MODELS } from "../providers/micuPolicy";
+import {
+  MICU_REQUEST_FORMAT,
+  MICU_SUPPORTED_MODELS,
+  canonicalizeMicuModel
+} from "../providers/micuPolicy";
 import type { ImageProvider } from "../providers/types";
 import { appError, isAppError } from "./errors";
 import { now } from "./id";
@@ -167,7 +171,7 @@ export function providerCapabilitiesFromResolvedGroup(
     providerKeyGroupId: resolved.group.id,
     providerKeyGroupName: resolved.group.name,
     requestFormat: resolved.provider.requestFormat,
-    model: firstKey?.model ?? resolved.provider.defaultModel,
+    model: canonicalizeMicuModel(firstKey?.model ?? resolved.provider.defaultModel),
     supportedModels:
       resolved.provider.requestFormat === MICU_REQUEST_FORMAT
         ? [...MICU_SUPPORTED_MODELS]

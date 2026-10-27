@@ -74,4 +74,4 @@
 
 米醋渠道 1K 图片每张消耗 1 个配额单位，2K/4K 每张消耗 2 个单位。`auto` 按 1K 档计费；选用 2K/4K 尺寸时平台自动切换同一模型家族的高分辨率通道。以平台尺寸分档为准，当前高分辨率每次限 1 张，图生图暂不开放 4K。
 
-当渠道返回模型目录时，工作台和 AI 图像生成页会显示模型选择：自动模式按尺寸路由，手动模式固定选择指定模型。Micu 默认使用 `gpt-image-2.5-flare`；2K/4K 会自动切换为对应的 `-openai` 模型。
+当渠道返回模型目录时，工作台和 AI 图像生成页会显示模型选择。自动模式使用渠道配置的模型，手动模式固定选择指定模型。Micu 可选 `gpt-image-2`、`gpt-image-2-openai`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`，默认是 `gpt-image-2.5-flare`。只有 `gpt-image-2` 的 2K/4K 会改用 `gpt-image-2-openai`；Flare 和 Sunburst 在各尺寸保持所选模型。

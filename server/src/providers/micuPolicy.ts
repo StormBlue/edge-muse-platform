@@ -1,6 +1,6 @@
 export const MICU_REQUEST_FORMAT = "micu_images";
 export const MICU_STANDARD_MODEL = "gpt-image-2";
-/** 米醋 Image2 模型目录：openai 后缀代表高分辨率计费通道。 */
+/** `gpt-image-2` 的 2K/4K 高质量线路。Flare 与 Sunburst 不再使用该后缀。 */
 export const MICU_PRO_MODEL = "gpt-image-2-openai";
 export const MICU_FLARE_MODEL = "gpt-image-2.5-flare";
 export const MICU_FLARE_PRO_MODEL = "gpt-image-2.5-flare-openai";
@@ -10,10 +10,13 @@ export const MICU_SUPPORTED_MODELS = [
   MICU_STANDARD_MODEL,
   MICU_PRO_MODEL,
   MICU_FLARE_MODEL,
-  MICU_FLARE_PRO_MODEL,
-  MICU_SUNBURST_MODEL,
-  MICU_SUNBURST_PRO_MODEL
+  MICU_SUNBURST_MODEL
 ] as const;
+/** 已改名的 Flare/Sunburst 请求仍接受，发出前改写成当前 ID。 */
+export const MICU_LEGACY_MODEL_ALIASES: Record<string, string> = {
+  [MICU_FLARE_PRO_MODEL]: MICU_FLARE_MODEL,
+  [MICU_SUNBURST_PRO_MODEL]: MICU_SUNBURST_MODEL
+};
 export const MICU_DEFAULT_MODEL = MICU_FLARE_MODEL;
 export const MICU_HIGH_RESOLUTION_EDGE = 1600;
 export const MICU_4K_EDGE = 3000;
@@ -124,18 +127,30 @@ export function isMicuExactSizePreset(size: string): boolean {
   return MICU_EXACT_SIZE_PRESETS.has(normalizeMicuImageSize(size));
 }
 
-export function effectiveMicuModel(model: string, size: string): string {
-  const requested = MICU_SUPPORTED_MODELS.includes(model as (typeof MICU_SUPPORTED_MODELS)[number])
-    ? model
-    : MICU_STANDARD_MODEL;
-  if (!isMicuHighResolutionSize(size)) return requested.replace(/-openai$/, "");
-  return requested.endsWith("-openai") ? requested : `${requested}-openai`;
+export function canonicalizeMicuModel(model: string): string {
+  return MICU_LEGACY_MODEL_ALIASES[model] ?? model;
 }
 
-/** 2K/4K openai 通道按 1K 图片的两倍计费；调用方按生成张数乘此系数。 */
+export function isAllowedMicuModel(model: string): boolean {
+  const canonical = canonicalizeMicuModel(model);
+  return MICU_SUPPORTED_MODELS.includes(canonical as (typeof MICU_SUPPORTED_MODELS)[number]);
+}
+
+export function effectiveMicuModel(model: string, size: string): string {
+  const canonical = canonicalizeMicuModel(model);
+  const requested = MICU_SUPPORTED_MODELS.includes(
+    canonical as (typeof MICU_SUPPORTED_MODELS)[number]
+  )
+    ? canonical
+    : MICU_STANDARD_MODEL;
+  if (requested === MICU_FLARE_MODEL || requested === MICU_SUNBURST_MODEL) return requested;
+  return isMicuHighResolutionSize(size) ? MICU_PRO_MODEL : MICU_STANDARD_MODEL;
+}
+
+/** 2K/4K 每张 2 个配额单位。倍数看尺寸档，不看最终模型 ID。 */
 export function micuQuotaMultiplier(model: string, size: string): number {
-  // 与实际路由保持一致：1K 会去除 openai 后缀，不能按密钥中的原始模型多扣。
-  return effectiveMicuModel(model, size).endsWith("-openai") ? 2 : 1;
+  void model;
+  return isMicuHighResolutionSize(size) ? 2 : 1;
 }
 
 export function resolveMicuParallelGenerations(model: string, size: string): number {

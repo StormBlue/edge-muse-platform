@@ -329,6 +329,31 @@ describe("provider response parsing", () => {
     expect(response.images).toHaveLength(1);
   });
 
+  it("keeps Micu flare on the selected model at high resolution", async () => {
+    const provider = new MicuImagesProvider();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as { model: string; size: string };
+        expect(body.model).toBe("gpt-image-2.5-flare");
+        expect(body.size).toBe("2048x2048");
+        return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        });
+      })
+    );
+
+    await provider.generate({
+      prompt: "a cat",
+      mode: "text2image",
+      model: "gpt-image-2.5-flare-openai",
+      size: "2048x2048",
+      apiKey: "key",
+      baseUrl: "https://www.micuapi.ai"
+    });
+  });
+
   it("calls Micu edits endpoint with response format and multipart reference image", async () => {
     const provider = new MicuImagesProvider();
     vi.stubGlobal(

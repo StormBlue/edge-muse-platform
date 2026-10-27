@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "dev:web": "pnpm -F web dev",
@@ -17,20 +16,21 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@types/node": "24.13.3",
-    "concurrently": "10.0.5",
-    "eslint": "10.10.0",
-    "eslint-plugin-vue": "10.10.0",
+    "@types/node": "24.19.2",
+    "concurrently": "10.0.6",
+    "eslint": "10.13.0",
+    "eslint-plugin-vue": "10.12.0",
     "husky": "9.1.7",
-    "lint-staged": "17.4.1",
-    "prettier": "3.9.6",
+    "lint-staged": "17.6.0",
+    "prettier": "3.9.10",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.69.0"
+    "typescript-eslint": "8.72.1"
   },
   "lint-staged": {
     "*.{ts,vue,js,json,md,css}": [
       "prettier --write",
       "eslint --fix"
     ]
-  }
+  },
+  "packageManager": "pnpm@12.15.0+sha512.b3951d6d6ff4a9f13dc7cf56cd28d2b8eb37dbcc9c68e52e1e1191873ea9f82a017287ab50baadc5ccc494f036c67c0e47eb13608c2fa36f47711b61ea128e61"
 }

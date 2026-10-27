@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "kind": "dev-spec-flow-revision-capture",
+  "base_commit": "2472dea4b941e575542d045bd913900b56cb48ad",
+  "scope": [
+    ".nvmrc",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "server/package.json",
+    "web/package.json",
+    "web/vite.config.ts"
+  ],
+  "changed_paths": [
+    ".nvmrc",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "server/package.json",
+    "web/package.json",
+    "web/vite.config.ts"
+  ],
+  "worktree_state": "scoped-dirty",
+  "entries": [
+    {
+      "path": ".nvmrc",
+      "status": "modified",
+      "sha256": "7c415154bb9f8e90394317c7109261249d2c4fbd549008ae6d014ee565ee7967"
+    },
+    {
+      "path": "package.json",
+      "status": "modified",
+      "sha256": "f96310a6d21f5cf49dc4cff2dca2eadc26c079576803c2dab34bbc91265fd936"
+    },
+    {
+      "path": "pnpm-lock.yaml",
+      "status": "modified",
+      "sha256": "5092210f6c80c8a894ca923555e7b5c5601077a390bf193ef2c78e62325e7904"
+    },
+    {
+      "path": "pnpm-workspace.yaml",
+      "status": "modified",
+      "sha256": "f8adedb8b23e9e4ae790b1bc0584e46f63a9e49af68e360611baf5fcb0cbb0d7"
+    },
+    {
+      "path": "server/package.json",
+      "status": "modified",
+      "sha256": "85b83cddfb1d517653cea82f1ea76a721b463d25e7a0d75f716e534107db6bed"
+    },
+    {
+      "path": "web/package.json",
+      "status": "modified",
+      "sha256": "d6e6c019c34ea347f78547c230a822590669d11c14fc3675ed2a39c1a84062f6"
+    },
+    {
+      "path": "web/vite.config.ts",
+      "status": "modified",
+      "sha256": "b106a619d513ef597f967410f4fee20bf3bd5f0269d1e549c88c45544956181b"
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+
+ RUN  v5.0.5 D:/ProjectFiles/ServeProjects/edge-muse-platform/server
+
+··stdout | test/r2PutRetry.test.ts > putImage binding retry > retries the same key after a disconnect and stores one row
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:45.663Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries the same key after a disconnect and stores one row
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:45.678Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_711a9a1b-c7bc-4453-80b1-ffdd16415e49","r2Key":"u/usr_owner/y/2026/m/10/img_711a9a1b-c7bc-4453-80b1-ffdd16415e49.png"}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > retries the same key after a disconnect and stores one row
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries the same key after a disconnect and stores one row
+{"event":"image.r2.put_succeeded","level":"info","ts":"2026-10-27T08:37:45.682Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_711a9a1b-c7bc-4453-80b1-ffdd16415e49","r2Key":"u/usr_owner/y/2026/m/10/img_711a9a1b-c7bc-4453-80b1-ffdd16415e49.png"}
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:45.681Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_711a9a1b-c7bc-4453-80b1-ffdd16415e49","r2Key":"u/usr_owner/y/2026/m/10/img_711a9a1b-c7bc-4453-80b1-ffdd16415e49.png","attempt":1,"delayMs":50,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:64:38)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:9)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:69:19\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20"}}
+
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries the same key after a disconnect and stores one row
+{"event":"image.db.inserted","level":"info","ts":"2026-10-27T08:37:45.696Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_711a9a1b-c7bc-4453-80b1-ffdd16415e49","r2Key":"u/usr_owner/y/2026/m/10/img_711a9a1b-c7bc-4453-80b1-ffdd16415e49.png"}
+
+·stdout | test/r2PutRetry.test.ts > putImage binding retry > treats a null conditional put as the object already stored
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:46.690Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > treats a null conditional put as the object already stored
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:46.705Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91","r2Key":"u/usr_owner/y/2026/m/10/img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91.png"}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > treats a null conditional put as the object already stored
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:46.705Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91","r2Key":"u/usr_owner/y/2026/m/10/img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91.png","attempt":1,"delayMs":50,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:82:32)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:9)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:91:5\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20"}}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > treats a null conditional put as the object already stored
+{"event":"image.r2.put_already_present","level":"info","ts":"2026-10-27T08:37:46.705Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91","r2Key":"u/usr_owner/y/2026/m/10/img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91.png"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > treats a null conditional put as the object already stored
+{"event":"image.db.inserted","level":"info","ts":"2026-10-27T08:37:46.722Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91","r2Key":"u/usr_owner/y/2026/m/10/img_4f5cbcad-0e24-4d28-8cc8-34ebedfd6a91.png"}
+
+·stdout | test/r2PutRetry.test.ts > putImage binding retry > does not retry a non-disconnect R2 error
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:47.780Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > does not retry a non-disconnect R2 error
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:47.797Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_68c74540-5bee-42f8-9915-a48d4ef2746a","r2Key":"u/usr_owner/y/2026/m/10/img_68c74540-5bee-42f8-9915-a48d4ef2746a.png"}
+
+·stdout | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:48.881Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:48.899Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe","r2Key":"u/usr_owner/y/2026/m/10/img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe.png"}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:48.900Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe","r2Key":"u/usr_owner/y/2026/m/10/img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe.png","attempt":1,"delayMs":50,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:117:29)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:9)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:121:5\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20","retryable":true}}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:48.900Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe","r2Key":"u/usr_owner/y/2026/m/10/img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe.png","attempt":2,"delayMs":100,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:117:29)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:3)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:121:5\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20","retryable":true}}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:48.901Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe","r2Key":"u/usr_owner/y/2026/m/10/img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe.png","attempt":3,"delayMs":200,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:117:29)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:3)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:121:5\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20","retryable":true}}
+
+stderr | test/r2PutRetry.test.ts > putImage binding retry > stops after five disconnects
+{"event":"image.r2.put_retry","level":"warn","ts":"2026-10-27T08:37:48.901Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe","r2Key":"u/usr_owner/y/2026/m/10/img_998a8855-8623-4f5d-a41b-cf0fb2ea5bbe.png","attempt":4,"delayMs":400,"error":{"name":"Error","message":"Network connection lost.","stack":"Error: Network connection lost.\n    at Object.put (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:117:29)\n    at putNewR2Object (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:146:35)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at putImage (D:/ProjectFiles/ServeProjects/edge-muse-platform/server/src/lib/r2.ts:97:3)\n    at D:/ProjectFiles/ServeProjects/edge-muse-platform/server/test/r2PutRetry.test.ts:121:5\n    at async file:///D:/ProjectFiles/ServeProjects/edge-muse-platform/node_modules/.pnpm/vitest@5.0.5_@types+node@24_b08122930f1efa567b5bfa3f149cc852/node_modules/vitest/dist/chunks/run.BPv-BBRv.js:2801:20","retryable":true}}
+
+·stdout | test/r2PutRetry.test.ts > putImage binding retry > retries a transient D1 insert and keeps one row
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:49.987Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries a transient D1 insert and keeps one row
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:50.003Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_8cb4d1fe-c964-41ee-88f6-36876cf56de8","r2Key":"u/usr_owner/y/2026/m/10/img_8cb4d1fe-c964-41ee-88f6-36876cf56de8.png"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries a transient D1 insert and keeps one row
+{"event":"image.r2.put_succeeded","level":"info","ts":"2026-10-27T08:37:50.004Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_8cb4d1fe-c964-41ee-88f6-36876cf56de8","r2Key":"u/usr_owner/y/2026/m/10/img_8cb4d1fe-c964-41ee-88f6-36876cf56de8.png"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > retries a transient D1 insert and keeps one row
+{"event":"image.db.inserted","level":"info","ts":"2026-10-27T08:37:50.020Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_8cb4d1fe-c964-41ee-88f6-36876cf56de8","r2Key":"u/usr_owner/y/2026/m/10/img_8cb4d1fe-c964-41ee-88f6-36876cf56de8.png"}
+
+·stdout | test/r2PutRetry.test.ts > putImage binding retry > accepts a unique conflict when the image row is already present
+{"event":"image.put.started","level":"info","ts":"2026-10-27T08:37:51.021Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > accepts a unique conflict when the image row is already present
+{"event":"image.r2.put_started","level":"info","ts":"2026-10-27T08:37:51.036Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28","r2Key":"u/usr_owner/y/2026/m/10/img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28.png"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > accepts a unique conflict when the image row is already present
+{"event":"image.r2.put_succeeded","level":"info","ts":"2026-10-27T08:37:51.037Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28","r2Key":"u/usr_owner/y/2026/m/10/img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28.png"}
+
+stdout | test/r2PutRetry.test.ts > putImage binding retry > accepts a unique conflict when the image row is already present
+{"event":"image.db.inserted","level":"info","ts":"2026-10-27T08:37:51.051Z","ownerUserId":"usr_owner","sessionId":null,"taskId":null,"mime":"image/png","byteSize":4,"isReference":false,"sha256":"9f64a747e1b97f131fabb6b447296c9b6f0201e79fb3c5356e6c77e89b6a806a","imageId":"img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28","r2Key":"u/usr_owner/y/2026/m/10/img_b0794bd8-34ef-432b-b6cc-1ba70f07cd28.png"}
+
+·
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  16:37:44
+   Duration  7.07s (tests 91%, import 8%, transform 1%)
+

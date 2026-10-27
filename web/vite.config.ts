@@ -16,12 +16,12 @@ export default defineConfig({
     }),
     tailwindcss(),
     VueI18nPlugin({
-      include: path.resolve(__dirname, "./src/locales/**")
+      include: path.resolve(import.meta.dirname, "./src/locales/**")
     })
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src")
+      "@": path.resolve(import.meta.dirname, "./src")
     }
   },
   server: {

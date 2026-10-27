@@ -125,6 +125,31 @@ describe("generation task creation quota safety", () => {
     await expectQuota(context.env, { usedQuota: 0 });
   });
 
+  it("stores a legacy flare alias as the current model and still charges the size tier", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, model: "gpt-image-2.5-flare-openai", size: "2048x2048" }
+    });
+    const task = await context.env.DB.prepare("SELECT params FROM tasks WHERE id = ?1")
+      .bind(result.taskId)
+      .first<{ params: string }>();
+    expect(JSON.parse(task?.params ?? "{}").model).toBe("gpt-image-2.5-flare");
+    await expectQuota(context.env, { usedQuota: 2 });
+  });
+
+  it("rejects an unknown Micu model before charging quota", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    await expect(
+      createGenerateTask(context.env, {
+        userId: "usr_task",
+        params: { ...baseParams, model: "gpt-image-2.5-flare-openai-openai" }
+      })
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    expect(await countRows(context.env, "tasks")).toBe(0);
+    await expectQuota(context.env, { usedQuota: 0 });
+  });
+
   it("keeps Cubence high resolution at one unit", async () => {
     await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
     await context.env.DB.prepare(

@@ -119,14 +119,24 @@ export function sizeOptionsForProvider(capabilities: ProviderCapabilities | null
   return sortSizeValues(values).map(sizeToOption);
 }
 
-/** 按 Micu 手动模型过滤尺寸；自动模式保留全部尺寸。 */
+const MICU_LEGACY_MODEL_ALIASES: Record<string, string> = {
+  "gpt-image-2.5-flare-openai": "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst-openai": "gpt-image-2.5-sunburst"
+};
+
+/**
+ * 只有 gpt-image-2 家族按尺寸分档。
+ * Flare、Sunburst 及其旧别名在各尺寸都使用同一个模型，因此保留全部尺寸。
+ */
 export function sizeOptionsForModel(
   options: SizeOption[],
   model: string,
   requestFormat?: string
 ): SizeOption[] {
   if (!model || model === "auto" || requestFormat !== "micu_images") return options;
-  const high = model.endsWith("-openai");
+  const resolved = MICU_LEGACY_MODEL_ALIASES[model] ?? model;
+  if (resolved !== "gpt-image-2" && resolved !== "gpt-image-2-openai") return options;
+  const high = resolved === "gpt-image-2-openai";
   const filtered = options.filter((option) => {
     if (option.value === "auto") return !high;
     const edge = maxEdgeForSize(option.value);
