@@ -10,7 +10,8 @@ import { logInfo, logWarn, promptSummary } from "../log";
 import { refundQuota, tryConsumeQuota } from "../quota";
 import {
   MICU_REQUEST_FORMAT,
-  MICU_SUPPORTED_MODELS,
+  canonicalizeMicuModel,
+  isAllowedMicuModel,
   micuQuotaMultiplier
 } from "../../providers/micuPolicy";
 import { defaultSessionTitle } from "../sessionTitle";
@@ -163,9 +164,9 @@ export async function createGenerateTask(
   // model 为空表示自动；仅允许渠道能力快照中的模型，避免客户端把任意模型名传给上游。
   const requestedModel = input.params.model?.trim();
   if (provider.requestFormat === MICU_REQUEST_FORMAT && requestedModel) {
-    if (!MICU_SUPPORTED_MODELS.includes(requestedModel as (typeof MICU_SUPPORTED_MODELS)[number]))
+    if (!isAllowedMicuModel(requestedModel))
       throw appError("VALIDATION_ERROR", "Unsupported Micu model");
-    params.model = requestedModel;
+    params.model = canonicalizeMicuModel(requestedModel);
   } else {
     params.model = configuredModel;
   }

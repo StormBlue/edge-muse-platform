@@ -89,14 +89,30 @@ describe("size options by selected Micu model", () => {
       "2048x2048",
       "3840x2160"
     ]));
-  it("only keeps 1K sizes for a model without the openai suffix", () =>
+  it("keeps every size for flare, sunburst, and their legacy aliases", () => {
+    for (const model of [
+      "gpt-image-2.5-flare",
+      "gpt-image-2.5-flare-openai",
+      "gpt-image-2.5-sunburst",
+      "gpt-image-2.5-sunburst-openai"
+    ]) {
+      expect(sizeOptionsForModel(options, model, "micu_images").map((x) => x.value)).toEqual([
+        "auto",
+        "1024x1024",
+        "2048x2048",
+        "3840x2160"
+      ]);
+    }
+  });
+  it("keeps 1K sizes for gpt-image-2 and high resolution sizes for its openai route", () => {
+    expect(sizeOptionsForModel(options, "gpt-image-2", "micu_images").map((x) => x.value)).toEqual([
+      "auto",
+      "1024x1024"
+    ]);
     expect(
-      sizeOptionsForModel(options, "gpt-image-2.5-flare", "micu_images").map((x) => x.value)
-    ).toEqual(["auto", "1024x1024"]));
-  it("only keeps high resolution sizes for an openai model", () =>
-    expect(
-      sizeOptionsForModel(options, "gpt-image-2.5-flare-openai", "micu_images").map((x) => x.value)
-    ).toEqual(["2048x2048", "3840x2160"]));
+      sizeOptionsForModel(options, "gpt-image-2-openai", "micu_images").map((x) => x.value)
+    ).toEqual(["2048x2048", "3840x2160"]);
+  });
   it("does not filter other providers", () =>
     expect(sizeOptionsForModel(options, "gpt-image-2.5-flare", "openai_images")).toBe(options));
 });

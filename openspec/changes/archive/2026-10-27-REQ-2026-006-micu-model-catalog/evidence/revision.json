@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "kind": "dev-spec-flow-revision-capture",
+  "base_commit": "14aa5790b9cf032e87b2f9c7312a4cdaaa9b709f",
+  "scope": [
+    "docs/API.md",
+    "docs/RELIABILITY.md",
+    "docs/USER_GUIDE.md",
+    "server/src/lib/providerKeyGroups.ts",
+    "server/src/lib/tasks/create.ts",
+    "server/src/providers/micuPolicy.ts",
+    "server/test/micuPolicy.test.ts",
+    "server/test/provider.test.ts",
+    "server/test/tasksCreate.test.ts",
+    "web/src/components/chat/ChatInput.vue",
+    "web/src/views/ai-image/StudioEditor.vue",
+    "web/src/views/workspace/workspaceOptions.test.ts",
+    "web/src/views/workspace/workspaceOptions.ts"
+  ],
+  "changed_paths": [
+    "docs/API.md",
+    "docs/RELIABILITY.md",
+    "docs/USER_GUIDE.md",
+    "server/src/lib/providerKeyGroups.ts",
+    "server/src/lib/tasks/create.ts",
+    "server/src/providers/micuPolicy.ts",
+    "server/test/micuPolicy.test.ts",
+    "server/test/provider.test.ts",
+    "server/test/tasksCreate.test.ts",
+    "web/src/components/chat/ChatInput.vue",
+    "web/src/views/ai-image/StudioEditor.vue",
+    "web/src/views/workspace/workspaceOptions.test.ts",
+    "web/src/views/workspace/workspaceOptions.ts"
+  ],
+  "worktree_state": "scoped-dirty",
+  "entries": [
+    {
+      "path": "docs/API.md",
+      "status": "modified",
+      "sha256": "73962655e85b305880a06b0f8668d209cdf1a49834b862af25ba2d2d9414e358"
+    },
+    {
+      "path": "docs/RELIABILITY.md",
+      "status": "modified",
+      "sha256": "cb6f8c83e53ed8f222f82665304127ad0f525864c92fa7aaffba346de55272be"
+    },
+    {
+      "path": "docs/USER_GUIDE.md",
+      "status": "modified",
+      "sha256": "f1af234cfe594b49f6399b89f9a196ed4524998b9edc6a825248dd8f6b9ec7a1"
+    },
+    {
+      "path": "server/src/lib/providerKeyGroups.ts",
+      "status": "modified",
+      "sha256": "e6e3a3bc76966101e5a391ac17195bbb96b394c2dbdaf37a9a11b9c7738e74c4"
+    },
+    {
+      "path": "server/src/lib/tasks/create.ts",
+      "status": "modified",
+      "sha256": "440eebbf52d77706a1d6eabd43de1ba1b472ef2d22682b84868e301648c4b5f2"
+    },
+    {
+      "path": "server/src/providers/micuPolicy.ts",
+      "status": "modified",
+      "sha256": "d2318ef5cd3a0fc1a8ab50d4c5597bf08d9aa726997da7ee6176214b8d033a6f"
+    },
+    {
+      "path": "server/test/micuPolicy.test.ts",
+      "status": "modified",
+      "sha256": "cd0806a139878b9c3b329728ca4839e328888dc60c8ad29d4c5a086ae930ff42"
+    },
+    {
+      "path": "server/test/provider.test.ts",
+      "status": "modified",
+      "sha256": "0dc5190471dda880e0c9bdc5ac8414772bb4588000da7524037a2ef643fd5342"
+    },
+    {
+      "path": "server/test/tasksCreate.test.ts",
+      "status": "modified",
+      "sha256": "eac28f2cbd869df1e1510cb93f2fc720e2654b78cd966474f325d3ecc834e94b"
+    },
+    {
+      "path": "web/src/components/chat/ChatInput.vue",
+      "status": "modified",
+      "sha256": "1a4a64b6bf7e8e16da909e72416a8b453928acda8587faf29c214cf4b34ca661"
+    },
+    {
+      "path": "web/src/views/ai-image/StudioEditor.vue",
+      "status": "modified",
+      "sha256": "0fb5af2a6ca9119f96cc2924df7c8871cafb2c1d7cb6c2a2dd675769f153932f"
+    },
+    {
+      "path": "web/src/views/workspace/workspaceOptions.test.ts",
+      "status": "modified",
+      "sha256": "f12e92d5d87d3813cd296a29cef374ecdc54e0066a39183862cc46709ee24ce6"
+    },
+    {
+      "path": "web/src/views/workspace/workspaceOptions.ts",
+      "status": "modified",
+      "sha256": "0bae3b77c43b5bda60817395efe08746573ae0bdb7b44143755b0a85ea6e325e"
+    }
+  ]
+}

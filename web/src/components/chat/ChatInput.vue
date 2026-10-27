@@ -243,7 +243,7 @@ function onPromptKeydown(event: KeyboardEvent) {
             <Select v-model="model" :disabled="isBusy">
               <SelectTrigger class="h-9 px-3 text-sm"><SelectValue placeholder="自动" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="auto">自动（按尺寸路由）</SelectItem>
+                <SelectItem value="auto">自动</SelectItem>
                 <SelectItem v-for="option in props.modelOptions" :key="option" :value="option">{{
                   option
                 }}</SelectItem>

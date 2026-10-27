@@ -181,7 +181,7 @@ async function copyPrompt() {
           <label v-if="s.provider.value?.supportedModels?.length" class="studio-field">
             <span>{{ s.t("workspace.model") }}</span>
             <select v-model="s.model.value" class="studio-select" data-testid="studio-model">
-              <option value="auto">自动（按尺寸路由）</option>
+              <option value="auto">自动</option>
               <option
                 v-for="option in s.provider.value?.supportedModels"
                 :key="option"
