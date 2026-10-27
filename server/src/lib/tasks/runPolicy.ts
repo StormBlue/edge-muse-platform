@@ -1,3 +1,4 @@
+import { failureMessage } from "../bindingRetry";
 import { now } from "../id";
 import { redactProviderResponse } from "./providerImages";
 import { MICU_REQUEST_FORMAT, resolveMicuParallelGenerations } from "../../providers/micuPolicy";
@@ -29,7 +30,7 @@ export function generationFailureFromError(
 ): GenerationFailure {
   const code =
     error && typeof error === "object" && "code" in error ? String(error.code) : "PROVIDER_ERROR";
-  const message = error instanceof Error ? error.message : "Generation failed";
+  const message = failureMessage(error);
   const raw =
     error && typeof error === "object" && "body" in error
       ? redactProviderResponse((error as { body?: unknown }).body)
