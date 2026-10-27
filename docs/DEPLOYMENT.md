@@ -43,7 +43,7 @@ pnpm build
 | CI     | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)         | PR 及 `develop` / `main` 推送：安装、types、lint、typecheck、test、build                                  |
 | Deploy | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) | 仅 `main` 推送的 CI 成功后调用：`build` → `db:migrate:remote` → `deploy`（需 GitHub Environment secrets） |
 
-CI 与部署都读取 `.nvmrc`，与本地使用同一固定 Node 版本 **24.20.0**。pnpm 版本由根 `package.json` 的 `packageManager` 固定；workspace 启用 `saveExact`，新增及升级直接依赖时保存精确版本。
+CI 与部署都读取 `.nvmrc`，与本地使用同一固定 Node 版本 **24.22.1**。pnpm 版本由根 `package.json` 的 `packageManager` 固定；workspace 启用 `saveExact`，新增及升级直接依赖时保存精确版本。
 
 Actions 固定为 `actions/checkout@v7.0.1`、`actions/setup-node@v7.0.0`、`pnpm/action-setup@v6.1.0`；后者提供 pnpm 12 原生可执行包支持。使用 GitHub 托管的 `ubuntu-latest` runner，依赖安装保持 `--frozen-lockfile`。
 
