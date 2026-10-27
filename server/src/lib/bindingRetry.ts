@@ -16,8 +16,57 @@ const D1_TRANSIENT_ERRORS = [
   "reset because its code was updated"
 ];
 
+/** 从外到内读取 Error 与 cause。Drizzle 把 D1 原文放在 cause，外层只写 Failed query。 */
+function errorChain(error: unknown): string[] {
+  const parts: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current !== undefined && current !== null && !seen.has(current) && parts.length < 6) {
+    seen.add(current);
+    if (current instanceof Error) {
+      parts.push(current.message);
+      current = current.cause;
+      continue;
+    }
+    if (isMessageRecord(current)) {
+      parts.push(current.message);
+      current = current.cause;
+      continue;
+    }
+    parts.push(String(current));
+    break;
+  }
+  return parts;
+}
+
+function isMessageRecord(value: unknown): value is { message: string; cause?: unknown } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "message" in value &&
+    typeof value.message === "string"
+  );
+}
+
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return errorChain(error).join("\n");
+}
+
+/**
+ * 面向用户的失败文案。断连保留运行时原文；Drizzle 包装过的错误用内层 D1/SQLite 文本，不带 SQL 和参数。
+ */
+export function failureMessage(error: unknown): string {
+  if (!(error instanceof Error)) return "Generation failed";
+  const messages = errorChain(error);
+  const disconnected = messages.find((message) =>
+    message.toLowerCase().includes("network connection lost")
+  );
+  if (disconnected) return disconnected;
+  if (error.message.startsWith("Failed query:")) {
+    const inner = [...messages].reverse().find((message) => !message.startsWith("Failed query:"));
+    if (inner) return inner;
+  }
+  return error.message;
 }
 
 /** Workers 运行时错误表中的绑定/fetch 断连。 */
@@ -53,6 +102,8 @@ export function bindingErrorLog(error: unknown): LogFields {
   if (error && typeof error === "object" && "retryable" in error) {
     summary.retryable = (error as { retryable?: unknown }).retryable === true;
   }
+  const causes = errorChain(error).slice(1);
+  if (causes.length > 0) summary.cause = causes.join("\n");
   return summary;
 }
 

@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  bindingErrorLog,
+  failureMessage,
   isImageRowConflict,
   isRetryableD1WriteError,
   isTransientBindingDisconnect,
@@ -24,6 +26,19 @@ describe("binding retry policy", () => {
       true
     );
     expect(isImageRowConflict(new Error("Network connection lost."))).toBe(false);
+  });
+
+  it("reads the D1 message wrapped by Drizzle", () => {
+    const lost = new Error("Failed query: insert into image_objects\nparams: img_1");
+    lost.cause = new Error("D1_ERROR: Network connection lost.");
+    const unique = new Error("Failed query: insert into image_objects\nparams: img_1");
+    unique.cause = new Error("UNIQUE constraint failed: image_objects.id");
+
+    expect(isRetryableD1WriteError(lost)).toBe(true);
+    expect(isImageRowConflict(unique)).toBe(true);
+    expect(failureMessage(lost)).toBe("D1_ERROR: Network connection lost.");
+    expect(failureMessage(unique)).toBe("UNIQUE constraint failed: image_objects.id");
+    expect(bindingErrorLog(lost).cause).toBe("D1_ERROR: Network connection lost.");
   });
 
   it("uses exponential backoff with jitter between half and the full ceiling", () => {
@@ -81,12 +96,12 @@ describe("putImage binding retry", () => {
         calls += 1;
         if (calls === 1) throw new Error("Network connection lost.");
         return null;
+      },
+      async head() {
+        heads += 1;
+        return { key: "present" };
       }
     });
-    env.R2.head = (async () => {
-      heads += 1;
-      return { key: "present" };
-    }) as typeof env.R2.head;
 
     await putImage(env, imageInput(), control);
 
@@ -129,10 +144,13 @@ describe("putImage binding retry", () => {
         return { key };
       }
     });
-    failFirstImageInsert(env, () => new Error("Network connection lost."));
+    const intercepted = failFirstImageInsert(env, () => {
+      throw new Error("Network connection lost.");
+    });
 
     await putImage(env, imageInput(), control);
 
+    expect(intercepted()).toBe(1);
     expect(await imageCount(ctx)).toBe(1);
   });
 
@@ -142,13 +160,31 @@ describe("putImage binding retry", () => {
         return { key };
       }
     });
-    failFirstImageInsert(env, async (run) => {
+    const intercepted = failFirstImageInsert(env, async (run) => {
       await run();
       throw new Error("UNIQUE constraint failed: image_objects.id");
     });
 
     await putImage(env, imageInput(), control);
 
+    expect(intercepted()).toBe(1);
+    expect(await imageCount(ctx)).toBe(1);
+  });
+
+  it("keeps one row when the insert committed and the response was lost", async () => {
+    const env = envWithR2(ctx, {
+      async put(key) {
+        return { key };
+      }
+    });
+    const intercepted = failFirstImageInsert(env, async (run) => {
+      await run();
+      throw new Error("Network connection lost.");
+    });
+
+    await putImage(env, imageInput(), control);
+
+    expect(intercepted()).toBe(1);
     expect(await imageCount(ctx)).toBe(1);
   });
 });
@@ -169,13 +205,14 @@ function envWithR2(
       bytes: Uint8Array,
       options: { onlyIf?: Headers }
     ) => Promise<{ key: string } | null>;
+    head?: (key: string) => Promise<{ key: string } | null>;
   }
 ): AppBindings {
   return {
     ...ctx.env,
     R2: {
       put: bucket.put,
-      head: async () => null
+      head: bucket.head ?? (async () => null)
     }
   } as unknown as AppBindings;
 }
@@ -195,16 +232,26 @@ function failFirstImageInsert(
   fail: (run: () => Promise<unknown>) => Promise<unknown> | unknown
 ) {
   const db = env.DB;
-  const prepare = db.prepare.bind(db);
   let failed = false;
-  db.prepare = ((sql: string) => {
-    const statement = prepare(sql);
-    if (failed || !/insert\s+into\s+"?image_objects"?/i.test(sql)) return statement;
-    return wrapInsert(statement, async (run) => {
-      failed = true;
-      await fail(run);
-    });
-  }) as typeof db.prepare;
+  let intercepted = 0;
+  env.DB = new Proxy(db, {
+    get(target, property, receiver) {
+      if (property === "prepare") {
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (failed || !/insert/i.test(sql) || !/image_objects/i.test(sql)) return statement;
+          intercepted += 1;
+          failed = true;
+          return wrapInsert(statement, async (run) => {
+            await fail(run);
+          });
+        };
+      }
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  }) as AppBindings["DB"];
+  return () => intercepted;
 }
 
 function wrapInsert(
