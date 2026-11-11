@@ -78,6 +78,25 @@ describe("provider capability validation", () => {
     expect(capabilities.supportedSizes[0]).toBe("auto");
     expect(capabilities.supportedSizes).toContain("640x200");
     expect(capabilities.supportedSizes).toContain("1760x2480");
+
+    const cubence = providerCapabilitiesFromResolvedGroup({
+      group: {
+        id: "pkg_cubence",
+        providerId: "prv_cubence",
+        name: "Cubence group",
+        description: null,
+        enabled: true,
+        createdBy: null,
+        updatedBy: null,
+        createdAt: 0,
+        updatedAt: 0,
+        deletedAt: null
+      },
+      provider: cubenceProvider,
+      members: []
+    });
+    expect(cubence.model).toBe("gpt-image-2.6-flare");
+    expect(cubence.supportedModels).toEqual(["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"]);
   });
 
   it("allows Cubence image-to-image with the platform reference image limit", () => {

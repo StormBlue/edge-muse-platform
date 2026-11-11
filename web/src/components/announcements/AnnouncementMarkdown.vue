@@ -14,6 +14,7 @@ import javascript from "highlight.js/lib/languages/javascript";
 import json from "highlight.js/lib/languages/json";
 import markdown from "highlight.js/lib/languages/markdown";
 import python from "highlight.js/lib/languages/python";
+import plaintext from "highlight.js/lib/languages/plaintext";
 import sql from "highlight.js/lib/languages/sql";
 import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
@@ -29,6 +30,7 @@ hljs.registerLanguage("javascript", javascript);
 hljs.registerLanguage("json", json);
 hljs.registerLanguage("markdown", markdown);
 hljs.registerLanguage("python", python);
+hljs.registerLanguage("plaintext", plaintext);
 hljs.registerLanguage("sql", sql);
 hljs.registerLanguage("typescript", typescript);
 hljs.registerLanguage("xml", xml);
@@ -139,10 +141,20 @@ function isSafeUrl(value: string) {
 
 <style scoped>
 .announcement-markdown {
+  min-width: 0;
+  width: 100%;
   color: var(--foreground);
   font-size: 0.875rem;
   line-height: 1.75;
   overflow-wrap: anywhere;
+}
+
+.announcement-markdown :deep(> :first-child) {
+  margin-top: 0;
+}
+
+.announcement-markdown :deep(> :last-child) {
+  margin-bottom: 0;
 }
 
 .announcement-markdown :deep(*) {
@@ -213,6 +225,7 @@ function isSafeUrl(value: string) {
 }
 
 .announcement-markdown :deep(pre) {
+  min-width: 0;
   overflow: auto;
   border-radius: 0.5rem;
   background: oklch(0.16 0.005 240);
@@ -225,9 +238,17 @@ function isSafeUrl(value: string) {
 }
 
 .announcement-markdown :deep(table) {
+  width: fit-content;
+  max-width: 100%;
   display: block;
   overflow-x: auto;
   border-collapse: collapse;
+}
+
+.announcement-markdown :deep(th) {
+  background: var(--muted);
+  text-align: left;
+  font-weight: 600;
 }
 
 .announcement-markdown :deep(th),

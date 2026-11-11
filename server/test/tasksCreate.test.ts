@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { refundTaskOutstandingQuota, refundQuota } from "../src/lib/quota";
 import { createGenerateTask } from "../src/lib/tasks";
 import { GENERATE_WORKFLOW_STEP_CONFIG } from "../src/lib/tasks/workflowConfig";
-import { MICU_PROVIDER_ID } from "../src/providers/catalog";
+import { CUBENCE_PROVIDER_ID, MICU_PROVIDER_ID } from "../src/providers/catalog";
+import { encryptString } from "../src/lib/crypto";
+import { resolveTaskRunContext } from "../src/lib/tasks/runContext";
+import type { Task } from "../src/db/schema";
 import { createD1TestContext, type D1TestContext } from "./d1TestUtils";
 import type { AppBindings, GenerateParams } from "../src/types";
 
@@ -134,7 +137,7 @@ describe("generation task creation quota safety", () => {
     const task = await context.env.DB.prepare("SELECT params FROM tasks WHERE id = ?1")
       .bind(result.taskId)
       .first<{ params: string }>();
-    expect(JSON.parse(task?.params ?? "{}").model).toBe("gpt-image-2.5-flare");
+    expect(JSON.parse(task?.params ?? "{}").model).toBe("gpt-image-2.6-flare");
     await expectQuota(context.env, { usedQuota: 2 });
   });
 
@@ -164,6 +167,77 @@ describe("generation task creation quota safety", () => {
     await expectQuota(context.env, { usedQuota: 1 });
     expect(await refundTaskOutstandingQuota(context.env, "usr_task", result.taskId)).toBe(1);
   });
+
+  it.each([
+    ...[undefined, "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"].map(
+      (model) => ["cubence", model] as const
+    ),
+    ...[undefined, "gpt-image-2.6-flare", "gpt-image-2.6-sunburst"].map(
+      (model) => ["micu", model] as const
+    )
+  ])("uses only 2.6 for %s automatic and explicit selection: %s", async (provider, model) => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    if (provider === "cubence") await useCubence(context.env);
+    const secret = "cubence-test-encryption-secret";
+    context.env.KEY_ENCRYPTION_KEY = secret;
+    await context.env.DB.prepare("UPDATE provider_keys SET encrypted_key = ?1")
+      .bind(await encryptString("test-api-key", secret))
+      .run();
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: { ...baseParams, model, size: "2048x2048" }
+    });
+    const task = await context.env.DB.prepare("SELECT params FROM tasks WHERE id = ?1")
+      .bind(result.taskId)
+      .first<{ params: string }>();
+    const params = JSON.parse(task!.params) as GenerateParams;
+    expect(params.model).toBe(model);
+    const run = await resolveTaskRunContext(context.env, {
+      task: { id: result.taskId, userId: "usr_task", providerKeyId: "key_task" } as Task,
+      params,
+      baseLogFields: {}
+    });
+    expect(run.model).toBe(model ?? "gpt-image-2.6-flare");
+    await expectQuota(context.env, { usedQuota: provider === "cubence" ? 1 : 2 });
+  });
+
+  it("upgrades a trusted historical Cubence retry without accepting old public choices", async () => {
+    await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+    await useCubence(context.env);
+    const original = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      params: baseParams
+    });
+    await context.env.DB.prepare("UPDATE tasks SET status = 'failed' WHERE id = ?1")
+      .bind(original.taskId)
+      .run();
+    const result = await createGenerateTask(context.env, {
+      userId: "usr_task",
+      sessionId: original.sessionId,
+      retryOf: original.taskId,
+      params: { ...baseParams, model: "gpt-image-2.5-sunburst" }
+    });
+    const retried = await context.env.DB.prepare("SELECT params FROM tasks WHERE id = ?1")
+      .bind(result.taskId)
+      .first<{ params: string }>();
+    expect(JSON.parse(retried!.params).model).toBe("gpt-image-2.6-sunburst");
+  });
+
+  it.each(["gpt-image-2", "gpt-image-2.5-flare", "unknown"])(
+    "rejects retired or unknown Cubence selection before charging: %s",
+    async (model) => {
+      await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
+      await useCubence(context.env);
+      await expect(
+        createGenerateTask(context.env, {
+          userId: "usr_task",
+          params: { ...baseParams, model }
+        })
+      ).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+      expect(await countRows(context.env, "tasks")).toBe(0);
+      await expectQuota(context.env, { usedQuota: 0 });
+    }
+  );
 
   it("does not manufacture a refund for an uncharged sysadmin", async () => {
     await seedGenerationAccount(context.env, { allocatedQuota: 10, usedQuota: 0 });
@@ -260,6 +334,17 @@ async function countRows(env: AppBindings, table: string): Promise<number> {
     count: number;
   }>();
   return row?.count ?? 0;
+}
+
+async function useCubence(env: AppBindings) {
+  await env.DB.prepare(
+    `INSERT INTO providers
+    (id, name, base_url, default_model, request_format, supported_sizes, enabled, created_at, updated_at)
+    VALUES (?1, 'Cubence', 'mock:', 'gpt-image-2', 'openai_images', '["auto","1024x1024","2048x2048"]', 1, 0, 0)`
+  )
+    .bind(CUBENCE_PROVIDER_ID)
+    .run();
+  await env.DB.prepare("UPDATE provider_keys SET provider_id = ?1").bind(CUBENCE_PROVIDER_ID).run();
 }
 
 async function expectQuota(env: AppBindings, expected: { usedQuota: number }) {

@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "kind": "dev-spec-flow-revision-capture",
+  "base_commit": "5ba0f2d2e9990691df5406d7e74971aa9c2b18c1",
+  "scope": [
+    "server/src/lib/providerKeyGroups.ts",
+    "server/src/lib/tasks/create.ts",
+    "server/src/lib/tasks/runContext.ts",
+    "server/src/providers/catalog.ts",
+    "server/src/providers/cubencePolicy.ts",
+    "server/src/providers/micuPolicy.ts",
+    "server/test/micuPolicy.test.ts",
+    "server/test/provider.test.ts",
+    "server/test/providerCapabilities.test.ts",
+    "server/test/queueScheduler.test.ts",
+    "server/test/tasksCreate.test.ts",
+    "web/src/components/chat/ChatInput.test.ts",
+    "web/src/components/chat/useChatInputController.ts",
+    "web/src/views/ai-image/useImageStudio.test.ts",
+    "web/src/views/ai-image/useImageStudio.ts"
+  ],
+  "changed_paths": [
+    "server/src/lib/providerKeyGroups.ts",
+    "server/src/lib/tasks/create.ts",
+    "server/src/lib/tasks/runContext.ts",
+    "server/src/providers/catalog.ts",
+    "server/src/providers/cubencePolicy.ts",
+    "server/src/providers/micuPolicy.ts",
+    "server/test/micuPolicy.test.ts",
+    "server/test/provider.test.ts",
+    "server/test/providerCapabilities.test.ts",
+    "server/test/queueScheduler.test.ts",
+    "server/test/tasksCreate.test.ts",
+    "web/src/components/chat/ChatInput.test.ts",
+    "web/src/components/chat/useChatInputController.ts",
+    "web/src/views/ai-image/useImageStudio.test.ts",
+    "web/src/views/ai-image/useImageStudio.ts"
+  ],
+  "worktree_state": "scoped-dirty",
+  "entries": [
+    {
+      "path": "server/src/lib/providerKeyGroups.ts",
+      "status": "modified",
+      "sha256": "e84194848d9a3087e26b19676d51f66b1a0d7cbccbadc9a17a1bc2d20dd312d2"
+    },
+    {
+      "path": "server/src/lib/tasks/create.ts",
+      "status": "modified",
+      "sha256": "da3436dc090ce9c28588a321cb8580ff053be50f45c757802b336a90a870a64f"
+    },
+    {
+      "path": "server/src/lib/tasks/runContext.ts",
+      "status": "modified",
+      "sha256": "f1726d78d78b1ad67f27e593bed1d10453545064b38f6ee3800982c5f3b77544"
+    },
+    {
+      "path": "server/src/providers/catalog.ts",
+      "status": "modified",
+      "sha256": "7339d003d1e62fb6db724d07a67dfbb22fe4f8d51deed2e14c3fff60e57f6062"
+    },
+    {
+      "path": "server/src/providers/cubencePolicy.ts",
+      "status": "added",
+      "sha256": "f009d07694ee48edb409a366b7d80e5c9386e6b428664be6480f2fd0cd990e5c"
+    },
+    {
+      "path": "server/src/providers/micuPolicy.ts",
+      "status": "modified",
+      "sha256": "cca0c9d8129573de2ff4425d8c71210b55084ae6941396025f58b65676661d59"
+    },
+    {
+      "path": "server/test/micuPolicy.test.ts",
+      "status": "modified",
+      "sha256": "cc8975eebb76e4f53eb262ae57040ad12c4e4ddef3e3746e55a86d82c3d06d64"
+    },
+    {
+      "path": "server/test/provider.test.ts",
+      "status": "modified",
+      "sha256": "2d10f351923d282c5feb296eba62aadbdb67922b22d732fb865b30e408c037dd"
+    },
+    {
+      "path": "server/test/providerCapabilities.test.ts",
+      "status": "modified",
+      "sha256": "acdcd69c9ff84b86c141e556889a021abbdf48300f82e29d460d8dfeff9148cb"
+    },
+    {
+      "path": "server/test/queueScheduler.test.ts",
+      "status": "modified",
+      "sha256": "cd1528a1328fcdbdcb1b7b0a7d81c28a0736fa5929708c99832900a0dc4befba"
+    },
+    {
+      "path": "server/test/tasksCreate.test.ts",
+      "status": "modified",
+      "sha256": "6d9bba52d8ddc03c4215fd3f8841d383780ef8310fcf5a6e36b34dfcdc237d60"
+    },
+    {
+      "path": "web/src/components/chat/ChatInput.test.ts",
+      "status": "modified",
+      "sha256": "c34ab2075c1982bdf8c5a124dcbdbf55d55a21aaa5efc6f46edad02e82c7bf5c"
+    },
+    {
+      "path": "web/src/components/chat/useChatInputController.ts",
+      "status": "modified",
+      "sha256": "6e69ed8789d0328ffab8cf81bfe26ada3aa178e40ccc9aee03fe6dad4e4e8d7c"
+    },
+    {
+      "path": "web/src/views/ai-image/useImageStudio.test.ts",
+      "status": "modified",
+      "sha256": "471cc7b47f30761e2657fb2a0ebf06b160e078e7a05353a5555bca5df79c6f7b"
+    },
+    {
+      "path": "web/src/views/ai-image/useImageStudio.ts",
+      "status": "modified",
+      "sha256": "3c8e9ec46f4e3b6c25e4638b2d271e5967475d344f6353c436b66af2b240e7e6"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+Provider support observations (2026-11-11 task context)
+OpenAI official model pages:
+https://developers.openai.com/api/docs/models/gpt-image-2.6-flare
+https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst
+Cubence official catalog: https://cubence.ai/en/models
+Catalog lists both gpt-image-2.6-flare and gpt-image-2.6-sunburst.
+Cubence account-specific generation was not tested.
+
+Micu authenticated GET https://www.micuapi.ai/v1/models: HTTP 200
+Listed gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst,
+gpt-image-2.6-flare and gpt-image-2.6-sunburst.
+User explicitly authorized use of a supplied test API key; secret is excluded.
+POST /v1/images/generations: prompt A blue circle on white., quality low,
+size 1024x1024, n=1. curl with browser User-Agent.
+Flare: returned JSON data with 1 image URL or base64 field, no error, 39.8s.
+Sunburst: same result with complexity low, HTTP/1.1, 81.5s.
+Initial urllib attempts disconnected after 28.7s; first curl Sunburst attempt
+closed abruptly at 37.9s. Successful retries above demonstrate availability,
+not an uptime guarantee. No quality, editing, high-resolution, SVG or GIF claim.
+No keys, private response URLs or image payloads retained.

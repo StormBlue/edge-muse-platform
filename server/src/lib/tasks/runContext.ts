@@ -1,7 +1,9 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "../../db/client";
 import { providerKeys, providers, type Task } from "../../db/schema";
+import { MICU_REQUEST_FORMAT, effectiveMicuModel } from "../../providers/micuPolicy";
 import { getProvider } from "../../providers/registry";
+import { isCubenceImageProvider, resolveCubenceModel } from "../../providers/cubencePolicy";
 import { decryptString } from "../crypto";
 import { appError } from "../errors";
 import { logInfo, logWarn, urlSummary } from "../log";
@@ -42,7 +44,12 @@ export async function resolveTaskRunContext(
   }
   const apiKey = await decryptString(key.encryptedKey, env.KEY_ENCRYPTION_KEY);
   const providerImpl = getProvider(provider.requestFormat);
-  const model = key.model ?? provider.defaultModel;
+  const configuredModel = key.model ?? provider.defaultModel;
+  const model = isCubenceImageProvider(provider)
+    ? resolveCubenceModel(params.model ?? configuredModel)
+    : provider.requestFormat === MICU_REQUEST_FORMAT
+      ? effectiveMicuModel(params.model ?? configuredModel, params.size)
+      : configuredModel;
   assertProviderSupportsGenerateParams(provider, providerImpl, params);
   logInfo("task.provider.resolved", {
     ...baseLogFields,

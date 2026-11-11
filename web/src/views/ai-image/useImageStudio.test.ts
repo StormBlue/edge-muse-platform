@@ -46,6 +46,20 @@ afterEach(() => {
 });
 
 describe("image studio routing and generation", () => {
+  it("resets retired models on reuse and clears manual selection for a new creation", async () => {
+    const { studio } = await open("/ai-image?sourceTask=legacy&reuse=params");
+    studio.model.value = "gpt-image-2.6-sunburst";
+    studio.currentTask.value = {
+      ...task("legacy"),
+      params: { ...task("legacy").params, model: "gpt-image-2" }
+    };
+    await studio.reuseCurrent(false);
+    await flushPromises();
+    expect(studio.model.value).toBe("auto");
+    studio.model.value = "gpt-image-2.6-sunburst";
+    await studio.newCreation();
+    expect(studio.model.value).toBe("auto");
+  });
   it("starts in an editable blank studio without fetching a case or generating", async () => {
     const { studio } = await open("/ai-image?mode=blank");
     expect(studio.prompt.value).toBe("");

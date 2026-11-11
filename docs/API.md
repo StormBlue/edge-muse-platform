@@ -1,3 +1,5 @@
+<!-- docs-architect-meta {"schema_version":1,"id":"SYS-api","type":"system-doc","title":"API Overview","status":"active","sources":["server/src/routes/**","server/src/lib/tasks/**","server/src/lib/providerKeyGroups.ts","server/src/providers/**"],"update_when":["Public API behavior or provider model catalogs change"],"relations":[{"type":"documents","target":"REQ-2026-008"}]} -->
+
 # API Overview
 
 All paths are under `/api`.
@@ -46,7 +48,7 @@ Authentication notes:
 - Admin/user generation assignment uses `providerKeyGroupId`, not a single provider key id. Sysadmins assign a key group to each admin; an admin-created user inherits that admin's group. User-level active generation limits are `queued + running`: admin default 10 max 15, user default 5 max 10, sysadmin unlimited.
 - `/api/me` and auth bootstrap responses include `generationTargets`. `default` uses the account's current provider key group; `micu_grok` is returned only when the Micu Grok provider group is configured and the current user is a sysadmin or an explicitly granted admin.
 - `POST /generate` accepts `generationTargetId` (`default` or `micu_grok`). The selected target controls the provider key group and final model; the common task/session/history/audit pipeline is unchanged.
-- 米醋 Image2 当前模型目录是 `gpt-image-2`、`gpt-image-2-openai`、`gpt-image-2.5-flare`、`gpt-image-2.5-sunburst`。`/me` 的 `providerCapabilities.supportedModels` 返回该目录。工作台和 AI 图像生成页提供“自动”与手动选择；手动值通过 `POST /generate.model` 提交，服务端按白名单校验。旧的 `gpt-image-2.5-flare-openai` 与 `gpt-image-2.5-sunburst-openai` 仍可提交，服务端会改写成对应的无后缀模型。只有 `gpt-image-2` 在最长边达到 1600 时改用 `gpt-image-2-openai`；1K 即使指定 `gpt-image-2-openai` 也发送 `gpt-image-2`。Flare 与 Sunburst 在各尺寸保持所选模型。2K/4K 每张按 2 个配额单位计费，1K 按 1 个单位计费。
+- 米醋 Image2 与内置 Cubence 的当前模型目录仅为 `gpt-image-2.6-flare`、`gpt-image-2.6-sunburst`。`/me` 的 `providerCapabilities.supportedModels` 返回该目录，工作台和 AI 图像生成页均可选择。自动模式按最终调度的密钥模型执行，旧配置回退到 Flare；手动选择通过 `POST /generate.model` 提交并在运行时保留。米醋旧 2/2.5 型号作为兼容别名映射到对应 2.6 家族，其余目录外的手动值在扣配额前拒绝；历史工作台复用旧型号时回退自动。两个 2.6 型号在各尺寸保持所选模型，不附加 `-openai`。米醋 1K 每张 1 单位、2K/4K 每张 2 单位，Cubence 每张 1 单位。
 - `POST /generate` creates a queued task and returns `202` immediately. The provider key is selected later by the group queue; if no group/key is available the request returns `PROVIDER_ERROR`.
 - `DELETE /sessions/:id` is a soft delete for generated sessions only: the session must have at least one task and every task must be terminal `succeeded`, `failed` or `cancelled`. Regular history/session APIs hide soft-deleted sessions, while sysadmin session audit still returns them with `deletedAt`.
 - `GET /sysadmin/users/:id/sessions` returns audit session cards data including owner summary, task count, success image count, soft-delete marker, and `coverImage` when a generated image is available.

@@ -1,21 +1,15 @@
 export const MICU_REQUEST_FORMAT = "micu_images";
-export const MICU_STANDARD_MODEL = "gpt-image-2";
-/** `gpt-image-2` 的 2K/4K 高质量线路。Flare 与 Sunburst 不再使用该后缀。 */
-export const MICU_PRO_MODEL = "gpt-image-2-openai";
-export const MICU_FLARE_MODEL = "gpt-image-2.5-flare";
-export const MICU_FLARE_PRO_MODEL = "gpt-image-2.5-flare-openai";
-export const MICU_SUNBURST_MODEL = "gpt-image-2.5-sunburst";
-export const MICU_SUNBURST_PRO_MODEL = "gpt-image-2.5-sunburst-openai";
-export const MICU_SUPPORTED_MODELS = [
-  MICU_STANDARD_MODEL,
-  MICU_PRO_MODEL,
-  MICU_FLARE_MODEL,
-  MICU_SUNBURST_MODEL
-] as const;
-/** 已改名的 Flare/Sunburst 请求仍接受，发出前改写成当前 ID。 */
+export const MICU_FLARE_MODEL = "gpt-image-2.6-flare";
+export const MICU_SUNBURST_MODEL = "gpt-image-2.6-sunburst";
+export const MICU_SUPPORTED_MODELS = [MICU_FLARE_MODEL, MICU_SUNBURST_MODEL] as const;
+/** Historical settings remain readable, but only 2.6 IDs are sent upstream. */
 export const MICU_LEGACY_MODEL_ALIASES: Record<string, string> = {
-  [MICU_FLARE_PRO_MODEL]: MICU_FLARE_MODEL,
-  [MICU_SUNBURST_PRO_MODEL]: MICU_SUNBURST_MODEL
+  "gpt-image-2": MICU_FLARE_MODEL,
+  "gpt-image-2-openai": MICU_FLARE_MODEL,
+  "gpt-image-2.5-flare": MICU_FLARE_MODEL,
+  "gpt-image-2.5-flare-openai": MICU_FLARE_MODEL,
+  "gpt-image-2.5-sunburst": MICU_SUNBURST_MODEL,
+  "gpt-image-2.5-sunburst-openai": MICU_SUNBURST_MODEL
 };
 export const MICU_DEFAULT_MODEL = MICU_FLARE_MODEL;
 export const MICU_HIGH_RESOLUTION_EDGE = 1600;
@@ -137,14 +131,9 @@ export function isAllowedMicuModel(model: string): boolean {
 }
 
 export function effectiveMicuModel(model: string, size: string): string {
+  void size;
   const canonical = canonicalizeMicuModel(model);
-  const requested = MICU_SUPPORTED_MODELS.includes(
-    canonical as (typeof MICU_SUPPORTED_MODELS)[number]
-  )
-    ? canonical
-    : MICU_STANDARD_MODEL;
-  if (requested === MICU_FLARE_MODEL || requested === MICU_SUNBURST_MODEL) return requested;
-  return isMicuHighResolutionSize(size) ? MICU_PRO_MODEL : MICU_STANDARD_MODEL;
+  return isAllowedMicuModel(canonical) ? canonical : MICU_DEFAULT_MODEL;
 }
 
 /** 2K/4K 每张 2 个配额单位。倍数看尺寸档，不看最终模型 ID。 */

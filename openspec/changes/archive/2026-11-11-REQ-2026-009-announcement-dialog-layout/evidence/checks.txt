@@ -1,0 +1,9 @@
+Observed verification on 2026-11-11, all commands exit 0:
+pnpm -F web exec vitest run src/components/announcements/AnnouncementMarkdown.test.ts: 1 file, 3 tests passed (unlabelled/text/unknown code languages; escaped script content; following content preserved).
+pnpm -F web typecheck: passed.
+pnpm lint: passed.
+pnpm -F web build: passed, 2909 modules transformed.
+Formatting applied to changed announcement files.
+Independent integrated review (review_announcement): passed, no actionable findings.
+Real browser observations and screenshots: browser.txt, desktop.jpg, mobile.jpg, dark.jpg.
+Temporary browser fixture deleted after validation. No production writes or deployment.
