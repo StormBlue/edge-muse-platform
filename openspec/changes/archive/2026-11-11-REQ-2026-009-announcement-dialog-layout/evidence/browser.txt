@@ -1,0 +1,9 @@
+Observed real-browser validation using the actual AnnouncementBell/AnnouncementMarkdown components and a disposable local fixture:
+1280x900 light: dialog display flex, padding 0, content width 767px; region clientWidth=scrollWidth=751, clientHeight548 < scrollHeight994. Header and close footer visible. desktop.jpg retained.
+390x844: title wraps to 3 lines, dialog within viewport, body clientWidth=scrollWidth=341. Ctrl+End reached the final paragraph; body scrollTop987, clientHeight490, scrollHeight1476. mobile.jpg retained.
+320x568: settled dialog width288, height536, top16; region clientWidth=scrollWidth=271. Close button remains within viewport.
+1280x900 dark: screenshot dark.jpg, all content and controls readable. Escape closes dialog (waitFor dialog hidden succeeded).
+Footer close button also closes dialog (returned to announcement trigger).
+Plain code fence originally caused highlight.js Unknown language plaintext; registering the bundled plaintext language restored complete article rendering. Focused regression added for unlabelled/text/unknown languages.
+Shared DialogContent uses concatenated utility classes rather than Tailwind merge; its grid/padding/responsive max-width could win. Portal content has no AnnouncementBell scope attribute, so dedicated global .announcement-dialog selectors provide deterministic local overrides.
+No real API or announcement content modified; temporary fixture removed. Independent integrated review passed without findings.

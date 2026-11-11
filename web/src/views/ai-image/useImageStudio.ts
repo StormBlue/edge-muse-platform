@@ -351,6 +351,7 @@ export function useImageStudio() {
       ? "text2image"
       : (supportedModes.value[0] ?? "text2image");
     count.value = 1;
+    model.value = "auto";
     currentTask.value = null;
     sourceTask.value = null;
     sourceImageId.value = null;
@@ -387,6 +388,11 @@ export function useImageStudio() {
     appliedCaseId = null;
     replacePrompt(task.prompt);
     targetId.value = nextTarget.id;
+    model.value =
+      task.params.model &&
+      nextTarget.providerCapabilities.supportedModels?.includes(task.params.model)
+        ? task.params.model
+        : "auto";
     mode.value = nextTarget.providerCapabilities.supportedModes.includes(nextMode)
       ? nextMode
       : (nextTarget.providerCapabilities.supportedModes[0] ?? "text2image");

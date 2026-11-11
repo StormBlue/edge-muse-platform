@@ -94,7 +94,10 @@ describe("provider key queue scheduler", () => {
     });
   });
 
-  it("resolves the run model from the actually assigned provider key", async () => {
+  it.each([
+    [undefined, "gpt-image-2.6-sunburst"],
+    ["gpt-image-2.6-flare", "gpt-image-2.6-flare"]
+  ])("resolves automatic or manual model after key assignment: %s", async (requested, expected) => {
     const secret = "test-key-encryption-secret";
     context.env.KEY_ENCRYPTION_KEY = secret;
     await context.env.DB.batch([
@@ -102,7 +105,7 @@ describe("provider key queue scheduler", () => {
         "UPDATE provider_keys SET encrypted_key = ?1 WHERE id = 'key_queue_1'"
       ).bind(await encryptString("api-key-1", secret)),
       context.env.DB.prepare(
-        "UPDATE provider_keys SET model = 'gpt-image-2-openai', encrypted_key = ?1 WHERE id = 'key_queue_2'"
+        "UPDATE provider_keys SET model = 'gpt-image-2.6-sunburst', encrypted_key = ?1 WHERE id = 'key_queue_2'"
       ).bind(await encryptString("api-key-2", secret))
     ]);
     await seedTask(context.env, {
@@ -131,12 +134,12 @@ describe("provider key queue scheduler", () => {
         mode: "text2image",
         size: "1024x1024",
         n: 1,
-        model: "gpt-image-2"
+        model: requested
       },
       baseLogFields: { taskId: "tsk_second_key_model" }
     });
 
-    expect(runContext.model).toBe("gpt-image-2-openai");
+    expect(runContext.model).toBe(expected);
     expect(runContext.apiKey).toBe("api-key-2");
   });
 

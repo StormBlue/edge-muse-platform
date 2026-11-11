@@ -8,6 +8,7 @@ import { now } from "../lib/id";
 import { stringifyJson } from "../lib/json";
 import type { AppBindings } from "../types";
 import { MICU_DEFAULT_MODEL, MICU_IMAGE_SIZE_PRESETS } from "./micuPolicy";
+import { CUBENCE_DEFAULT_MODEL } from "./cubencePolicy";
 
 export const MICU_PROVIDER_ID = "prv_micu";
 export const CUBENCE_PROVIDER_ID = "prv_cubence";
@@ -27,7 +28,7 @@ export const BUILT_IN_PROVIDERS = [
     id: CUBENCE_PROVIDER_ID,
     name: "Cubence",
     baseUrl: "https://api-dmit.cubence.com",
-    defaultModel: "gpt-image-2",
+    defaultModel: CUBENCE_DEFAULT_MODEL,
     requestFormat: "openai_images",
     supportedSizes: [
       "auto",

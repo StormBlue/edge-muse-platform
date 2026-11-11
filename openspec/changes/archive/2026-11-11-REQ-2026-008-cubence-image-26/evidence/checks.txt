@@ -1,0 +1,12 @@
+Observed verification command results:
+- pnpm -F server exec vitest run test/queueScheduler.test.ts test/tasksCreate.test.ts test/providerCapabilities.test.ts test/micuPolicy.test.ts test/cubenceRegression.test.ts: 5 files, 75 tests passed (before additional historical retry regression).
+- pnpm -F server exec vitest run test/provider.test.ts: 1 file, 26 tests passed.
+- pnpm -F server exec vitest run test/tasksCreate.test.ts after historical retry addition: 1 file, 23 tests passed.
+- pnpm -F web exec vitest run src/components/chat/ChatInput.test.ts src/views/workspace/workspaceOptions.test.ts src/views/workspace/useWorkspaceController.test.ts src/views/ai-image/useImageStudio.test.ts: 4 files, 46 tests passed (before studio reuse regression).
+- pnpm -F web exec vitest run src/views/ai-image/useImageStudio.test.ts src/components/chat/ChatInput.test.ts after studio reuse addition: 2 files, 29 tests passed.
+- Final studio reuse regression after exercising same-route legacy params: 1 file, 17 tests passed.
+- Final pnpm typecheck: server tsc and web vue-tsc both passed.
+- Final pnpm lint: exit 0.
+- pnpm build: web production build and Worker dry-run build passed; no deployment performed.
+Integrated independent review found automatic-model precedence, historical replay/retry and studio model reset issues; all resolved and re-reviewed without remaining findings.
+Documentation sync: updated API, user guide and reliability model descriptions; current Micu spec updated through close delta. No docs-architect configuration exists, so repository-wide index initialization is not applicable.

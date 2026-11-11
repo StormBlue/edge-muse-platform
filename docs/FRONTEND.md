@@ -1,3 +1,5 @@
+<!-- docs-architect-meta {"schema_version":1,"id":"SYS-frontend","type":"system-doc","title":"前端（Vue 3）","status":"active","sources":["web/src/**"],"update_when":["Frontend interaction, layout or routing changes"],"relations":[{"type":"documents","target":"REQ-2026-009"}]} -->
+
 # 前端（Vue 3）
 
 SPA 位于 [`web/`](../web/)，构建产物由 Worker 以静态资源形式提供。
@@ -107,3 +109,7 @@ SPA 位于 [`web/`](../web/)，构建产物由 Worker 以静态资源形式提�
 ### 工作台生成中的模型回填
 
 生成中会话的模型值通过 `sessions.currentSession.settings.model` → `currentGenerationSettings.model` → `ChatInput.initialModel` 回填；再创作使用源任务的 `params.model`。这些投影必须显式携带模型，不能只给中间类型加可选字段。回归见 `web/src/views/workspace/useWorkspaceController.test.ts`，使用实际 ChatInput 验证打开运行中会话与重新挂载后的模型文字。2026-09-09：该用例修复前失败（model 为 undefined），补齐投影后通过，连同 ChatInput/session 相关 26 项测试通过。
+
+## 公告阅读
+
+[`AnnouncementBell.vue`](../web/src/components/announcements/AnnouncementBell.vue) 提供最近公告、分页列表与详情弹窗。公告弹窗通过专属样式覆盖 Portal 基础组件的布局，桌面最大宽度为 48rem，窄屏两侧保留 1rem；高度受动态视口约束。详情标题支持换行，标题和关闭操作区固定，正文使用独立的原生纵向滚动区，支持键盘滚动。表格与代码块在自身范围横向滚动，避免撑宽正文；[`AnnouncementMarkdown.vue`](../web/src/components/announcements/AnnouncementMarkdown.vue) 对未指定或未识别的代码语言按纯文本显示。

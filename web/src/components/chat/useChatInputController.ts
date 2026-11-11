@@ -231,7 +231,7 @@ export function useChatInputController(props: ChatInputProps, emit: ChatInputEmi
   watch(
     () => props.initialModel,
     (next) => {
-      model.value = next || "auto";
+      model.value = next && props.modelOptions?.includes(next) ? next : "auto";
     },
     { immediate: true }
   );

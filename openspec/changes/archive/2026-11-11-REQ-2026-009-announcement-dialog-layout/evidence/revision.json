@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "kind": "dev-spec-flow-revision-capture",
+  "base_commit": "5ba0f2d2e9990691df5406d7e74971aa9c2b18c1",
+  "scope": [
+    "web/src/components/announcements/AnnouncementBell.vue",
+    "web/src/components/announcements/AnnouncementMarkdown.test.ts",
+    "web/src/components/announcements/AnnouncementMarkdown.vue"
+  ],
+  "changed_paths": [
+    "web/src/components/announcements/AnnouncementBell.vue",
+    "web/src/components/announcements/AnnouncementMarkdown.test.ts",
+    "web/src/components/announcements/AnnouncementMarkdown.vue"
+  ],
+  "worktree_state": "scoped-dirty",
+  "entries": [
+    {
+      "path": "web/src/components/announcements/AnnouncementBell.vue",
+      "status": "modified",
+      "sha256": "5df96550d0df8d112072f98ea1d6efa0e94b371c37cb251865d8606c1abc5860"
+    },
+    {
+      "path": "web/src/components/announcements/AnnouncementMarkdown.test.ts",
+      "status": "added",
+      "sha256": "d7d39ad99610ef5236e61359cecd6f293b4f6473e3050e32c37021b57e8a2e28"
+    },
+    {
+      "path": "web/src/components/announcements/AnnouncementMarkdown.vue",
+      "status": "modified",
+      "sha256": "3be1af9553543c41ec3dd5e842e1777f94698a8e3d4a22efa50988f5233f344f"
+    }
+  ]
+}

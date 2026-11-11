@@ -161,7 +161,7 @@ describe("provider response parsing", () => {
           response_format: string;
         };
         expect(body).toEqual({
-          model: "gpt-image-2",
+          model: "gpt-image-2.6-flare",
           prompt: "a cat",
           n: 1,
           size: "1280x720",
@@ -199,7 +199,7 @@ describe("provider response parsing", () => {
           response_format: string;
         };
         expect(body).toEqual({
-          model: "gpt-image-2",
+          model: "gpt-image-2.6-flare",
           prompt: "a cat",
           n: 1,
           response_format: "b64_json"
@@ -297,7 +297,7 @@ describe("provider response parsing", () => {
     expect(response.images).toHaveLength(1);
   });
 
-  it("routes Micu high-resolution requests to the openai model", async () => {
+  it("migrates legacy Micu high-resolution requests to 2.6", async () => {
     const provider = new MicuImagesProvider();
     vi.stubGlobal(
       "fetch",
@@ -307,7 +307,7 @@ describe("provider response parsing", () => {
           size: string;
           response_format: string;
         };
-        expect(body.model).toBe("gpt-image-2-openai");
+        expect(body.model).toBe("gpt-image-2.6-flare");
         expect(body.size).toBe("2048x2048");
         expect(body.response_format).toBe("b64_json");
         return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
@@ -335,7 +335,7 @@ describe("provider response parsing", () => {
       "fetch",
       vi.fn(async (_url: string, init: RequestInit) => {
         const body = JSON.parse(String(init.body)) as { model: string; size: string };
-        expect(body.model).toBe("gpt-image-2.5-flare");
+        expect(body.model).toBe("gpt-image-2.6-flare");
         expect(body.size).toBe("2048x2048");
         return new Response(JSON.stringify({ data: [{ b64_json: png }] }), {
           status: 200,
@@ -473,7 +473,7 @@ describe("provider response parsing", () => {
           reference_image?: string;
           response_format: string;
         };
-        expect(body.model).toBe("gpt-image-2-openai");
+        expect(body.model).toBe("gpt-image-2.6-flare");
         expect(body.size).toBe("2048x2048");
         expect(body.reference_image).toMatch(/^data:image\/png;base64,/);
         expect(body.response_format).toBe("b64_json");
@@ -510,7 +510,7 @@ describe("provider response parsing", () => {
             content: Array<{ type: string; image_url?: { url: string } }>;
           }>;
         };
-        expect(body.model).toBe("gpt-image-2-openai");
+        expect(body.model).toBe("gpt-image-2.6-flare");
         const content = body.messages[0]?.content ?? [];
         expect(content.filter((part) => part.type === "image_url")).toHaveLength(2);
         expect(content[1]?.image_url?.url).toMatch(/^data:image\/png;base64,/);
@@ -556,7 +556,7 @@ describe("provider response parsing", () => {
           model: string;
           messages: Array<{ content: unknown }>;
         };
-        expect(body.model).toBe("gpt-image-2");
+        expect(body.model).toBe("gpt-image-2.6-flare");
         expect(Array.isArray(body.messages[0]?.content)).toBe(true);
         return new Response(
           JSON.stringify({

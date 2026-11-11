@@ -15,6 +15,22 @@ vi.mock("@/utils/referenceImageFiles", async (importOriginal) => ({
 }));
 
 describe("ChatInput", () => {
+  it("falls back to auto when reusing a retired model", async () => {
+    const wrapper = mount(ChatInput, {
+      props: {
+        mode: "text2image",
+        initialPrompt: "a circle",
+        initialModel: "gpt-image-2",
+        modelOptions: ["gpt-image-2.6-flare", "gpt-image-2.6-sunburst"]
+      }
+    });
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[0]?.[0]).toMatchObject({ model: undefined });
+    await wrapper.setProps({ initialModel: "gpt-image-2.6-sunburst" });
+    await wrapper.get("form").trigger("submit");
+    expect(wrapper.emitted("submit")?.[1]?.[0]).toMatchObject({ model: "gpt-image-2.6-sunburst" });
+    wrapper.unmount();
+  });
   it("blocks incomplete source recipes until explicit confirmation", async () => {
     const reference = {
       id: "available",

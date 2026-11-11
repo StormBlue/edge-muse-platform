@@ -15,6 +15,7 @@ import {
   micuQuotaMultiplier
 } from "../../providers/micuPolicy";
 import { defaultSessionTitle } from "../sessionTitle";
+import { isAllowedCubenceModel, isCubenceImageProvider } from "../../providers/cubencePolicy";
 import { getProvider } from "../../providers/registry";
 import { assertProviderSupportsGenerateParams } from "./providerParams";
 import {
@@ -167,8 +168,15 @@ export async function createGenerateTask(
     if (!isAllowedMicuModel(requestedModel))
       throw appError("VALIDATION_ERROR", "Unsupported Micu model");
     params.model = canonicalizeMicuModel(requestedModel);
+  } else if (isCubenceImageProvider(provider)) {
+    const selectedModel =
+      input.retryOf && requestedModel ? canonicalizeMicuModel(requestedModel) : requestedModel;
+    if (selectedModel && !isAllowedCubenceModel(selectedModel)) {
+      throw appError("VALIDATION_ERROR", "Unsupported Cubence model");
+    }
+    params.model = selectedModel || undefined;
   } else {
-    params.model = configuredModel;
+    params.model = provider.requestFormat === MICU_REQUEST_FORMAT ? undefined : configuredModel;
   }
   const providerImpl = getProvider(provider.requestFormat);
   assertProviderSupportsGenerateParams(provider, providerImpl, params);

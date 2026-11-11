@@ -19,7 +19,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const { t, locale } = useI18n();
 const AnnouncementMarkdown = defineAsyncComponent(() => import("./AnnouncementMarkdown.vue"));
@@ -80,6 +79,7 @@ async function loadList(nextPage = page.value) {
 }
 
 async function openDetail(item: AnnouncementListItem) {
+  popoverOpen.value = false;
   loadingDetail.value = true;
   detailDialogOpen.value = true;
   try {
@@ -213,15 +213,18 @@ function formatDateTime(value?: number | null) {
 
     <Dialog v-model:open="listDialogOpen">
       <DialogContent
-        class="flex h-[min(42rem,calc(100dvh-2rem))] max-w-[min(48rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0"
+        :aria-describedby="undefined"
+        class="announcement-dialog h-[min(42rem,calc(100dvh-2rem))] overflow-hidden rounded-xl bg-card shadow-2xl"
       >
-        <DialogHeader class="border-b border-border p-4 pr-12">
+        <DialogHeader
+          class="min-w-0 shrink-0 border-b border-border bg-muted/30 p-5 pr-14 text-left"
+        >
           <DialogTitle>{{ t("announcements.moreTitle") }}</DialogTitle>
           <p class="text-xs text-muted-foreground">
             {{ t("announcements.totalCount", { count: total }) }}
           </p>
         </DialogHeader>
-        <ScrollArea class="min-h-0 flex-1">
+        <div class="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
           <div v-if="loadingList" class="p-8 text-center text-sm text-muted-foreground">
             {{ t("common.loading") }}
           </div>
@@ -251,7 +254,7 @@ function formatDateTime(value?: number | null) {
               </span>
             </button>
           </div>
-        </ScrollArea>
+        </div>
         <DialogFooter
           class="flex-row items-center justify-between border-t border-border p-3 text-sm"
         >
@@ -282,30 +285,62 @@ function formatDateTime(value?: number | null) {
 
     <Dialog :open="detailDialogOpen" @update:open="(open) => !open && closeDetail()">
       <DialogContent
-        class="flex h-[min(44rem,calc(100dvh-2rem))] max-w-[min(48rem,calc(100vw-2rem))] flex-col gap-0 overflow-hidden p-0"
+        :aria-describedby="undefined"
+        class="announcement-dialog h-[min(44rem,calc(100dvh-2rem))] overflow-hidden rounded-xl bg-card shadow-2xl"
       >
-        <DialogHeader class="border-b border-border p-4 pr-12">
-          <DialogTitle class="truncate">
+        <DialogHeader
+          class="min-w-0 shrink-0 border-b border-border bg-muted/30 p-5 pr-14 text-left sm:px-6 sm:pr-16"
+        >
+          <DialogTitle class="min-w-0 text-base leading-relaxed break-words sm:text-lg">
             {{ selectedDetail?.title ?? t("announcements.detailTitle") }}
           </DialogTitle>
           <p v-if="selectedDetail" class="text-xs text-muted-foreground">
             {{ formatDateTime(selectedDetail.publishedAt) }}
           </p>
         </DialogHeader>
-        <ScrollArea class="min-h-0 flex-1">
+        <div
+          role="region"
+          :aria-label="t('announcements.detailTitle')"
+          tabindex="0"
+          class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain outline-none [scrollbar-gutter:stable] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40"
+        >
           <div v-if="loadingDetail" class="p-8 text-center text-sm text-muted-foreground">
             {{ t("common.loading") }}
           </div>
-          <div v-else-if="selectedDetail" class="p-4">
+          <div v-else-if="selectedDetail" class="min-w-0 px-5 py-4 sm:px-6 sm:py-5">
             <AnnouncementMarkdown :content="selectedDetail.content" />
           </div>
-        </ScrollArea>
+        </div>
+        <DialogFooter class="shrink-0 border-t border-border bg-muted/20 px-5 py-3 sm:px-6">
+          <Button variant="secondary" type="button" @click="closeDetail">
+            {{ t("common.close") }}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   </Popover>
 </template>
 
 <style scoped>
+/* Portal content has no parent scope attribute; keep these overrides local to announcements. */
+:global(.announcement-dialog) {
+  display: flex;
+  flex-direction: column;
+  width: min(48rem, calc(100vw - 2rem));
+  max-width: calc(100vw - 2rem);
+  gap: 0;
+  padding: 0;
+}
+
+:global(.announcement-dialog [data-slot="dialog-close"]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+}
+
 .announcement-trigger,
 .announcement-close-button {
   width: 2.25rem;

@@ -20,9 +20,14 @@ import {
 import { isBuiltInProviderId, isProviderKeyAssignable } from "../providers/catalog";
 import { getProvider } from "../providers/registry";
 import {
+  CUBENCE_SUPPORTED_MODELS,
+  isCubenceImageProvider,
+  resolveCubenceModel
+} from "../providers/cubencePolicy";
+import {
   MICU_REQUEST_FORMAT,
   MICU_SUPPORTED_MODELS,
-  canonicalizeMicuModel
+  effectiveMicuModel
 } from "../providers/micuPolicy";
 import type { ImageProvider } from "../providers/types";
 import { appError, isAppError } from "./errors";
@@ -164,6 +169,8 @@ export function providerCapabilitiesFromResolvedGroup(
 ): ProviderCapabilities {
   const providerImpl = getProvider(resolved.provider.requestFormat);
   const firstKey = resolved.members[0]?.key ?? null;
+  const cubence = isCubenceImageProvider(resolved.provider);
+  const configuredModel = firstKey?.model ?? resolved.provider.defaultModel;
   return {
     providerId: resolved.provider.id,
     providerName: resolved.provider.name,
@@ -171,11 +178,17 @@ export function providerCapabilitiesFromResolvedGroup(
     providerKeyGroupId: resolved.group.id,
     providerKeyGroupName: resolved.group.name,
     requestFormat: resolved.provider.requestFormat,
-    model: canonicalizeMicuModel(firstKey?.model ?? resolved.provider.defaultModel),
+    model: cubence
+      ? resolveCubenceModel(configuredModel)
+      : resolved.provider.requestFormat === MICU_REQUEST_FORMAT
+        ? effectiveMicuModel(configuredModel, "auto")
+        : configuredModel,
     supportedModels:
       resolved.provider.requestFormat === MICU_REQUEST_FORMAT
         ? [...MICU_SUPPORTED_MODELS]
-        : undefined,
+        : cubence
+          ? [...CUBENCE_SUPPORTED_MODELS]
+          : undefined,
     supportedModes: providerImpl.supportedModes ?? [...ALL_SESSION_MODES],
     supportedSizes: parseProviderSupportedSizes(resolved.provider, providerImpl),
     maxReferenceImages: providerImpl.maxReferenceImages ?? PLATFORM_REFERENCE_IMAGE_LIMIT
